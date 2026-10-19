@@ -3,12 +3,21 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
+  import { KeyRound, Mail } from '@lucide/svelte';
   import { passkeyLogin, passkeysSupported } from '#lib/webauthn.js';
 
   // Auth endpoints are on the API origin. Empty = same origin (single-binary prod).
   const API = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 
   type Mode = 'loading' | 'signin' | 'signup' | 'verify' | 'single';
+  // JSON body of the auth endpoints (signin/signup/demo-login/accept-invite).
+  type AuthPayload = {
+    token?: string;
+    user_id?: string;
+    active_org?: string;
+    status?: string;
+    error?: string;
+  };
   let mode = $state<Mode>('loading');
   let hasPassword = $state(true);
   let registration = $state(true);
@@ -53,7 +62,7 @@
     }
   });
 
-  function persist(j: any, fallbackEmail = '') {
+  function persist(j: AuthPayload, fallbackEmail = '') {
     if (j.token) localStorage.setItem('session', j.token);
     if (j.user_id) localStorage.setItem('obh.userId', j.user_id);
     if (j.active_org) localStorage.setItem('obh.orgId', j.active_org);
@@ -63,7 +72,7 @@
 
   // Joins the invited tenant right after sign-in/up, so the invite link works in
   // one pass. Returns the (possibly updated) auth payload to persist.
-  async function acceptInvite(j: any) {
+  async function acceptInvite(j: AuthPayload): Promise<AuthPayload> {
     try {
       const r = await fetch(`${API}/auth/accept-invite`, {
         method: 'POST',
@@ -180,7 +189,7 @@
       <p class="muted">{$_('app.tagline')}</p>
 
       {#if inviteToken}
-        <p class="notice">✉️ {$_('auth.invited_banner')}</p>
+        <p class="notice"><Mail size={16} aria-hidden="true" /> {$_('auth.invited_banner')}</p>
       {:else if !registration}
         <p class="notice">{$_('auth.invite_only_banner')}</p>
       {/if}
@@ -195,13 +204,13 @@
 
       {#if demoEnabled}
         <button class="primary demo" onclick={demoLogin} disabled={busy}
-          >🐝 {$_('auth.try_demo')}</button
+          ><img class="logo" src="/favicon.svg" alt="" /> {$_('auth.try_demo')}</button
         >
       {/if}
 
       {#if webauthn && mode === 'signin' && passkeysSupported()}
         <button class="provider pk" onclick={passkeySignin} disabled={busy}
-          >🔑 {$_('auth.passkey_signin')}</button
+          ><KeyRound size={16} aria-hidden="true" /> {$_('auth.passkey_signin')}</button
         >
       {/if}
 
@@ -309,6 +318,14 @@
     color: var(--moss, #5c6b4a);
     font-weight: 600;
     font-size: 0.88rem;
+  }
+  .wrap :global(.lucide-icon),
+  .wrap .logo {
+    vertical-align: -0.15em;
+  }
+  .logo {
+    width: 18px;
+    height: 18px;
   }
   .notice {
     background: var(--cream, #fbf6ea);

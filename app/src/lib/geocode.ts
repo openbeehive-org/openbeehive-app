@@ -4,8 +4,8 @@
 // browser's Referer.
 //
 // Results carry an explicit status so the UI can tell the user what happened:
-// 'found' — a match; 'none' — the service answered but knows no match;
-// 'unreachable' — network/service failure (offline, blocked, rate-limited).
+// 'found': a match; 'none': the service answered but knows no match;
+// 'unreachable': network/service failure (offline, blocked, rate-limited).
 export type GeoHit = { lat: number; lng: number; label: string };
 export type GeoResult<T> =
   { status: 'found'; value: T } | { status: 'none' } | { status: 'unreachable' };
@@ -38,7 +38,7 @@ export async function geocode(query: string): Promise<GeoResult<GeoHit>> {
   };
 }
 
-/** Human-readable address for a position ('none' → caller shows coordinates). */
+/** Human-readable address for a position ('none' means the caller shows coordinates). */
 export async function reverseGeocode(lat: number, lng: number): Promise<GeoResult<string>> {
   const res = await ask(`/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
   if (res.status !== 'found') return res;

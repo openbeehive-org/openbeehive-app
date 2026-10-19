@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
+  import { MapPin, Pencil, Trash2, Tag } from '@lucide/svelte';
   import {
     apiaries,
     hives,
@@ -11,13 +12,15 @@
     MARKING_NAMES
   } from '#lib/local/repo.js';
   import { createHive } from '#lib/local/history.js';
+  import type { ApiaryRow, HiveRow, QueenRow } from '../../rows.js';
   import { dataVersion } from '#lib/local/live.js';
   import { qrSvg, hiveUrl, shortCode } from '#lib/qr.js';
   import LocationPicker from '#lib/components/LocationPicker.svelte';
 
   const id = page.params.id ?? '';
-  let apiary = $state<any>(null);
-  let hiveRows = $state<any[]>([]);
+  type HiveCard = HiveRow & { queen: QueenRow | undefined; lastInspection: string | undefined };
+  let apiary = $state<ApiaryRow | null>(null);
+  let hiveRows = $state<HiveCard[]>([]);
   let loaded = $state(false);
 
   let editing = $state(false);
@@ -39,9 +42,9 @@
   async function load() {
     apiary = await apiaries.get(id);
     if (apiary) {
-      const list = await hives.list(id);
+      const list = (await hives.list(id)) as HiveRow[];
       hiveRows = await Promise.all(
-        list.map(async (h: any) => {
+        list.map(async (h) => {
           const q = await queens.current(h.id);
           const insp = await inspections.listByHive(h.id);
           return { ...h, queen: q, lastInspection: insp[0]?.date };
@@ -52,6 +55,7 @@
   }
 
   function startEdit() {
+    if (!apiary) return;
     eName = apiary.name;
     eAddress = apiary.address ?? '';
     eNote = apiary.note ?? '';
@@ -100,9 +104,9 @@
 
   // Printable A4 sheet of QR labels for every hive at this apiary.
   async function printQrSheet() {
-    if (!hiveRows.length) return;
+    if (!apiary || !hiveRows.length) return;
     const cells = await Promise.all(
-      hiveRows.map(async (h: any) => {
+      hiveRows.map(async (h) => {
         const svg = await qrSvg(hiveUrl(h.id), 220);
         return `<div class="cell"><div class="qr">${svg}</div>
         <div class="n">${h.name}</div><div class="c">${shortCode(h.id)}</div></div>`;
@@ -110,7 +114,7 @@
     );
     const w = window.open('', '_blank', 'width=820,height=1000');
     if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>${apiary.name} — QR</title><style>
+    w.document.write(`<!doctype html><html><head><title>${apiary.name} - QR</title><style>
       @page { size: A4; margin: 12mm; }
       body { font-family: system-ui, sans-serif; margin: 0; }
       h1 { font-size: 16px; margin: 0 0 10px; }
@@ -136,21 +140,25 @@
   <a class="back" href="/apiaries">‹ {$_('apiaries.title')}</a>
 
   {#if !loaded}
-    <p class="muted">…</p>
+    <p class="muted">...</p>
   {:else if !apiary}
     <p class="muted">{$_('apiaries.not_found')}</p>
   {:else}
     <header>
       <div class="title">
-        <span class="pin">📍</span>
+        <span class="pin"><MapPin size={24} aria-hidden="true" /></span>
         <div>
           <h1>{apiary.name}</h1>
           {#if apiary.address}<p class="muted">{apiary.address}</p>{/if}
         </div>
       </div>
       <div class="acts">
-        <button class="icon" onclick={startEdit} title={$_('apiaries.edit')}>✎</button>
-        <button class="icon danger" onclick={del} title={$_('common.delete')}>🗑</button>
+        <button class="icon" onclick={startEdit} title={$_('apiaries.edit')}
+          ><Pencil size={18} aria-hidden="true" /></button
+        >
+        <button class="icon danger" onclick={del} title={$_('common.delete')}
+          ><Trash2 size={18} aria-hidden="true" /></button
+        >
       </div>
     </header>
 
@@ -175,7 +183,8 @@
             <input type="number" step="0.000001" bind:value={eLng} placeholder="0" /></label
           >
           <button type="button" class="ghost loc" onclick={useMyLocation} disabled={locating}>
-            📍 {locating ? '…' : $_('apiaries.use_location')}
+            <MapPin size={16} aria-hidden="true" />
+            {locating ? '...' : $_('apiaries.use_location')}
           </button>
         </div>
         <LocationPicker bind:lat={eLat} bind:lng={eLng} bind:address={eAddress} />
@@ -196,7 +205,9 @@
       <h2>{$_('hives.title')}</h2>
       <div class="hactions">
         {#if hiveRows.length}
-          <button class="ghost sm" onclick={printQrSheet}>🏷 {$_('apiaries.qr_sheet')}</button>
+          <button class="ghost sm" onclick={printQrSheet}
+            ><Tag size={16} aria-hidden="true" /> {$_('apiaries.qr_sheet')}</button
+          >
         {/if}
 
         <button class="primary sm" onclick={() => (addingHive = !addingHive)}
@@ -234,8 +245,11 @@
           <li class="card">
             <a href={`/hives/${h.id}`}>
               <span class="thumb">
-                {#if h.photo}<img src={h.photo} alt={h.name} />{:else}<span class="ph">🐝</span
-                  >{/if}
+                {#if h.photo}<img src={h.photo} alt={h.name} />{:else}<img
+                    class="ph"
+                    src="/favicon.svg"
+                    alt=""
+                  />{/if}
               </span>
               <div class="body">
                 <strong>{h.name}</strong>
@@ -302,8 +316,10 @@
     align-items: flex-start;
   }
   .title .pin {
-    font-size: 1.6rem;
-    line-height: 1.3;
+    display: flex;
+    align-items: center;
+    height: 1.9rem;
+    color: var(--honey-d);
   }
   h1 {
     font-family: 'Fraunces', serif;
@@ -467,8 +483,8 @@
     object-fit: cover;
   }
   .thumb .ph {
-    font-size: 1.5rem;
-    filter: grayscale(0.1);
+    width: 24px;
+    height: 24px;
   }
   .body {
     flex: 1;

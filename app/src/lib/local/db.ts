@@ -18,6 +18,9 @@ import { toast } from '#lib/toast.js';
 import { get } from 'svelte/store';
 import { _ } from 'svelte-i18n';
 
+// Worker reply: a query result, or an unsolicited volatile-store notice.
+type Reply = { id?: number; ok?: boolean; rows?: unknown; error?: string; volatile?: boolean };
+
 let dbPromise: Promise<LocalDB> | null = null;
 
 export function getDB(): Promise<LocalDB> {
@@ -28,20 +31,20 @@ export function getDB(): Promise<LocalDB> {
 async function init(): Promise<LocalDB> {
   const worker = new DbWorker();
   let seq = 0;
-  const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
+  const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 
-  worker.onmessage = (e: MessageEvent) => {
+  worker.onmessage = (e: MessageEvent<Reply>) => {
     const { id, ok, rows, error, volatile } = e.data;
     if (volatile) {
       // The worker fell back to an in-memory database (OPFS unavailable:
       // private browsing, another tab holding the pool). The app keeps
-      // working, but nothing persists — the user must hear that, not just
+      // working, but nothing persists; the user must hear that, not just
       // the console.
       toast(get(_)('common.volatile_store'), 15_000);
       return;
     }
-    const p = pending.get(id);
-    if (!p) return;
+    const p = id === undefined ? undefined : pending.get(id);
+    if (!p || id === undefined) return;
     pending.delete(id);
     if (ok) p.resolve(rows);
     else p.reject(new Error(error));
@@ -52,7 +55,7 @@ async function init(): Promise<LocalDB> {
     sql: string,
     params: unknown[],
     name?: string
-  ): Promise<any> {
+  ): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const id = ++seq;
       pending.set(id, { resolve, reject });
@@ -72,11 +75,11 @@ async function init(): Promise<LocalDB> {
     async exec(sql, params = []) {
       await call('exec', sql, params);
     },
-    async all(sql, params = []) {
-      return (await call('all', sql, params)) ?? [];
+    async all<T>(sql: string, params: unknown[] = []) {
+      return ((await call('all', sql, params)) ?? []) as T[];
     },
-    async get(sql, params = []) {
-      const rows = (await impl.all(sql, params)) as any[];
+    async get<T>(sql: string, params: unknown[] = []) {
+      const rows = await impl.all<T>(sql, params);
       return rows[0];
     }
   };

@@ -1,4 +1,4 @@
-// API keys for scripts and integrations (Settings → API keys). Managed with
+// API keys for scripts and integrations (Settings > API keys). Managed with
 // the normal session; the plaintext key is returned once on creation.
 
 export type ApiKeyScope = 'write' | 'read';

@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "Openbeehive",
-    "tagline": "Registro apistico"
+    "tagline": "Registro apistico",
+    "offline_banner": "Offline: le modifiche vengono salvate e sincronizzate in seguito."
   },
   "nav": {
     "dashboard": "Panoramica",

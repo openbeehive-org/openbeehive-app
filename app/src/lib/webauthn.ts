@@ -19,13 +19,37 @@ export const passkeysSupported = (): boolean =>
 
 type Fetchish = { headers?: Record<string, string> };
 
-async function beginFinish(
+// Wire shapes from go-webauthn: the DOM option types with binary fields as base64url.
+type DescriptorJSON = Omit<PublicKeyCredentialDescriptor, 'id'> & { id: string };
+type CreationJSON = Omit<
+  PublicKeyCredentialCreationOptions,
+  'challenge' | 'user' | 'excludeCredentials'
+> & {
+  challenge: string;
+  user: Omit<PublicKeyCredentialUserEntity, 'id'> & { id: string };
+  excludeCredentials?: DescriptorJSON[];
+};
+type RequestJSON = Omit<PublicKeyCredentialRequestOptions, 'challenge' | 'allowCredentials'> & {
+  challenge: string;
+  allowCredentials?: DescriptorJSON[];
+};
+
+// Finish response: the session payload on login, a status object on enroll.
+export type PasskeyFinish = {
+  token?: string;
+  user_id?: string;
+  active_org?: string;
+  email?: string;
+  [k: string]: unknown;
+};
+
+async function beginFinish<O>(
   api: string,
   beginPath: string,
   finishPath: string,
-  run: (options: any) => Promise<Credential | null>,
+  run: (options: O) => Promise<Credential | null>,
   opts: Fetchish
-): Promise<any> {
+): Promise<PasskeyFinish> {
   const common: RequestInit = { method: 'POST', credentials: 'include' };
   if (opts.headers) common.headers = opts.headers;
   const b = await fetch(`${api}${beginPath}`, common);
@@ -45,14 +69,17 @@ export async function enrollPasskey(api: string, label: string, headers: Record<
     api,
     `/auth/webauthn/enroll/begin?name=${encodeURIComponent(label)}`,
     '/auth/webauthn/enroll/finish',
-    async (options) => {
-      const pk = options.publicKey;
-      pk.challenge = b64uToBuf(pk.challenge);
-      pk.user.id = b64uToBuf(pk.user.id);
-      pk.excludeCredentials = (pk.excludeCredentials ?? []).map((c: any) => ({
-        ...c,
-        id: b64uToBuf(c.id)
-      }));
+    async (options: { publicKey: CreationJSON }) => {
+      const j = options.publicKey;
+      const pk: PublicKeyCredentialCreationOptions = {
+        ...j,
+        challenge: b64uToBuf(j.challenge),
+        user: { ...j.user, id: b64uToBuf(j.user.id) },
+        excludeCredentials: (j.excludeCredentials ?? []).map((c) => ({
+          ...c,
+          id: b64uToBuf(c.id)
+        }))
+      };
       const cred = (await navigator.credentials.create({
         publicKey: pk
       })) as PublicKeyCredential | null;
@@ -79,13 +106,16 @@ export async function passkeyLogin(api: string) {
     api,
     '/auth/webauthn/login/begin',
     '/auth/webauthn/login/finish',
-    async (options) => {
-      const pk = options.publicKey;
-      pk.challenge = b64uToBuf(pk.challenge);
-      pk.allowCredentials = (pk.allowCredentials ?? []).map((c: any) => ({
-        ...c,
-        id: b64uToBuf(c.id)
-      }));
+    async (options: { publicKey: RequestJSON }) => {
+      const j = options.publicKey;
+      const pk: PublicKeyCredentialRequestOptions = {
+        ...j,
+        challenge: b64uToBuf(j.challenge),
+        allowCredentials: (j.allowCredentials ?? []).map((c) => ({
+          ...c,
+          id: b64uToBuf(c.id)
+        }))
+      };
       const cred = (await navigator.credentials.get({
         publicKey: pk
       })) as PublicKeyCredential | null;

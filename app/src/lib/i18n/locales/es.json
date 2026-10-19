@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "Openbeehive",
-    "tagline": "Cuaderno de apicultura"
+    "tagline": "Cuaderno de apicultura",
+    "offline_banner": "Sin conexión: los cambios se guardan y se sincronizan más tarde."
   },
   "nav": {
     "dashboard": "Resumen",

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🐝 Openbeehive
+# Openbeehive
 
 **Offline-first beekeeping records — a free hosted service _and_ self-hostable software.**
 

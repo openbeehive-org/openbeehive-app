@@ -156,6 +156,9 @@ export const apiaries = {
   remove: (id: string) => remove('apiary', id, id)
 };
 
+// Inspection fields as entered by the UI (hive_id and date may be filled by the caller).
+export type InspectionInput = Record<string, unknown> & { date?: string };
+
 export const inspections = {
   async listByHive(hiveId: string) {
     const db = await getDB();
@@ -166,7 +169,7 @@ export const inspections = {
     // Resolve the OR-Set column to the list of visible photos.
     return rows.map((r) => ({ ...r, photos: orValues(parseORSet(r.photo_keys)) }));
   },
-  async add(d: any, scopeApiaryId: string) {
+  async add(d: InspectionInput, scopeApiaryId: string) {
     const id = crypto.randomUUID();
     await patch('inspection', id, scopeApiaryId, {
       ...d,
@@ -258,7 +261,7 @@ export const treatments = {
 
 // International queen marking colour by the year's last digit (1/6 white,
 // 2/7 yellow, 3/8 red, 4/9 green, 5/0 blue). Matches the MarkingColor enum
-// (1=white … 5=blue) in proto/openbeehive/v1/common.proto.
+// (1=white ... 5=blue) in proto/openbeehive/v1/common.proto.
 export function markingForYear(year: number): number {
   return (((year % 10) + 4) % 5) + 1;
 }

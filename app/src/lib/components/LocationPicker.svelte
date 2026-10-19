@@ -3,10 +3,14 @@
   import { onMount, onDestroy } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { geocode, reverseGeocode, fmtCoords } from '#lib/geocode.js';
+  import { Check } from '@lucide/svelte';
+  import type * as Leaflet from 'leaflet';
+
+  type LeafletLib = typeof import('leaflet');
 
   // Two-way bound: the parent's address input and the pin stay in sync.
   // Typing an address geocodes it and moves the pin; moving the pin (drag or
-  // map click) reverse-geocodes and rewrites the address — or falls back to
+  // map click) reverse-geocodes and rewrites the address, or falls back to
   // plain GPS coordinates when no address is known for the spot.
   let {
     lat = $bindable(0),
@@ -15,19 +19,19 @@
   }: { lat?: number; lng?: number; address?: string } = $props();
 
   let el: HTMLDivElement;
-  let map: any = null;
-  let L: any = null;
-  let marker: any = null;
+  let map: Leaflet.Map | null = null;
+  let L: LeafletLib | null = null;
+  let marker: Leaflet.Marker | null = null;
   // Lookup feedback shown under the map: idle (hint) | searching | found |
   // none (service knows no match) | unreachable (offline / blocked).
   let lookup = $state<'idle' | 'searching' | 'found' | 'none' | 'unreachable'>('idle');
 
   // The address value we last wrote ourselves (reverse geocode). Seeing it
-  // again in the effect means "not user input" — do not geocode it back.
+  // again in the effect means "not user input": do not geocode it back.
   let selfWritten = '';
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function pin(Lib: any) {
+  function pin(Lib: LeafletLib) {
     return Lib.divIcon({
       className: 'obh-pin',
       html: '<span></span>',
@@ -39,11 +43,12 @@
   function placeMarker(a: number, b: number, pan = true) {
     if (!map || !L) return;
     if (!marker) {
-      marker = L.marker([a, b], { icon: pin(L), draggable: true }).addTo(map);
-      marker.on('dragend', () => {
-        const p = marker.getLatLng();
+      const m = L.marker([a, b], { icon: pin(L), draggable: true }).addTo(map);
+      m.on('dragend', () => {
+        const p = m.getLatLng();
         pinMoved(p.lat, p.lng);
       });
+      marker = m;
     } else {
       marker.setLatLng([a, b]);
     }
@@ -55,7 +60,7 @@
     lng = +b.toFixed(6);
     lookup = 'searching';
     const res = await reverseGeocode(lat, lng);
-    // No address for the spot (or no network): fall back to raw coordinates —
+    // No address for the spot (or no network): fall back to raw coordinates;
     // the position itself is already set either way.
     const label = res.status === 'found' ? res.value : fmtCoords(lat, lng);
     selfWritten = label;
@@ -84,7 +89,7 @@
       lookup = 'searching';
       const res = await geocode(a);
       if (res.status !== 'found') {
-        lookup = res.status; // 'none' | 'unreachable' — tell the user, keep the pin
+        lookup = res.status; // 'none' | 'unreachable': tell the user, keep the pin
         return;
       }
       lookup = 'found';
@@ -106,7 +111,7 @@
       attribution: '© OpenStreetMap'
     }).addTo(map);
     if (hasPos) placeMarker(lat, lng, false);
-    map.on('click', (e: any) => {
+    map.on('click', (e: Leaflet.LeafletMouseEvent) => {
       placeMarker(e.latlng.lat, e.latlng.lng, false);
       pinMoved(e.latlng.lat, e.latlng.lng);
     });
@@ -129,7 +134,10 @@
   {:else if lookup === 'unreachable'}
     <p class="hint warn">{$_('geo.unreachable')}</p>
   {:else if lookup === 'found' && (lat || lng)}
-    <p class="hint ok">✓ {$_('geo.found', { values: { pos: fmtCoords(lat, lng) } })}</p>
+    <p class="hint ok">
+      <Check size={13} aria-hidden="true" />
+      {$_('geo.found', { values: { pos: fmtCoords(lat, lng) } })}
+    </p>
   {:else}
     <p class="hint">{$_('apiaries.map_hint')}</p>
   {/if}
@@ -155,7 +163,8 @@
   .hint.ok {
     color: #41502f;
   }
-  .hint.busy {
+  .hint.busy,
+  .hint.ok {
     display: flex;
     align-items: center;
     gap: 6px;

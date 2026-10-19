@@ -64,7 +64,7 @@ describe('push', () => {
     await push(); // must not throw
 
     expect(await getCurrentDB().all(`SELECT * FROM outbox`)).toHaveLength(0);
-    // The local row itself is untouched — only the upload intent is dropped.
+    // The local row itself is untouched; only the upload intent is dropped.
   });
 
   it('does nothing when the outbox is empty', async () => {

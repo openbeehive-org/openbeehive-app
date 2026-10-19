@@ -1,11 +1,13 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
+  import { Check, Pencil } from '@lucide/svelte';
   import { tasks } from '#lib/local/repo.js';
+  import type { TaskRow } from '../rows.js';
   import { dataVersion, initialSyncPending } from '#lib/local/live.js';
   import Skeleton from '#lib/components/Skeleton.svelte';
   import Syncing from '#lib/components/Syncing.svelte';
 
-  let rows = $state<any[]>([]);
+  let rows = $state<TaskRow[]>([]);
   let loaded = $state(false);
   let title = $state('');
   let due = $state('');
@@ -28,24 +30,24 @@
     await load();
   }
 
-  function startEdit(t: any) {
+  function startEdit(t: TaskRow) {
     editId = t.id;
     eTitle = t.title;
     eDue = t.due_at ? t.due_at.slice(0, 10) : '';
   }
-  async function saveEdit(t: any) {
+  async function saveEdit(t: TaskRow) {
     if (!eTitle.trim()) return;
     await tasks.update(t, { title: eTitle.trim(), due_at: eDue || '' });
     editId = null;
     await load();
   }
 
-  async function toggle(t: any) {
+  async function toggle(t: TaskRow) {
     await tasks.toggle(t);
     await load();
   }
 
-  async function del(t: any) {
+  async function del(t: TaskRow) {
     await tasks.remove(t);
     await load();
   }
@@ -102,7 +104,7 @@
             </form>
           {:else}
             <button class="check" class:on={t.done} onclick={() => toggle(t)} aria-label="toggle">
-              {t.done ? '✓' : ''}
+              {#if t.done}<Check size={16} aria-hidden="true" />{/if}
             </button>
             <div class="body">
               <strong>{t.title}</strong>
@@ -111,7 +113,7 @@
                 >{/if}
             </div>
             <button class="iconbtn" onclick={() => startEdit(t)} aria-label={$_('tasks.edit')}
-              >✎</button
+              ><Pencil size={16} aria-hidden="true" /></button
             >
             <button class="del" onclick={() => del(t)} aria-label={$_('common.delete')}>×</button>
           {/if}
@@ -192,6 +194,9 @@
     color: var(--ink-soft);
   }
   .check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 26px;
     height: 26px;
     border-radius: 8px;
@@ -227,6 +232,7 @@
     padding: 0 4px;
   }
   .iconbtn {
+    display: inline-flex;
     background: none;
     border: none;
     cursor: pointer;

@@ -1,14 +1,16 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
+  import { ArrowUp, Check, Crown, Printer, Scissors } from '@lucide/svelte';
   import { hives, apiaries, queens, inspections, MARKING_NAMES } from '#lib/local/repo.js';
+  import type { HiveRow, InspectionRow, QueenRow } from '../../../rows.js';
   import { dataVersion } from '#lib/local/live.js';
 
   const id = page.params.id ?? '';
-  let hive = $state<any>(null);
+  let hive = $state<HiveRow | null>(null);
   let apiaryName = $state('');
-  let queen = $state<any>(null);
-  let visits = $state<any[]>([]);
+  let queen = $state<QueenRow | null>(null);
+  let visits = $state<InspectionRow[]>([]);
   let loaded = $state(false);
 
   async function load() {
@@ -25,14 +27,13 @@
     load();
   });
 
-  const yn = (v: any) => (v ? '✓' : '');
-  const num = (v: any) => (v === null || v === undefined || v === '' || +v === 0 ? '' : v);
-  const temp = (v: any) => (v === null || v === undefined || v === '' ? '' : v);
+  const num = (v: number | null | undefined) => v || '';
+  const temp = (v: number | null | undefined) => v ?? '';
   const d = (s: string) => (s ? new Date(s).toLocaleDateString() : '');
 </script>
 
 <div class="page">
-  <a class="back" href={`/hives/${id}`}>← {hive?.name ?? ''}</a>
+  <a class="back" href={`/hives/${id}`}>‹ {hive?.name ?? ''}</a>
 
   {#if loaded && hive}
     <div class="head">
@@ -44,11 +45,14 @@
           {#if hive.type}
             · {$_('hivetype.' + hive.type)}{/if}
           {#if queen}
-            · 👑 {queen.year}{#if queen.marking}
+            · <Crown size={14} aria-hidden="true" />
+            {queen.year}{#if queen.marking}
               {$_('queens.marking')}: {MARKING_NAMES[queen.marking] ?? ''}{/if}{/if}
         </p>
       </div>
-      <button class="print" onclick={() => window.print()}>🖨 {$_('qr.print')}</button>
+      <button class="print" onclick={() => window.print()}
+        ><Printer size={16} aria-hidden="true" /> {$_('qr.print')}</button
+      >
     </div>
 
     {#if visits.length === 0}
@@ -60,7 +64,7 @@
             <tr>
               <th class="sticky">{$_('insp.date')}</th>
               <th>{$_('insp.weather')}</th>
-              <th title={$_('insp.queen_seen')}>👑</th>
+              <th title={$_('insp.queen_seen')}><Crown size={14} aria-hidden="true" /></th>
               <th title={$_('insp.eggs_seen')}>{$_('insp.eggs_seen')}</th>
               <th title={$_('insp.covered_larva')}>{$_('insp.covered_larva')}</th>
               <th>{$_('insp.frames')}</th>
@@ -71,8 +75,8 @@
               <th>{$_('insp.calmness')}</th>
               <th>{$_('insp.varroa')}</th>
               <th>{$_('insp.fed_kg')}</th>
-              <th title={$_('insp.super_added')}>⬆</th>
-              <th title={$_('insp.drone_frame_cut')}>✂</th>
+              <th title={$_('insp.super_added')}><ArrowUp size={14} aria-hidden="true" /></th>
+              <th title={$_('insp.drone_frame_cut')}><Scissors size={14} aria-hidden="true" /></th>
               <th>{$_('insp.temp_hive')} °C</th>
               <th>{$_('insp.temp_outside')} °C</th>
               <th>{$_('insp.humidity_hive')} %</th>
@@ -87,9 +91,15 @@
               <tr>
                 <td class="sticky">{d(i.date)}</td>
                 <td class="t">{i.weather ?? ''}</td>
-                <td class="c">{yn(i.queen_seen)}</td>
-                <td class="c">{yn(i.eggs_seen)}</td>
-                <td class="c">{yn(i.covered_larva)}</td>
+                <td class="c"
+                  >{#if i.queen_seen}<Check size={14} aria-hidden="true" />{/if}</td
+                >
+                <td class="c"
+                  >{#if i.eggs_seen}<Check size={14} aria-hidden="true" />{/if}</td
+                >
+                <td class="c"
+                  >{#if i.covered_larva}<Check size={14} aria-hidden="true" />{/if}</td
+                >
                 <td class="c">{num(i.frames)}</td>
                 <td class="c">{num(i.brood_frames)}</td>
                 <td class="c">{i.stores ? $_('storeslvl.' + i.stores) : ''}</td>
@@ -98,8 +108,12 @@
                 <td class="c">{i.calmness ? $_('calmlvl.' + i.calmness) : ''}</td>
                 <td class="t">{i.varroa ?? ''}</td>
                 <td class="c">{num(i.fed_kg)}</td>
-                <td class="c">{yn(i.super_added)}</td>
-                <td class="c">{yn(i.drone_frame_cut)}</td>
+                <td class="c"
+                  >{#if i.super_added}<Check size={14} aria-hidden="true" />{/if}</td
+                >
+                <td class="c"
+                  >{#if i.drone_frame_cut}<Check size={14} aria-hidden="true" />{/if}</td
+                >
                 <td class="c">{temp(i.temp_hive)}</td>
                 <td class="c">{temp(i.temp_outside)}</td>
                 <td class="c">{temp(i.humidity_hive)}</td>
@@ -148,6 +162,9 @@
   }
   .empty {
     margin-top: 24px;
+  }
+  .page :global(.lucide-icon) {
+    vertical-align: -0.15em;
   }
   .print {
     font: inherit;

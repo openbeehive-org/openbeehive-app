@@ -6,21 +6,25 @@
 // the file name (derived from the active tenant) before any query, so each
 // tenant's data lives in its own local store and switching tenants never mixes
 // them on the same device.
-import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import sqlite3InitModule, {
+  type BindableValue,
+  type Database,
+  type SAHPoolUtil
+} from '@sqlite.org/sqlite-wasm';
 
 type Req = {
   id: number;
   method: 'open' | 'exec' | 'all';
-  sql?: string;
-  params?: unknown[];
+  sql: string;
+  params: BindableValue[];
   name?: string;
 };
 
 let dbName = 'openbeehive.sqlite3';
-let dbPromise: Promise<any> | null = null;
-let pool: any = null;
+let dbPromise: Promise<Database> | null = null;
+let pool: SAHPoolUtil | null = null;
 
-// The pool's slot count caps how many files SQLite can hold open — per-tenant
+// The pool's slot count caps how many files SQLite can hold open: per-tenant
 // db files PLUS their journals/temp files. Too few slots fail writes with
 // SQLITE_CANTOPEN when the journal can't get a slot. Slots are cheap (empty
 // OPFS files), so reserve plenty.
@@ -31,9 +35,9 @@ async function getDb() {
     dbPromise = (async () => {
       const sqlite3 = await sqlite3InitModule();
       // Persistent: OPFS SAHPool VFS (no SharedArrayBuffer / cross-origin
-      // isolation required — works behind any reverse proxy). The pool takes
+      // isolation required, works behind any reverse proxy). The pool takes
       // EXCLUSIVE access handles, so a page refresh can race the previous
-      // worker still holding them — retry briefly before falling back.
+      // worker still holding them, so retry briefly before falling back.
       let lastErr: unknown;
       for (let attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
@@ -51,15 +55,15 @@ async function getDb() {
           lastErr = err;
         }
       }
-      // OPFS stays unavailable in some environments — notably Firefox Private
-      // Browsing and browsers/settings that block storage — where
+      // OPFS stays unavailable in some environments (notably Firefox Private
+      // Browsing and browsers/settings that block storage) where
       // navigator.storage.getDirectory() throws a SecurityError, or another
       // tab keeps holding the pool. Fall back to an in-memory database so the
       // app still works this session; data won't persist across reloads.
       // That's fine for the demo (reseeded hourly and pulled fresh) and a
       // graceful degradation everywhere else. Tell the page so the user learns
       // about it (db.ts shows a toast), not only the console.
-      console.warn('OPFS unavailable — using a non-persistent in-memory store:', lastErr);
+      console.warn('OPFS unavailable, using a non-persistent in-memory store:', lastErr);
       (self as unknown as Worker).postMessage({ volatile: true });
       return new sqlite3.oo1.DB(':memory:', 'c');
     })();
@@ -68,8 +72,8 @@ async function getDb() {
 }
 
 // Run a query; if the pool has no free slot for the journal/temp file the
-// statement fails with SQLITE_CANTOPEN — grow the pool and retry once.
-function run(db: any, method: 'exec' | 'all', sql?: string, params?: unknown[]) {
+// statement fails with SQLITE_CANTOPEN: grow the pool and retry once.
+function run(db: Database, method: 'exec' | 'all', sql: string, params: BindableValue[]) {
   if (method === 'all') {
     return db.exec({ sql, bind: params, rowMode: 'object', returnValue: 'resultRows' });
   }

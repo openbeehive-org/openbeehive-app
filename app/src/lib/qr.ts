@@ -8,7 +8,7 @@ import QRCode from 'qrcode';
 // Base URL the QR points to. Falls back to the current origin so a
 // self-hosted instance prints codes that point back to itself.
 export function publicBase(): string {
-  const env = (import.meta as any).env?.BEEHIVE_PUBLIC_URL;
+  const env = import.meta.env?.BEEHIVE_PUBLIC_URL;
   if (env) return String(env).replace(/\/$/, '');
   if (typeof location !== 'undefined') return location.origin;
   return '';

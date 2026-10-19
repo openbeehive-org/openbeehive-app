@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "Openbeehive",
-    "tagline": "Beekeeping records"
+    "tagline": "Beekeeping records",
+    "offline_banner": "Offline: changes are saved and synced later."
   },
   "nav": {
     "dashboard": "Overview",

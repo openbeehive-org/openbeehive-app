@@ -4,7 +4,7 @@
 //   - JSON  : full, round-trippable backup of every entity
 //   - CSV   : one file per entity (bundled as a .zip)
 //   - XLSX  : one spreadsheet, one sheet per entity
-//   - BeeXML: a structured, BeeXML-style XML interchange (apiary > hive > …)
+//   - BeeXML: a structured, BeeXML-style XML interchange (apiary > hive > ...)
 //
 // Import accepts an Openbeehive JSON backup, a BeeXML file, or a generic
 // beekeeping CSV (migration from other apps, matched by column name).
@@ -224,7 +224,7 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 
 // --- CSV ---
 
-function csvCell(v: any): string {
+function csvCell(v: unknown): string {
   if (v === null || v === undefined) return '';
   const s = String(v);
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -272,7 +272,7 @@ export async function exportXLSX() {
   downloadBlob(`openbeehive-${stamp()}.xlsx`, buildXlsx(sheets));
 }
 
-const xmlEsc = (s: any) =>
+const xmlEsc = (s: unknown) =>
   String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -287,7 +287,7 @@ export async function exportBeeXML() {
   const inspByHive: Record<string, Row[]> = {};
   for (const i of data.inspection ?? []) (inspByHive[i.hive_id] ??= []).push(i);
 
-  const field = (name: string, v: any) =>
+  const field = (name: string, v: unknown) =>
     v === null || v === undefined || v === '' ? '' : `<${name}>${xmlEsc(v)}</${name}>`;
 
   const lines: string[] = [
@@ -326,7 +326,7 @@ export async function exportBeeXML() {
 
 // --- PDF report (via the browser's print / "Save as PDF") ---
 
-const HTML_ESC = (s: any) =>
+const HTML_ESC = (s: unknown) =>
   String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -334,7 +334,7 @@ const HTML_ESC = (s: any) =>
 
 const MARKING = ['', 'White', 'Yellow', 'Red', 'Green', 'Blue'];
 
-// Build a clean, branded report of apiaries → hives (current queen, latest
+// Build a clean, branded report of apiaries > hives (current queen, latest
 // reading) and open it in a new window for printing or saving as PDF.
 export async function printReport() {
   const data = await gatherAll();
@@ -361,9 +361,9 @@ export async function printReport() {
           .filter(Boolean)
           .join(' · ');
         return `<tr><td>${HTML_ESC(h.name)}</td>
-      <td>${q ? HTML_ESC((q.year || '') + ' ' + (MARKING[q.marking] || '')) : '—'}</td>
-      <td>${HTML_ESC(i.date ? String(i.date).slice(0, 10) : '—')}</td>
-      <td>${HTML_ESC(climate || '—')}</td>
+      <td>${q ? HTML_ESC((q.year || '') + ' ' + (MARKING[q.marking] || '')) : '-'}</td>
+      <td>${HTML_ESC(i.date ? String(i.date).slice(0, 10) : '-')}</td>
+      <td>${HTML_ESC(climate || '-')}</td>
       <td>${HTML_ESC(i.note ?? '')}</td></tr>`;
       })
       .join('');
@@ -404,7 +404,7 @@ export async function printReport() {
     </body></html>`;
 
   const w = window.open('', '_blank');
-  if (!w) throw new Error('Pop-up blocked — allow pop-ups to print the report.');
+  if (!w) throw new Error('Pop-up blocked: allow pop-ups to print the report.');
   w.document.write(html);
   w.document.close();
 }

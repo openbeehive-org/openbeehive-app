@@ -1,7 +1,7 @@
 <script lang="ts">
-  // "Syncing your data…" hint: shown instead of an empty state while the
+  // "Syncing your data..." hint: shown instead of an empty state while the
   // device's first pull is still pending (see initialSyncPending in
-  // lib/local/live.ts) — an empty local table is not yet a real empty state.
+  // lib/local/live.ts): an empty local table is not yet a real empty state.
   import { _ } from 'svelte-i18n';
 </script>
 

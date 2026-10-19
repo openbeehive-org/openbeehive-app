@@ -126,7 +126,7 @@ describe('hives repo', () => {
 
     expect(await hives.count('a1')).toBe(1);
     expect(await hives.count('a2')).toBe(1);
-    expect((await hives.list()).map((h: any) => h.id).sort()).toEqual(['h1', 'h3']);
+    expect((await hives.list()).map((h) => h.id).sort()).toEqual(['h1', 'h3']);
     void db;
   });
 });
