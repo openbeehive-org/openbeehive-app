@@ -5,6 +5,60 @@ All notable changes to the Openbeehive application are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-19
+
+The repository, the image and the Go module live under the `openbeehive-org`
+organisation, the container runs as an unprivileged user and every release is
+signed. No schema migration. One manual step for self-hosters: a Docker volume
+created by 0.3.x or earlier must be chowned to uid 65532 once (see
+"Upgrading" in the docs).
+
+### Added
+
+- **Signed releases.** The image carries BuildKit SLSA provenance and SBOM
+  attestations, is signed keyless with cosign (Fulcio certificate bound to the
+  release workflow, logged in Rekor) and gets a GitHub build-provenance
+  attestation; the GitHub release ships the SPDX SBOM. Verification commands
+  are in the release workflow header and in the docs.
+- **Engineering baseline.** `make check` is the single definition of green
+  (proto lint and breaking-change check, golangci-lint, prettier, eslint,
+  svelte-check, tests with coverage gates, govulncheck, licence allowlists,
+  gitleaks, build, fleetlint); prek hooks run the fast subset on commit;
+  CodeQL and Renovate run on the repository. ADRs and an architecture
+  overview are in `docs/`.
+
+### Changed
+
+- **Container runs as uid 65532** with `/data` as its working directory and a
+  read-only-root-friendly layout; base images are pinned by digest. The
+  defaults for the SQLite file and the blob directory therefore resolve to
+  `/data`.
+- **New home.** Image: `ghcr.io/openbeehive-org/openbeehive-app`
+  (`ghcr.io/johnnycube/openbeehive-app` keeps the tags up to 0.3.1). Go
+  module: `github.com/openbeehive-org/openbeehive-app/server`. Links and
+  Docusaurus references follow.
+- **Toolchain.** Go 1.27.2; SvelteKit 3 with adapter-static 4 (config lives
+  in `vite.config.ts`, `#lib` imports, service worker in its own TypeScript
+  project and precaching the prerendered shell as well as the immutable
+  assets); Vite 8.3, Vitest 5, Svelte 5.57; buf 1.74 with pinned remote
+  plugins (protocolbuffers/go 1.36.12, connectrpc/go 1.21.1, bufbuild/es
+  2.16). All Go modules and npm packages at their latest releases; TypeScript
+  stays on 6.x until svelte-check and typescript-eslint accept 7.
+- **UI icons.** The app uses Lucide icons instead of emoji for pins, edit,
+  delete, camera, print, keys and the inspection chips, which now read as
+  text ("Honey 3 kg") in lists and on the printable hive card.
+- **Messages.** Server and app messages use plain ASCII punctuation; the
+  demo read-only and invite-only errors were reworded accordingly.
+- **Types.** The frontend no longer uses `any` for Leaflet, SQLite, the sync
+  payloads and the WebAuthn options; the data layer's row types are used
+  throughout.
+
+### Security
+
+- Go 1.27.2 and `golang.org/x/net` 0.60 clear every open stdlib and x/net
+  advisory govulncheck reported against 1.26; `npm audit` is clean on the
+  updated frontend and the `cookie` override is gone with SvelteKit 3.
+
 ## [0.3.1] - 2026-09-29
 
 Dependency maintenance. No functional changes and no migration.
