@@ -53,8 +53,8 @@ tools: ## install the pinned gate tools (Go tools + buf; Node tools come from ap
 	$(GO) install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
 
 fmt: gen app-deps ## format in place (Go + app)
-	cd $(SERVER) && golangci-lint fmt
-	cd $(APP) && npm run format
+	(cd $(SERVER) && golangci-lint fmt)
+	(cd $(APP) && npm run format)
 
 lint: gen proto-lint app-lint ## format check + linters + vet (Go), prettier + eslint + svelte-check (app)
 	cd $(SERVER)
@@ -108,8 +108,9 @@ release: ## refuse dirty/non-main -> check -> signed tag V (its CHANGELOG.md sec
 	@test "$$(git branch --show-current)" = "$(MAIN_BRANCH)" || { echo "not on $(MAIN_BRANCH)"; exit 1; }
 	@grep -q "^## \[$(V:v%=%)\]" CHANGELOG.md || { echo "CHANGELOG.md has no '## [$(V:v%=%)]' section"; exit 1; }
 	$(MAKE) check
-	git tag -s "$(V)" -m "$(V)"
-	@echo "tagged $(V) — push with: git push origin $(V)"
+	# tag body = the CHANGELOG section; release.yml puts it at the top of the release notes
+	notes=$$(mktemp); { echo "$(V)"; echo; awk '/^## \[$(V:v%=%)\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md; } > "$$notes"; git tag -s "$(V)" -F "$$notes"; rm -f "$$notes"
+	@echo "tagged $(V), push with: git push origin $(V)"
 
 tidy: ## go mod tidy
 	cd $(SERVER) && $(GO) mod tidy

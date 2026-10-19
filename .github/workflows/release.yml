@@ -9,7 +9,7 @@
 #   cosign verify ghcr.io/openbeehive-org/openbeehive-app:<tag> \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 #     --certificate-identity-regexp '^https://github.com/openbeehive-org/openbeehive-app/\.github/workflows/release\.yml@.*'
-# The GitHub release carries the SBOM (SPDX JSON) and release notes from the commit history.
+# The GitHub release carries the SBOM (SPDX JSON) and release notes: the tag message (the CHANGELOG section) plus the commit list.
 name: Release
 
 on:
