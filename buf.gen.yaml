@@ -3,15 +3,15 @@ managed:
   enabled: true
   override:
     # Derives go_package for every file as <prefix>/<proto-dir>, e.g.
-    # openbeehive/v1 -> github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1
+    # openbeehive/v1 -> github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1
     - file_option: go_package_prefix
-      value: github.com/johnnycube/openbeehive-app/server/internal/gen
+      value: github.com/openbeehive-org/openbeehive-app/server/internal/gen
 plugins:
   # --- Go (Backend) ---
-  - remote: buf.build/protocolbuffers/go
+  - remote: buf.build/protocolbuffers/go:v1.36.11
     out: server/internal/gen
     opt: paths=source_relative
-  - remote: buf.build/connectrpc/go
+  - remote: buf.build/connectrpc/go:v1.20.0
     out: server/internal/gen
     opt: paths=source_relative
 
