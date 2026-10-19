@@ -7,7 +7,7 @@
 
   const id = $page.params.id ?? '';
   let hive = $state<any>(null);
-  let visits = $state<any[]>([]);   // oldest → newest
+  let visits = $state<any[]>([]); // oldest → newest
   let harvestRows = $state<any[]>([]);
   let loaded = $state(false);
 
@@ -40,7 +40,7 @@
 
   function trend(vals: number[]): '' | 'up' | 'down' {
     if (vals.length < 2) return '';
-    const d = vals[vals.length - 1] - vals[0];
+    const d = (vals[vals.length - 1] ?? 0) - (vals[0] ?? 0);
     return d > 0 ? 'up' : d < 0 ? 'down' : '';
   }
 
@@ -53,7 +53,9 @@
   );
 
   const honeyView = $derived.by(() => {
-    const s = harvestRows.map((h) => ({ date: h.date, value: h.amount_kg })).filter((p) => p.value > 0);
+    const s = harvestRows
+      .map((h) => ({ date: h.date, value: h.amount_kg }))
+      .filter((p) => p.value > 0);
     return { series: s, vals: s.map((p) => p.value), total: s.reduce((a, b) => a + b.value, 0) };
   });
 
@@ -69,14 +71,17 @@
   async function load() {
     hive = await hives.get(id);
     if (hive) {
-      const insp = await inspections.listByHive(id);   // newest first
-      visits = [...insp].reverse();                    // oldest → newest for charts
+      const insp = await inspections.listByHive(id); // newest first
+      visits = [...insp].reverse(); // oldest → newest for charts
       harvestRows = [...(await harvests.listByHive(id))].reverse();
     }
     loaded = true;
   }
 
-  $effect(() => { $dataVersion; load(); });
+  $effect(() => {
+    $dataVersion;
+    load();
+  });
 </script>
 
 <div class="page">
@@ -100,7 +105,9 @@
           <h2>{$_(m.label)}</h2>
           <div class="latest">
             <strong>{m.latest}{m.unit ? ' ' + m.unit : ''}</strong>
-            {#if m.trend === 'up'}<span class="tr up">▲</span>{:else if m.trend === 'down'}<span class="tr down">▼</span>{/if}
+            {#if m.trend === 'up'}<span class="tr up">▲</span>{:else if m.trend === 'down'}<span
+                class="tr down">▼</span
+              >{/if}
           </div>
         </div>
         <Sparkline values={m.vals} />
@@ -141,28 +148,116 @@
 </div>
 
 <style>
-  .page { max-width: 720px; margin: 0 auto; padding: 22px 18px 96px; }
-  .back { color: var(--ink-soft); text-decoration: none; font-weight: 600; font-size: .9rem; }
-  .muted { color: var(--ink-soft); }
-  .sub { margin-bottom: 18px; }
-  .empty { text-align: center; padding: 40px 0; }
-  h1 { font-family: 'Fraunces', serif; font-size: 1.9rem; margin: 12px 0 2px; }
-  h2 { font-family: 'Fraunces', serif; font-size: 1.15rem; }
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 22px 18px 96px;
+  }
+  .back {
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .muted {
+    color: var(--ink-soft);
+  }
+  .sub {
+    margin-bottom: 18px;
+  }
+  .empty {
+    text-align: center;
+    padding: 40px 0;
+  }
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 1.9rem;
+    margin: 12px 0 2px;
+  }
+  h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 1.15rem;
+  }
 
-  .card { background: var(--cream2); border: 1px solid var(--line); border-radius: 16px;
-    padding: 16px 18px; margin-bottom: 14px; }
-  .metric { scroll-margin-top: 80px; }
-  .m-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-  .latest { display: flex; align-items: center; gap: 7px; }
-  .latest strong { font-family: 'Fraunces', serif; font-size: 1.4rem; }
-  .tr.up { color: #b5402f; } .tr.down { color: #41502f; } .tr { font-size: .8rem; }
-  .mm { display: flex; gap: 14px; color: var(--ink-soft); font-size: .76rem; margin-top: 8px; }
+  .card {
+    background: var(--cream2);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .metric {
+    scroll-margin-top: 80px;
+  }
+  .m-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .latest {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .latest strong {
+    font-family: 'Fraunces', serif;
+    font-size: 1.4rem;
+  }
+  .tr.up {
+    color: #b5402f;
+  }
+  .tr.down {
+    color: #41502f;
+  }
+  .tr {
+    font-size: 0.8rem;
+  }
+  .mm {
+    display: flex;
+    gap: 14px;
+    color: var(--ink-soft);
+    font-size: 0.76rem;
+    margin-top: 8px;
+  }
 
-  .obs { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
-  .obs:first-of-type { border-top: none; }
-  .obs-label { flex: 1; font-weight: 600; font-size: .9rem; }
-  .dots { display: flex; gap: 3px; flex-wrap: wrap; max-width: 45%; }
-  .dots .d { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--line); background: #fff; }
-  .dots .d.on { background: var(--honey); border-color: var(--honey); }
-  .count { color: var(--ink-soft); font-size: .8rem; font-weight: 600; min-width: 38px; text-align: right; }
+  .obs {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
+  }
+  .obs:first-of-type {
+    border-top: none;
+  }
+  .obs-label {
+    flex: 1;
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+  .dots {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+    max-width: 45%;
+  }
+  .dots .d {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+  .dots .d.on {
+    background: var(--honey);
+    border-color: var(--honey);
+  }
+  .count {
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+    font-weight: 600;
+    min-width: 38px;
+    text-align: right;
+  }
 </style>

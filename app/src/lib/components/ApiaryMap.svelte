@@ -48,22 +48,47 @@
   });
 
   // Re-render markers when the apiary set changes.
-  $effect(() => { located; render(); });
+  $effect(() => {
+    located;
+    render();
+  });
 
-  onDestroy(() => { map?.remove(); map = null; });
+  onDestroy(() => {
+    map?.remove();
+    map = null;
+  });
 </script>
 
 <div class="map" bind:this={el}></div>
 {#if located.length === 0}
-  <p class="hint">No apiary has coordinates yet — set a location in an apiary's settings to place it on the map.</p>
+  <p class="hint">
+    No apiary has coordinates yet — set a location in an apiary's settings to place it on the map.
+  </p>
 {/if}
 
 <style>
-  .map { height: 320px; width: 100%; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); z-index: 0; }
-  .hint { color: var(--ink-soft); font-size: .85rem; margin-top: 10px; text-align: center; }
+  .map {
+    height: 320px;
+    width: 100%;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    z-index: 0;
+  }
+  .hint {
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    margin-top: 10px;
+    text-align: center;
+  }
   :global(.obh-pin span) {
-    display: block; width: 20px; height: 20px; border-radius: 50% 50% 50% 0;
-    background: var(--honey, #c77f22); border: 2px solid #fffdf7; transform: rotate(-45deg);
-    box-shadow: 0 2px 5px rgba(0,0,0,.3);
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50% 50% 50% 0;
+    background: var(--honey, #c77f22);
+    border: 2px solid #fffdf7;
+    transform: rotate(-45deg);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
   }
 </style>

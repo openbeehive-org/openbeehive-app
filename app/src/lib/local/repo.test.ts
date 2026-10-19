@@ -19,20 +19,50 @@ beforeEach(async () => {
 
 describe('apiaries repo', () => {
   it('create writes the row, stamps every field clock and queues the outbox', async () => {
-    const id = await apiaries.create({ organization_id: 'org1', name: 'Orchard', address: 'A st', lat: 1.5, lng: 2.5, note: 'n' });
+    const id = await apiaries.create({
+      organization_id: 'org1',
+      name: 'Orchard',
+      address: 'A st',
+      lat: 1.5,
+      lng: 2.5,
+      note: 'n'
+    });
 
     const row = await apiaries.get(id);
-    expect(row).toMatchObject({ id, name: 'Orchard', address: 'A st', lat: 1.5, lng: 2.5, deleted: 0 });
+    expect(row).toMatchObject({
+      id,
+      name: 'Orchard',
+      address: 'A st',
+      lat: 1.5,
+      lng: 2.5,
+      deleted: 0
+    });
 
     const fc = parseFieldClock(row!.field_hlc);
-    for (const f of ['organization_id', 'name', 'address', 'lat', 'lng', 'note', 'created_at', 'updated_at', 'deleted']) {
+    for (const f of [
+      'organization_id',
+      'name',
+      'address',
+      'lat',
+      'lng',
+      'note',
+      'created_at',
+      'updated_at',
+      'deleted'
+    ]) {
       expect(fc[f], `field clock for ${f}`).toBeTruthy();
     }
 
     const db = getCurrentDB();
     const out = await db.all<any>(`SELECT * FROM outbox`);
     expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ entity: 'apiary', entity_id: id, scope_id: id, op: 1, author_id: 'user1' });
+    expect(out[0]).toMatchObject({
+      entity: 'apiary',
+      entity_id: id,
+      scope_id: id,
+      op: 1,
+      author_id: 'user1'
+    });
     expect(JSON.parse(out[0].payload).name).toBe('Orchard');
   });
 
@@ -45,7 +75,7 @@ describe('apiaries repo', () => {
     const after = parseFieldClock(row!.field_hlc);
 
     expect(row!.name).toBe('New');
-    expect(after.name > before.name).toBe(true);
+    expect(after.name! > before.name!).toBe(true);
     expect(after.note).toBe(before.note); // untouched field keeps its stamp
   });
 
@@ -56,7 +86,10 @@ describe('apiaries repo', () => {
     expect(await apiaries.get(id)).toBeUndefined();
     expect(await apiaries.list()).toHaveLength(0);
 
-    const raw = await getCurrentDB().get<any>(`SELECT deleted, field_hlc FROM apiary WHERE id = ?`, [id]);
+    const raw = await getCurrentDB().get<any>(
+      `SELECT deleted, field_hlc FROM apiary WHERE id = ?`,
+      [id]
+    );
     expect(raw!.deleted).toBe(1);
     expect(parseFieldClock(raw!.field_hlc).deleted).toBeTruthy();
   });
@@ -71,9 +104,24 @@ describe('apiaries repo', () => {
 describe('hives repo', () => {
   it('count only sees live hives of the apiary', async () => {
     const db = getCurrentDB();
-    await patch('hive', 'h1', 'a1', { organization_id: 'org1', apiary_id: 'a1', name: 'H1', deleted: 0 });
-    await patch('hive', 'h2', 'a1', { organization_id: 'org1', apiary_id: 'a1', name: 'H2', deleted: 0 });
-    await patch('hive', 'h3', 'a2', { organization_id: 'org1', apiary_id: 'a2', name: 'H3', deleted: 0 });
+    await patch('hive', 'h1', 'a1', {
+      organization_id: 'org1',
+      apiary_id: 'a1',
+      name: 'H1',
+      deleted: 0
+    });
+    await patch('hive', 'h2', 'a1', {
+      organization_id: 'org1',
+      apiary_id: 'a1',
+      name: 'H2',
+      deleted: 0
+    });
+    await patch('hive', 'h3', 'a2', {
+      organization_id: 'org1',
+      apiary_id: 'a2',
+      name: 'H3',
+      deleted: 0
+    });
     await remove('hive', 'h2', 'a1');
 
     expect(await hives.count('a1')).toBe(1);
@@ -103,7 +151,9 @@ describe('tasks repo', () => {
   it('a personal task syncs under the user scope, an apiary task under the apiary', async () => {
     await tasks.create({ title: 'personal' });
     await tasks.create({ title: 'shared', apiary_id: 'a9' });
-    const out = await getCurrentDB().all<any>(`SELECT scope_id, payload FROM outbox ORDER BY rowid`);
+    const out = await getCurrentDB().all<any>(
+      `SELECT scope_id, payload FROM outbox ORDER BY rowid`
+    );
     expect(out[0].scope_id).toBe('user:user1');
     expect(out[1].scope_id).toBe('a9');
   });

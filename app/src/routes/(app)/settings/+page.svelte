@@ -3,12 +3,28 @@
   import { _, locale } from 'svelte-i18n';
   import { changeLanguage, SUPPORTED, LANG_LABELS, type Lang } from '$lib/i18n';
   import {
-    exportJSON, exportXLSX, exportCSVZip, exportBeeXML, printReport, importFile, type ImportMode
+    exportJSON,
+    exportXLSX,
+    exportCSVZip,
+    exportBeeXML,
+    printReport,
+    importFile,
+    type ImportMode
   } from '$lib/data/portability';
   import {
-    enrollPasskey, listPasskeys, deletePasskey, passkeysSupported, type PasskeyInfo
+    enrollPasskey,
+    listPasskeys,
+    deletePasskey,
+    passkeysSupported,
+    type PasskeyInfo
   } from '$lib/webauthn';
-  import { listApiKeys, createApiKey, deleteApiKey, type ApiKeyInfo, type ApiKeyScope } from '$lib/apikeys';
+  import {
+    listApiKeys,
+    createApiKey,
+    deleteApiKey,
+    type ApiKeyInfo,
+    type ApiKeyScope
+  } from '$lib/apikeys';
 
   const API = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 
@@ -19,10 +35,11 @@
 
   const LABELS = LANG_LABELS;
 
-  let email = $state('');
-  $effect(() => { email = localStorage.getItem('obh.email') ?? 'local@openbeehive'; });
+  let email = $state(localStorage.getItem('obh.email') ?? 'local@openbeehive');
 
-  function pick(l: Lang) { changeLanguage(l); }
+  function pick(l: Lang) {
+    changeLanguage(l);
+  }
 
   // --- Tenants (multi-tenant: switch / create / invite) ---
   type Tenant = { id: string; name: string; role: string };
@@ -57,7 +74,9 @@
       await loadInvites();
       await loadPasskeys();
       await loadApiKeys();
-    } catch { /* single-user mode: no tenants */ }
+    } catch {
+      /* single-user mode: no tenants */
+    }
   }
   onMount(loadTenants);
 
@@ -74,7 +93,9 @@
 
   async function addPasskey() {
     if (pkBusy) return;
-    pkBusy = true; pkMsg = ''; pkErr = false;
+    pkBusy = true;
+    pkMsg = '';
+    pkErr = false;
     try {
       await enrollPasskey(API, pkName.trim(), authHeaders());
       pkName = '';
@@ -109,16 +130,24 @@
 
   async function loadApiKeys() {
     apiKeys = await listApiKeys(API, authHeaders());
-    tenantKeys = isOwner ? (await listApiKeys(API, authHeaders(), true)).filter((k) => !k.mine) : [];
+    tenantKeys = isOwner
+      ? (await listApiKeys(API, authHeaders(), true)).filter((k) => !k.mine)
+      : [];
   }
 
   async function addApiKey() {
     if (akBusy) return;
-    akBusy = true; akMsg = ''; akErr = false; akToken = ''; akCopied = false;
+    akBusy = true;
+    akMsg = '';
+    akErr = false;
+    akToken = '';
+    akCopied = false;
     try {
       const k = await createApiKey(API, akName.trim(), akScope, akExpiry, authHeaders());
       akToken = k.token;
-      akName = ''; akScope = 'write'; akExpiry = 0;
+      akName = '';
+      akScope = 'write';
+      akExpiry = 0;
       await loadApiKeys();
     } catch (e) {
       akErr = true;
@@ -134,8 +163,12 @@
     try {
       await navigator.clipboard.writeText(akToken);
       akCopied = true;
-      setTimeout(() => { akCopied = false; }, 2000);
-    } catch { /* clipboard unavailable: the key stays selectable */ }
+      setTimeout(() => {
+        akCopied = false;
+      }, 2000);
+    } catch {
+      /* clipboard unavailable: the key stays selectable */
+    }
   }
 
   async function removeApiKey(id: string, theirs = false) {
@@ -147,24 +180,33 @@
     // Owner-only endpoint; non-owners get a 403 and simply see no list.
     try {
       const r = await fetch(`${API}/tenants/invites?org_id=${encodeURIComponent(activeOrg)}`, {
-        credentials: 'include', headers: authHeaders()
+        credentials: 'include',
+        headers: authHeaders()
       });
       openInvites = r.ok ? ((await r.json()).invites ?? []) : [];
-    } catch { openInvites = []; }
+    } catch {
+      openInvites = [];
+    }
   }
 
   async function copyLink(link: string) {
     try {
       await navigator.clipboard.writeText(link);
       copied = link;
-      setTimeout(() => { if (copied === link) copied = ''; }, 2000);
-    } catch { /* clipboard unavailable (http, permissions) — link stays selectable */ }
+      setTimeout(() => {
+        if (copied === link) copied = '';
+      }, 2000);
+    } catch {
+      /* clipboard unavailable (http, permissions) — link stays selectable */
+    }
   }
 
   async function revokeInvite(id: string) {
     const r = await fetch(`${API}/tenants/invite/revoke`, {
-      method: 'POST', credentials: 'include',
-      headers: authHeaders(), body: JSON.stringify({ id, org_id: activeOrg })
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify({ id, org_id: activeOrg })
     });
     if (r.ok) await loadInvites();
   }
@@ -173,16 +215,24 @@
     const name = activeTenant?.name ?? '';
     if (!confirm($_('tenant.delete_confirm', { values: { name } }))) return;
     const r = await fetch(`${API}/tenants/delete`, {
-      method: 'POST', credentials: 'include',
-      headers: authHeaders(), body: JSON.stringify({ org_id: activeOrg })
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify({ org_id: activeOrg })
     });
     if (r.ok) applyTenant(await r.json().catch(() => ({})));
   }
 
   async function logout() {
     try {
-      await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include', headers: authHeaders() });
-    } catch { /* clear client state regardless */ }
+      await fetch(`${API}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: authHeaders()
+      });
+    } catch {
+      /* clear client state regardless */
+    }
     for (const k of ['session', 'obh.userId', 'obh.orgId', 'obh.email']) localStorage.removeItem(k);
     location.href = '/login';
   }
@@ -198,8 +248,10 @@
   async function switchTenant(id: string) {
     if (id === activeOrg) return;
     const r = await fetch(`${API}/auth/switch`, {
-      method: 'POST', credentials: 'include',
-      headers: authHeaders(), body: JSON.stringify({ org_id: id })
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify({ org_id: id })
     });
     applyTenant(await r.json().catch(() => ({})));
   }
@@ -208,8 +260,10 @@
     const name = newTenant.trim();
     if (!name) return;
     const r = await fetch(`${API}/tenants/create`, {
-      method: 'POST', credentials: 'include',
-      headers: authHeaders(), body: JSON.stringify({ name })
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify({ name })
     });
     applyTenant(await r.json().catch(() => ({})));
   }
@@ -218,8 +272,10 @@
     const email2 = inviteEmail.trim();
     if (!email2) return;
     const r = await fetch(`${API}/tenants/invite`, {
-      method: 'POST', credentials: 'include',
-      headers: authHeaders(), body: JSON.stringify({ email: email2, org_id: activeOrg })
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders(),
+      body: JSON.stringify({ email: email2, org_id: activeOrg })
     });
     if (r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -238,16 +294,26 @@
 
   async function runExport(fn: () => Promise<void>) {
     if (busy) return;
-    busy = true; importMsg = ''; importErr = false;
-    try { await fn(); } catch (e) { importErr = true; importMsg = String((e as Error)?.message ?? e); }
-    finally { busy = false; }
+    busy = true;
+    importMsg = '';
+    importErr = false;
+    try {
+      await fn();
+    } catch (e) {
+      importErr = true;
+      importMsg = String((e as Error)?.message ?? e);
+    } finally {
+      busy = false;
+    }
   }
 
   async function onImport(ev: Event) {
     const input = ev.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
-    busy = true; importMsg = $_('data.importing'); importErr = false;
+    busy = true;
+    importMsg = $_('data.importing');
+    importErr = false;
     try {
       const res = await importFile(file, importMode);
       const total = Object.values(res).reduce((a, b) => a + b, 0);
@@ -256,7 +322,8 @@
       importErr = true;
       importMsg = $_('data.import_failed', { values: { msg: String((e as Error)?.message ?? e) } });
     } finally {
-      busy = false; input.value = '';
+      busy = false;
+      input.value = '';
     }
   }
 </script>
@@ -286,7 +353,9 @@
         {#each tenants as t}
           <button class="tenant" class:on={t.id === activeOrg} onclick={() => switchTenant(t.id)}>
             <span class="tname">{t.name}</span>
-            <span class="trole">{t.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span>
+            <span class="trole"
+              >{t.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span
+            >
             {#if t.id === activeOrg}<span class="ttick">✓ {$_('tenant.active')}</span>{/if}
           </button>
         {/each}
@@ -317,14 +386,20 @@
               <li>
                 <div class="imeta">
                   <strong>{i.email}</strong>
-                  <span class="trole">{i.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span>
-                  <span class="idate">{new Date(i.created_at).toLocaleDateString($locale ?? undefined)}</span>
+                  <span class="trole"
+                    >{i.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span
+                  >
+                  <span class="idate"
+                    >{new Date(i.created_at).toLocaleDateString($locale ?? undefined)}</span
+                  >
                 </div>
                 <div class="iactions">
                   <button class="data-btn" onclick={() => copyLink(i.link)}>
                     {copied === i.link ? '✓ ' + $_('tenant.copied') : $_('tenant.copy_link')}
                   </button>
-                  <button class="data-btn danger" onclick={() => revokeInvite(i.id)}>{$_('tenant.invite_revoke')}</button>
+                  <button class="data-btn danger" onclick={() => revokeInvite(i.id)}
+                    >{$_('tenant.invite_revoke')}</button
+                  >
                 </div>
               </li>
             {/each}
@@ -349,13 +424,21 @@
             <li>
               <div class="imeta">
                 <strong>🔑 {k.name || $_('pk.unnamed')}</strong>
-                <span class="idate">{$_('pk.created')} {new Date(k.created_at).toLocaleDateString($locale ?? undefined)}</span>
+                <span class="idate"
+                  >{$_('pk.created')}
+                  {new Date(k.created_at).toLocaleDateString($locale ?? undefined)}</span
+                >
                 {#if k.last_used_at}
-                  <span class="idate">{$_('pk.last_used')} {new Date(k.last_used_at).toLocaleDateString($locale ?? undefined)}</span>
+                  <span class="idate"
+                    >{$_('pk.last_used')}
+                    {new Date(k.last_used_at).toLocaleDateString($locale ?? undefined)}</span
+                  >
                 {/if}
               </div>
               <div class="iactions">
-                <button class="data-btn danger" onclick={() => removePasskey(k.id)}>{$_('pk.delete')}</button>
+                <button class="data-btn danger" onclick={() => removePasskey(k.id)}
+                  >{$_('pk.delete')}</button
+                >
               </div>
             </li>
           {/each}
@@ -386,17 +469,30 @@
               <div class="imeta">
                 <strong>⚙ {k.name || $_('apikeys.unnamed')}</strong>
                 <code class="akprefix">{k.prefix}…</code>
-                <span class="trole">{k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}</span>
-                <span class="idate">{$_('apikeys.created')} {new Date(k.created_at).toLocaleDateString($locale ?? undefined)}</span>
+                <span class="trole"
+                  >{k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}</span
+                >
+                <span class="idate"
+                  >{$_('apikeys.created')}
+                  {new Date(k.created_at).toLocaleDateString($locale ?? undefined)}</span
+                >
                 {#if k.expires_at}
-                  <span class="idate" class:akexpired={isExpired(k)}>{isExpired(k) ? $_('apikeys.expired') : $_('apikeys.expires')} {new Date(k.expires_at).toLocaleDateString($locale ?? undefined)}</span>
+                  <span class="idate" class:akexpired={isExpired(k)}
+                    >{isExpired(k) ? $_('apikeys.expired') : $_('apikeys.expires')}
+                    {new Date(k.expires_at).toLocaleDateString($locale ?? undefined)}</span
+                  >
                 {/if}
                 {#if k.last_used_at}
-                  <span class="idate">{$_('apikeys.last_used')} {new Date(k.last_used_at).toLocaleDateString($locale ?? undefined)}</span>
+                  <span class="idate"
+                    >{$_('apikeys.last_used')}
+                    {new Date(k.last_used_at).toLocaleDateString($locale ?? undefined)}</span
+                  >
                 {/if}
               </div>
               <div class="iactions">
-                <button class="data-btn danger" onclick={() => removeApiKey(k.id)}>{$_('apikeys.delete')}</button>
+                <button class="data-btn danger" onclick={() => removeApiKey(k.id)}
+                  >{$_('apikeys.delete')}</button
+                >
               </div>
             </li>
           {/each}
@@ -416,14 +512,21 @@
           <option value={90}>{$_('apikeys.expiry_90')}</option>
           <option value={365}>{$_('apikeys.expiry_365')}</option>
         </select>
-        <button class="data-btn" onclick={addApiKey} disabled={akBusy}>+ {$_('apikeys.add')}</button>
+        <button class="data-btn" onclick={addApiKey} disabled={akBusy}>+ {$_('apikeys.add')}</button
+        >
       </div>
       {#if akToken}
         <div class="aknew">
           <p class="help">{$_('apikeys.new_help')}</p>
           <div class="trow">
-            <input readonly value={akToken} onfocus={(e) => (e.currentTarget as HTMLInputElement).select()} />
-            <button class="data-btn" onclick={copyApiKey}>{akCopied ? $_('apikeys.copied') : $_('apikeys.copy')}</button>
+            <input
+              readonly
+              value={akToken}
+              onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+            />
+            <button class="data-btn" onclick={copyApiKey}
+              >{akCopied ? $_('apikeys.copied') : $_('apikeys.copy')}</button
+            >
           </div>
         </div>
       {/if}
@@ -437,14 +540,21 @@
               <div class="imeta">
                 <strong>⚙ {k.name || $_('apikeys.unnamed')}</strong>
                 <code class="akprefix">{k.prefix}…</code>
-                <span class="trole">{k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}</span>
+                <span class="trole"
+                  >{k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}</span
+                >
                 <span class="idate">{k.user_email}</span>
                 {#if k.last_used_at}
-                  <span class="idate">{$_('apikeys.last_used')} {new Date(k.last_used_at).toLocaleDateString($locale ?? undefined)}</span>
+                  <span class="idate"
+                    >{$_('apikeys.last_used')}
+                    {new Date(k.last_used_at).toLocaleDateString($locale ?? undefined)}</span
+                  >
                 {/if}
               </div>
               <div class="iactions">
-                <button class="data-btn danger" onclick={() => removeApiKey(k.id, true)}>{$_('apikeys.delete')}</button>
+                <button class="data-btn danger" onclick={() => removeApiKey(k.id, true)}
+                  >{$_('apikeys.delete')}</button
+                >
               </div>
             </li>
           {/each}
@@ -457,11 +567,21 @@
     <h2>{$_('data.title')}</h2>
     <p class="help">{$_('data.export_help')}</p>
     <div class="data-btns">
-      <button class="data-btn" disabled={busy} onclick={() => runExport(exportJSON)}>⤓ {$_('data.json')}</button>
-      <button class="data-btn" disabled={busy} onclick={() => runExport(exportXLSX)}>⤓ {$_('data.xlsx')}</button>
-      <button class="data-btn" disabled={busy} onclick={() => runExport(exportCSVZip)}>⤓ {$_('data.csv')}</button>
-      <button class="data-btn" disabled={busy} onclick={() => runExport(exportBeeXML)}>⤓ {$_('data.beexml')}</button>
-      <button class="data-btn" disabled={busy} onclick={() => runExport(printReport)}>🖨 {$_('data.pdf')}</button>
+      <button class="data-btn" disabled={busy} onclick={() => runExport(exportJSON)}
+        >⤓ {$_('data.json')}</button
+      >
+      <button class="data-btn" disabled={busy} onclick={() => runExport(exportXLSX)}
+        >⤓ {$_('data.xlsx')}</button
+      >
+      <button class="data-btn" disabled={busy} onclick={() => runExport(exportCSVZip)}
+        >⤓ {$_('data.csv')}</button
+      >
+      <button class="data-btn" disabled={busy} onclick={() => runExport(exportBeeXML)}
+        >⤓ {$_('data.beexml')}</button
+      >
+      <button class="data-btn" disabled={busy} onclick={() => runExport(printReport)}
+        >🖨 {$_('data.pdf')}</button
+      >
     </div>
 
     <h3 class="sub">{$_('data.import')}</h3>
@@ -475,7 +595,13 @@
       </select>
       <label class="data-btn file">
         {$_('data.import_btn')}
-        <input type="file" accept=".json,.xml,.csv,.txt" hidden disabled={busy} onchange={onImport} />
+        <input
+          type="file"
+          accept=".json,.xml,.csv,.txt"
+          hidden
+          disabled={busy}
+          onchange={onImport}
+        />
       </label>
     </div>
     {#if importMsg}<p class="import-msg" class:err={importErr}>{importMsg}</p>{/if}
@@ -506,78 +632,341 @@
 </div>
 
 <style>
-  .page { max-width: 640px; margin: 0 auto; padding: 26px 18px 96px; }
-  h1 { font-family: 'Fraunces', serif; font-size: 1.9rem; margin-bottom: 18px; }
-  h2 { font-family: 'Fraunces', serif; font-size: 1.2rem; margin-bottom: 6px; }
-  .help { color: var(--ink-soft); font-size: .88rem; margin-bottom: 14px; }
-  .card { background: var(--cream2); border: 1px solid var(--line); border-radius: 16px;
-    padding: 20px; margin-bottom: 16px; }
+  .page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 26px 18px 96px;
+  }
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 1.9rem;
+    margin-bottom: 18px;
+  }
+  h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 1.2rem;
+    margin-bottom: 6px;
+  }
+  .help {
+    color: var(--ink-soft);
+    font-size: 0.88rem;
+    margin-bottom: 14px;
+  }
+  .card {
+    background: var(--cream2);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
 
-  .langs { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-  .lang { display: flex; align-items: center; gap: 11px; padding: 13px 15px; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 13px; background: #fff; font: inherit; color: var(--ink);
-    text-align: left; }
-  .lang.on { border-color: var(--honey); background: rgba(199,127,34,.08); }
-  .lang .code { font-weight: 800; font-size: .82rem; background: var(--cream); border: 1px solid var(--line);
-    border-radius: 7px; padding: 3px 7px; color: var(--ink-soft); }
-  .lang.on .code { background: var(--honey); color: #fff; border-color: var(--honey); }
-  .lang .name { font-weight: 600; flex: 1; }
-  .lang .tick { color: var(--honey-d); font-weight: 800; }
+  .langs {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+  .lang {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 13px 15px;
+    cursor: pointer;
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    background: #fff;
+    font: inherit;
+    color: var(--ink);
+    text-align: left;
+  }
+  .lang.on {
+    border-color: var(--honey);
+    background: rgba(199, 127, 34, 0.08);
+  }
+  .lang .code {
+    font-weight: 800;
+    font-size: 0.82rem;
+    background: var(--cream);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 3px 7px;
+    color: var(--ink-soft);
+  }
+  .lang.on .code {
+    background: var(--honey);
+    color: #fff;
+    border-color: var(--honey);
+  }
+  .lang .name {
+    font-weight: 600;
+    flex: 1;
+  }
+  .lang .tick {
+    color: var(--honey-d);
+    font-weight: 800;
+  }
 
-  .sub { font-family: 'Fraunces', serif; font-size: 1.02rem; margin: 20px 0 6px; }
-  .data-btns { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  .data-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    padding: 12px 14px; cursor: pointer; border: 1px solid var(--line); border-radius: 12px;
-    background: #fff; font: inherit; font-weight: 600; color: var(--ink); text-align: center; }
-  .data-btn:hover:not(:disabled) { border-color: var(--honey); background: rgba(199,127,34,.08); }
-  .data-btn:disabled { opacity: .55; cursor: default; }
-  .import-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .import-row select { padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px;
-    background: #fff; font: inherit; color: var(--ink); flex: 1; min-width: 150px; }
-  .data-btn.file { flex-shrink: 0; }
-  .import-msg { margin-top: 12px; font-size: .9rem; font-weight: 600; color: var(--moss); }
-  .import-msg.err { color: #b5402f; }
+  .sub {
+    font-family: 'Fraunces', serif;
+    font-size: 1.02rem;
+    margin: 20px 0 6px;
+  }
+  .data-btns {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  .data-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 14px;
+    cursor: pointer;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    font-weight: 600;
+    color: var(--ink);
+    text-align: center;
+  }
+  .data-btn:hover:not(:disabled) {
+    border-color: var(--honey);
+    background: rgba(199, 127, 34, 0.08);
+  }
+  .data-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+  .import-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .import-row select {
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    color: var(--ink);
+    flex: 1;
+    min-width: 150px;
+  }
+  .data-btn.file {
+    flex-shrink: 0;
+  }
+  .import-msg {
+    margin-top: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--moss);
+  }
+  .import-msg.err {
+    color: #b5402f;
+  }
 
-  .tenants { display: grid; gap: 8px; margin-bottom: 12px; }
-  .tenant { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 12px; background: #fff; font: inherit; color: var(--ink); text-align: left; }
-  .tenant.on { border-color: var(--honey); background: rgba(199,127,34,.08); }
-  .tenant .tname { font-weight: 700; flex: 1; }
-  .tenant .trole { font-size: .72rem; font-weight: 700; color: var(--ink-soft); background: var(--cream);
-    border: 1px solid var(--line); border-radius: 7px; padding: 2px 7px; }
-  .tenant .ttick { color: var(--honey-d); font-weight: 700; font-size: .76rem; }
-  .trow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
-  .trow input { flex: 1; min-width: 150px; padding: 11px 12px; border: 1px solid var(--line);
-    border-radius: 12px; background: #fff; font: inherit; color: var(--ink); }
-  .invite-link { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px;
-    padding: 10px 12px; border: 1px solid var(--honey); border-radius: 12px; background: rgba(199,127,34,.08); }
-  .invite-link code { flex: 1; min-width: 150px; word-break: break-all; font-size: .82rem; }
-  .invites { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-  .invites li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 14px;
-    border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-  .invites .imeta { flex: 1; min-width: 150px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .invites .trole { font-size: .72rem; font-weight: 700; color: var(--ink-soft); background: var(--cream);
-    border: 1px solid var(--line); border-radius: 7px; padding: 2px 7px; }
-  .invites .idate { font-size: .8rem; color: var(--ink-soft); }
-  .akprefix { font-size: .8rem; color: var(--ink-soft); background: var(--cream); padding: 2px 6px; border-radius: 6px; }
-  .akexpired { color: #b5402f; font-weight: 700; }
-  .aksub { margin: 18px 0 4px; font-size: 1rem; }
-  .trow select { padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--cream2); font: inherit; }
-  .aknew { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--honey); border-radius: 12px; background: rgba(199,127,34,.06); }
-  .aknew input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
-  .invites .iactions { display: flex; gap: 8px; }
-  .data-btn.danger:hover:not(:disabled) { border-color: #b5402f; background: rgba(181,64,47,.08); color: #b5402f; }
-  .danger-zone { margin-top: 20px; padding: 14px; border: 1px solid rgba(181,64,47,.4); border-radius: 12px; }
-  .danger-zone .sub { margin: 0 0 4px; color: #b5402f; }
-  .danger-zone .data-btn { border-color: rgba(181,64,47,.4); color: #b5402f; }
-  .logout { margin-top: 14px; }
-  .logout:hover { border-color: #b5402f; color: #b5402f; }
+  .tenants {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .tenant {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    cursor: pointer;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    color: var(--ink);
+    text-align: left;
+  }
+  .tenant.on {
+    border-color: var(--honey);
+    background: rgba(199, 127, 34, 0.08);
+  }
+  .tenant .tname {
+    font-weight: 700;
+    flex: 1;
+  }
+  .tenant .trole {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+    background: var(--cream);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 2px 7px;
+  }
+  .tenant .ttick {
+    color: var(--honey-d);
+    font-weight: 700;
+    font-size: 0.76rem;
+  }
+  .trow {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .trow input {
+    flex: 1;
+    min-width: 150px;
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+    color: var(--ink);
+  }
+  .invite-link {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--honey);
+    border-radius: 12px;
+    background: rgba(199, 127, 34, 0.08);
+  }
+  .invite-link code {
+    flex: 1;
+    min-width: 150px;
+    word-break: break-all;
+    font-size: 0.82rem;
+  }
+  .invites {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .invites li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 11px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+  }
+  .invites .imeta {
+    flex: 1;
+    min-width: 150px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .invites .trole {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--ink-soft);
+    background: var(--cream);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 2px 7px;
+  }
+  .invites .idate {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+  }
+  .akprefix {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    background: var(--cream);
+    padding: 2px 6px;
+    border-radius: 6px;
+  }
+  .akexpired {
+    color: #b5402f;
+    font-weight: 700;
+  }
+  .aksub {
+    margin: 18px 0 4px;
+    font-size: 1rem;
+  }
+  .trow select {
+    padding: 11px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--cream2);
+    font: inherit;
+  }
+  .aknew {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--honey);
+    border-radius: 12px;
+    background: rgba(199, 127, 34, 0.06);
+  }
+  .aknew input {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+  }
+  .invites .iactions {
+    display: flex;
+    gap: 8px;
+  }
+  .data-btn.danger:hover:not(:disabled) {
+    border-color: #b5402f;
+    background: rgba(181, 64, 47, 0.08);
+    color: #b5402f;
+  }
+  .danger-zone {
+    margin-top: 20px;
+    padding: 14px;
+    border: 1px solid rgba(181, 64, 47, 0.4);
+    border-radius: 12px;
+  }
+  .danger-zone .sub {
+    margin: 0 0 4px;
+    color: #b5402f;
+  }
+  .danger-zone .data-btn {
+    border-color: rgba(181, 64, 47, 0.4);
+    color: #b5402f;
+  }
+  .logout {
+    margin-top: 14px;
+  }
+  .logout:hover {
+    border-color: #b5402f;
+    color: #b5402f;
+  }
 
-  .user { display: flex; align-items: center; gap: 12px; }
-  .user .ava { font-size: 1.6rem; color: var(--honey); }
-  .legal-links { display: flex; flex-direction: column; gap: 2px; }
-  .legal-links a { padding: 11px 2px; text-decoration: none; color: var(--ink);
-    font-weight: 600; border-top: 1px solid var(--line); }
-  .legal-links a:first-child { border-top: none; }
-  .legal-links a:hover { color: var(--honey-d); }
+  .user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .user .ava {
+    font-size: 1.6rem;
+    color: var(--honey);
+  }
+  .legal-links {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .legal-links a {
+    padding: 11px 2px;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 600;
+    border-top: 1px solid var(--line);
+  }
+  .legal-links a:first-child {
+    border-top: none;
+  }
+  .legal-links a:hover {
+    color: var(--honey-d);
+  }
 </style>

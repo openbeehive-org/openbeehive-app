@@ -43,10 +43,16 @@ async function init(): Promise<LocalDB> {
     const p = pending.get(id);
     if (!p) return;
     pending.delete(id);
-    ok ? p.resolve(rows) : p.reject(new Error(error));
+    if (ok) p.resolve(rows);
+    else p.reject(new Error(error));
   };
 
-  function call(method: 'open' | 'exec' | 'all', sql: string, params: unknown[], name?: string): Promise<any> {
+  function call(
+    method: 'open' | 'exec' | 'all',
+    sql: string,
+    params: unknown[],
+    name?: string
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       const id = ++seq;
       pending.set(id, { resolve, reject });
@@ -57,7 +63,8 @@ async function init(): Promise<LocalDB> {
   // Per-tenant local store: open a database file keyed to the active tenant so
   // switching tenants never mixes data on the same device. Falls back to the
   // single-user "local" store when no tenant is set.
-  const orgId = (typeof localStorage !== 'undefined' && localStorage.getItem('obh.orgId')) || 'local';
+  const orgId =
+    (typeof localStorage !== 'undefined' && localStorage.getItem('obh.orgId')) || 'local';
   const dbFile = `openbeehive-${orgId.replace(/[^a-zA-Z0-9_-]/g, '_')}.sqlite3`;
   await call('open', '', [], dbFile);
 

@@ -8,7 +8,7 @@ describe('HLC', () => {
     const c = new HLC();
     const stamps = Array.from({ length: 50 }, () => c.now());
     for (let i = 1; i < stamps.length; i++) {
-      expect(compare(stamps[i - 1], stamps[i])).toBeLessThan(0);
+      expect(compare(stamps[i - 1]!, stamps[i]!)).toBeLessThan(0);
     }
   });
 

@@ -29,7 +29,9 @@ describe('geocode', () => {
   });
 
   it('unreachable: network failure never throws into the UI', async () => {
-    fetchMock.mockImplementation(() => { throw new TypeError('Failed to fetch'); });
+    fetchMock.mockImplementation(() => {
+      throw new TypeError('Failed to fetch');
+    });
     expect(await geocode('Berlin')).toEqual({ status: 'unreachable' });
   });
 
@@ -51,7 +53,9 @@ describe('reverseGeocode', () => {
   });
 
   it('unreachable: offline', async () => {
-    fetchMock.mockImplementation(() => { throw new TypeError('Failed to fetch'); });
+    fetchMock.mockImplementation(() => {
+      throw new TypeError('Failed to fetch');
+    });
     expect(await reverseGeocode(50, 8)).toEqual({ status: 'unreachable' });
   });
 });

@@ -5,13 +5,21 @@ import { buildZip } from './zip';
 export type Sheet = { name: string; rows: (string | number | null | undefined)[][] };
 
 const xmlEsc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
 function colRef(n: number): string {
   let s = '';
   n++;
-  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = ((n - m) / 26) | 0; }
+  while (n > 0) {
+    const m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = ((n - m) / 26) | 0;
+  }
   return s;
 }
 
@@ -19,15 +27,20 @@ function colRef(n: number): string {
 const safeName = (s: string) => s.replace(/[:\\/?*[\]]/g, ' ').slice(0, 31) || 'Sheet';
 
 function sheetXml(rows: Sheet['rows']): string {
-  const body = rows.map((row, r) => {
-    const cells = row.map((val, c) => {
-      const ref = colRef(c) + (r + 1);
-      if (val === null || val === undefined || val === '') return `<c r="${ref}"/>`;
-      if (typeof val === 'number' && Number.isFinite(val)) return `<c r="${ref}"><v>${val}</v></c>`;
-      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(String(val))}</t></is></c>`;
-    }).join('');
-    return `<row r="${r + 1}">${cells}</row>`;
-  }).join('');
+  const body = rows
+    .map((row, r) => {
+      const cells = row
+        .map((val, c) => {
+          const ref = colRef(c) + (r + 1);
+          if (val === null || val === undefined || val === '') return `<c r="${ref}"/>`;
+          if (typeof val === 'number' && Number.isFinite(val))
+            return `<c r="${ref}"><v>${val}</v></c>`;
+          return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(String(val))}</t></is></c>`;
+        })
+        .join('');
+      return `<row r="${r + 1}">${cells}</row>`;
+    })
+    .join('');
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
 }
@@ -35,7 +48,9 @@ function sheetXml(rows: Sheet['rows']): string {
 export function buildXlsx(sheets: Sheet[]): Blob {
   const used = new Set<string>();
   const named = sheets.map((s, i) => {
-    let n = safeName(s.name); let base = n, k = 1;
+    let n = safeName(s.name);
+    const base = n;
+    let k = 1;
     while (used.has(n.toLowerCase())) n = safeName(base + ' ' + ++k);
     used.add(n.toLowerCase());
     return { name: n, rows: s.rows, id: i + 1 };

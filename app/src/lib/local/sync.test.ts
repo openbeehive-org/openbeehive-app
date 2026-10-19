@@ -25,7 +25,8 @@ async function queueOutbox(entity: string, entityId: string, payload: unknown, h
   await getCurrentDB().exec(
     `INSERT INTO outbox (id, entity, entity_id, scope_id, op, payload, hlc, author_id)
      VALUES (?, ?, ?, ?, 1, ?, ?, 'u1')`,
-    [crypto.randomUUID(), entity, entityId, entityId, JSON.stringify(payload), hlc]);
+    [crypto.randomUUID(), entity, entityId, entityId, JSON.stringify(payload), hlc]
+  );
 }
 
 beforeEach(async () => {
@@ -75,11 +76,17 @@ describe('push', () => {
 describe('pull / applyRemote', () => {
   it('inserts an unknown row with per-field clocks from the change stamp', async () => {
     pullMock.mockResolvedValueOnce({
-      changes: [{
-        entity: 'apiary', entityId: 'a1', op: 1, hlc: t(5),
-        payloadJson: JSON.stringify({ organization_id: 'o1', name: 'Remote', deleted: 0 })
-      }],
-      nextCursor: 'c1', hasMore: false
+      changes: [
+        {
+          entity: 'apiary',
+          entityId: 'a1',
+          op: 1,
+          hlc: t(5),
+          payloadJson: JSON.stringify({ organization_id: 'o1', name: 'Remote', deleted: 0 })
+        }
+      ],
+      nextCursor: 'c1',
+      hasMore: false
     });
 
     await pull();
@@ -95,29 +102,38 @@ describe('pull / applyRemote', () => {
     // Local row: name stamped at 10, note at 1.
     await getCurrentDB().exec(
       `INSERT INTO apiary (id, name, note, deleted, field_hlc) VALUES ('a1', 'LocalName', 'old', 0, ?)`,
-      [JSON.stringify({ name: t(10, 'local'), note: t(1, 'local') })]);
+      [JSON.stringify({ name: t(10, 'local'), note: t(1, 'local') })]
+    );
 
     pullMock.mockResolvedValueOnce({
-      changes: [{
-        entity: 'apiary', entityId: 'a1', op: 1, hlc: t(5),
-        payloadJson: JSON.stringify({ name: 'RemoteName', note: 'new' })
-      }],
-      nextCursor: '', hasMore: false
+      changes: [
+        {
+          entity: 'apiary',
+          entityId: 'a1',
+          op: 1,
+          hlc: t(5),
+          payloadJson: JSON.stringify({ name: 'RemoteName', note: 'new' })
+        }
+      ],
+      nextCursor: '',
+      hasMore: false
     });
 
     await pull();
 
     const row = await getCurrentDB().get<any>(`SELECT * FROM apiary WHERE id = 'a1'`);
     expect(row!.name).toBe('LocalName'); // local stamp 10 beats remote 5
-    expect(row!.note).toBe('new');       // remote 5 beats local 1
+    expect(row!.note).toBe('new'); // remote 5 beats local 1
   });
 
   it('a remote delete tombstones the row', async () => {
     await getCurrentDB().exec(
-      `INSERT INTO apiary (id, name, deleted, field_hlc) VALUES ('a1', 'X', 0, '{}')`);
+      `INSERT INTO apiary (id, name, deleted, field_hlc) VALUES ('a1', 'X', 0, '{}')`
+    );
     pullMock.mockResolvedValueOnce({
       changes: [{ entity: 'apiary', entityId: 'a1', op: 2, hlc: t(9), payloadJson: '' }],
-      nextCursor: '', hasMore: false
+      nextCursor: '',
+      hasMore: false
     });
 
     await pull();
@@ -128,14 +144,21 @@ describe('pull / applyRemote', () => {
   it('merges OR-Set deltas instead of overwriting', async () => {
     await getCurrentDB().exec(
       `INSERT INTO inspection (id, photo_keys, deleted, field_hlc) VALUES ('i1', ?, 0, '{}')`,
-      [JSON.stringify({ p1: { a: [t(1, 'local')], r: [] } })]);
+      [JSON.stringify({ p1: { a: [t(1, 'local')], r: [] } })]
+    );
 
     pullMock.mockResolvedValueOnce({
-      changes: [{
-        entity: 'inspection', entityId: 'i1', op: 1, hlc: t(6),
-        payloadJson: JSON.stringify({ photo_keys: { add: ['p2'], remove: [] } })
-      }],
-      nextCursor: '', hasMore: false
+      changes: [
+        {
+          entity: 'inspection',
+          entityId: 'i1',
+          op: 1,
+          hlc: t(6),
+          payloadJson: JSON.stringify({ photo_keys: { add: ['p2'], remove: [] } })
+        }
+      ],
+      nextCursor: '',
+      hasMore: false
     });
 
     await pull();
@@ -145,8 +168,17 @@ describe('pull / applyRemote', () => {
 
   it('ignores changes for unknown entities', async () => {
     pullMock.mockResolvedValueOnce({
-      changes: [{ entity: 'nonsense; DROP TABLE apiary', entityId: 'x', op: 1, hlc: t(1), payloadJson: '{}' }],
-      nextCursor: '', hasMore: false
+      changes: [
+        {
+          entity: 'nonsense; DROP TABLE apiary',
+          entityId: 'x',
+          op: 1,
+          hlc: t(1),
+          payloadJson: '{}'
+        }
+      ],
+      nextCursor: '',
+      hasMore: false
     });
     await pull(); // must not throw, must not touch tables
     expect(await getCurrentDB().all(`SELECT * FROM apiary`)).toHaveLength(0);
@@ -155,12 +187,30 @@ describe('pull / applyRemote', () => {
   it('follows hasMore pagination until done', async () => {
     pullMock
       .mockResolvedValueOnce({
-        changes: [{ entity: 'apiary', entityId: 'a1', op: 1, hlc: t(1), payloadJson: '{"name":"1","deleted":0}' }],
-        nextCursor: 'c1', hasMore: true
+        changes: [
+          {
+            entity: 'apiary',
+            entityId: 'a1',
+            op: 1,
+            hlc: t(1),
+            payloadJson: '{"name":"1","deleted":0}'
+          }
+        ],
+        nextCursor: 'c1',
+        hasMore: true
       })
       .mockResolvedValueOnce({
-        changes: [{ entity: 'apiary', entityId: 'a2', op: 1, hlc: t(2), payloadJson: '{"name":"2","deleted":0}' }],
-        nextCursor: 'c2', hasMore: false
+        changes: [
+          {
+            entity: 'apiary',
+            entityId: 'a2',
+            op: 1,
+            hlc: t(2),
+            payloadJson: '{"name":"2","deleted":0}'
+          }
+        ],
+        nextCursor: 'c2',
+        hasMore: false
       });
 
     await pull();
@@ -176,8 +226,17 @@ describe('syncOnce', () => {
     await queueOutbox('apiary', 'a1', { name: 'X' }, t(1, 'local'));
     pushMock.mockRejectedValue(new ConnectError('down', Code.Unavailable));
     pullMock.mockResolvedValue({
-      changes: [{ entity: 'apiary', entityId: 'r1', op: 1, hlc: t(3), payloadJson: '{"name":"remote","deleted":0}' }],
-      nextCursor: '', hasMore: false
+      changes: [
+        {
+          entity: 'apiary',
+          entityId: 'r1',
+          op: 1,
+          hlc: t(3),
+          payloadJson: '{"name":"remote","deleted":0}'
+        }
+      ],
+      nextCursor: '',
+      hasMore: false
     });
 
     await syncOnce();

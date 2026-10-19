@@ -12,7 +12,8 @@ import { SyncService } from './proto/openbeehive/v1/sync_pb';
 // SPA and API on one origin (cloud behind a reverse proxy, or the single
 // self-host binary), so same-origin is correct without a build-time override.
 // Falls back to localhost only for non-browser/dev contexts.
-const API_URL = import.meta.env.BEEHIVE_API_URL ?? (browser ? window.location.origin : 'http://localhost:8080');
+const API_URL =
+  import.meta.env.BEEHIVE_API_URL ?? (browser ? window.location.origin : 'http://localhost:8080');
 
 const authInterceptor: Interceptor = (next) => async (req) => {
   if (browser) {

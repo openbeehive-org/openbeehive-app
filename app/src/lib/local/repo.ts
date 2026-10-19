@@ -10,17 +10,30 @@ import { parseFieldClock, parseORSet, orAdd, orRemove, orValues } from './merge'
 
 const authorId = () => localStorage.getItem('obh.userId') ?? 'local';
 
-async function enqueue(entity: string, id: string, scopeId: string, op: 1 | 2, payload: unknown, stamp: string) {
+async function enqueue(
+  entity: string,
+  id: string,
+  scopeId: string,
+  op: 1 | 2,
+  payload: unknown,
+  stamp: string
+) {
   const db = await getDB();
   await db.exec(
     `INSERT INTO outbox (id, entity, entity_id, scope_id, op, payload, hlc, author_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [crypto.randomUUID(), entity, id, scopeId, op, JSON.stringify(payload), stamp, authorId()]);
+    [crypto.randomUUID(), entity, id, scopeId, op, JSON.stringify(payload), stamp, authorId()]
+  );
   void syncOnce();
 }
 
 // patch sets only the given scalar fields (partial per-field delta).
-export async function patch(entity: string, id: string, scopeId: string, fields: Record<string, unknown>) {
+export async function patch(
+  entity: string,
+  id: string,
+  scopeId: string,
+  fields: Record<string, unknown>
+) {
   const db = await getDB();
   const stamp = hlc.now();
   const cur = await db.get<any>(`SELECT field_hlc FROM ${entity} WHERE id = ?`, [id]);
@@ -30,10 +43,15 @@ export async function patch(entity: string, id: string, scopeId: string, fields:
   const cols = ['id', ...Object.keys(fields), 'field_hlc'];
   const vals = [id, ...Object.values(fields), JSON.stringify(fc)];
   const ph = cols.map(() => '?').join(', ');
-  const upd = cols.filter((c) => c !== 'id').map((c) => `${c} = excluded.${c}`).join(', ');
+  const upd = cols
+    .filter((c) => c !== 'id')
+    .map((c) => `${c} = excluded.${c}`)
+    .join(', ');
   await db.exec(
     `INSERT INTO ${entity} (${cols.join(', ')}) VALUES (${ph})
-     ON CONFLICT(id) DO UPDATE SET ${upd}`, vals);
+     ON CONFLICT(id) DO UPDATE SET ${upd}`,
+    vals
+  );
 
   await enqueue(entity, id, scopeId, 1, fields, stamp);
 }
@@ -42,14 +60,24 @@ export async function remove(entity: string, id: string, scopeId: string) {
   const db = await getDB();
   const stamp = hlc.now();
   const cur = await db.get<any>(`SELECT field_hlc FROM ${entity} WHERE id = ?`, [id]);
-  const fc = parseFieldClock(cur?.field_hlc); fc['deleted'] = stamp;
-  await db.exec(`UPDATE ${entity} SET deleted = 1, field_hlc = ? WHERE id = ?`, [JSON.stringify(fc), id]);
+  const fc = parseFieldClock(cur?.field_hlc);
+  fc['deleted'] = stamp;
+  await db.exec(`UPDATE ${entity} SET deleted = 1, field_hlc = ? WHERE id = ?`, [
+    JSON.stringify(fc),
+    id
+  ]);
   await enqueue(entity, id, scopeId, 2, { deleted: 1 }, stamp);
 }
 
 // --- OR-Set operations (list fields, e.g. inspection.photo_keys) ---
 
-export async function setAdd(entity: string, id: string, scopeId: string, field: string, elem: string) {
+export async function setAdd(
+  entity: string,
+  id: string,
+  scopeId: string,
+  field: string,
+  elem: string
+) {
   const db = await getDB();
   const stamp = hlc.now();
   const cur = await db.get<any>(`SELECT ${field} FROM ${entity} WHERE id = ?`, [id]);
@@ -59,7 +87,13 @@ export async function setAdd(entity: string, id: string, scopeId: string, field:
   await enqueue(entity, id, scopeId, 1, { [field]: { add: [elem] } }, stamp);
 }
 
-export async function setRemove(entity: string, id: string, scopeId: string, field: string, elem: string) {
+export async function setRemove(
+  entity: string,
+  id: string,
+  scopeId: string,
+  field: string,
+  elem: string
+) {
   const db = await getDB();
   const stamp = hlc.now();
   const cur = await db.get<any>(`SELECT ${field} FROM ${entity} WHERE id = ?`, [id]);
@@ -69,7 +103,14 @@ export async function setRemove(entity: string, id: string, scopeId: string, fie
   const observed = [...(os[elem]?.a ?? [])];
   orRemove(os, elem);
   await db.exec(`UPDATE ${entity} SET ${field} = ? WHERE id = ?`, [JSON.stringify(os), id]);
-  await enqueue(entity, id, scopeId, 1, { [field]: { remove: [elem], removed_tags: { [elem]: observed } } }, stamp);
+  await enqueue(
+    entity,
+    id,
+    scopeId,
+    1,
+    { [field]: { remove: [elem], removed_tags: { [elem]: observed } } },
+    stamp
+  );
 }
 
 // --- Public, typed API for the UI ---
@@ -80,12 +121,26 @@ export const apiaries = {
     return db.all(`SELECT * FROM apiary WHERE deleted = 0 ORDER BY name`);
   },
   // create = full delta; edit = only changed fields via patch().
-  async create(s: { organization_id: string; name: string; address?: string; lat?: number; lng?: number; note?: string }) {
+  async create(s: {
+    organization_id: string;
+    name: string;
+    address?: string;
+    lat?: number;
+    lng?: number;
+    note?: string;
+  }) {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     await patch('apiary', id, id /* scope = own id */, {
-      organization_id: s.organization_id, name: s.name, address: s.address ?? '',
-      lat: s.lat ?? 0, lng: s.lng ?? 0, note: s.note ?? '', created_at: now, updated_at: now, deleted: 0
+      organization_id: s.organization_id,
+      name: s.name,
+      address: s.address ?? '',
+      lat: s.lat ?? 0,
+      lng: s.lng ?? 0,
+      note: s.note ?? '',
+      created_at: now,
+      updated_at: now,
+      deleted: 0
     });
     return id;
   },
@@ -104,17 +159,26 @@ export const apiaries = {
 export const inspections = {
   async listByHive(hiveId: string) {
     const db = await getDB();
-    const rows = await db.all<any>(`SELECT * FROM inspection WHERE deleted = 0 AND hive_id = ? ORDER BY date DESC`, [hiveId]);
+    const rows = await db.all<any>(
+      `SELECT * FROM inspection WHERE deleted = 0 AND hive_id = ? ORDER BY date DESC`,
+      [hiveId]
+    );
     // Resolve the OR-Set column to the list of visible photos.
     return rows.map((r) => ({ ...r, photos: orValues(parseORSet(r.photo_keys)) }));
   },
   async add(d: any, scopeApiaryId: string) {
     const id = crypto.randomUUID();
-    await patch('inspection', id, scopeApiaryId, { ...d, created_at: new Date().toISOString(), deleted: 0 });
+    await patch('inspection', id, scopeApiaryId, {
+      ...d,
+      created_at: new Date().toISOString(),
+      deleted: 0
+    });
     return id;
   },
-  addPhoto: (id: string, scope: string, key: string) => setAdd('inspection', id, scope, 'photo_keys', key),
-  removePhoto: (id: string, scope: string, key: string) => setRemove('inspection', id, scope, 'photo_keys', key)
+  addPhoto: (id: string, scope: string, key: string) =>
+    setAdd('inspection', id, scope, 'photo_keys', key),
+  removePhoto: (id: string, scope: string, key: string) =>
+    setRemove('inspection', id, scope, 'photo_keys', key)
 };
 
 export const hives = {
@@ -130,7 +194,10 @@ export const hives = {
   },
   async count(apiaryId: string) {
     const db = await getDB();
-    const r = await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM hive WHERE deleted = 0 AND apiary_id = ?`, [apiaryId]);
+    const r = await db.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM hive WHERE deleted = 0 AND apiary_id = ?`,
+      [apiaryId]
+    );
     return r?.n ?? 0;
   },
   // edit = only the changed scalar fields (per-field LWW). scope = apiary id.
@@ -146,10 +213,13 @@ export const hives = {
       `SELECT p.id, p.apiary_id, p.start_at, p.end_at, a.name AS apiary_name
        FROM placement p LEFT JOIN apiary a ON a.id = p.apiary_id
        WHERE p.hive_id = ? AND p.deleted = 0
-       ORDER BY p.start_at DESC`, [hiveId]);
+       ORDER BY p.start_at DESC`,
+      [hiveId]
+    );
   },
   // Store/refresh the printed short code on the hive (optional, display only).
-  setCode: (id: string, apiaryId: string, code: string) => patch('hive', id, apiaryId, { qr_code: code })
+  setCode: (id: string, apiaryId: string, code: string) =>
+    patch('hive', id, apiaryId, { qr_code: code })
 };
 
 // Honey harvests (read side; recording goes through history.recordHarvest,
@@ -157,11 +227,17 @@ export const hives = {
 export const harvests = {
   async listByHive(hiveId: string) {
     const db = await getDB();
-    return db.all<any>(`SELECT * FROM harvest WHERE deleted = 0 AND hive_id = ? ORDER BY date DESC`, [hiveId]);
+    return db.all<any>(
+      `SELECT * FROM harvest WHERE deleted = 0 AND hive_id = ? ORDER BY date DESC`,
+      [hiveId]
+    );
   },
   async totalByHive(hiveId: string) {
     const db = await getDB();
-    const r = await db.get<{ kg: number }>(`SELECT COALESCE(SUM(amount_kg),0) AS kg FROM harvest WHERE deleted = 0 AND hive_id = ?`, [hiveId]);
+    const r = await db.get<{ kg: number }>(
+      `SELECT COALESCE(SUM(amount_kg),0) AS kg FROM harvest WHERE deleted = 0 AND hive_id = ?`,
+      [hiveId]
+    );
     return r?.kg ?? 0;
   },
   remove: (id: string, apiaryId: string) => remove('harvest', id, apiaryId)
@@ -172,7 +248,10 @@ export const harvests = {
 export const treatments = {
   async listByHive(hiveId: string) {
     const db = await getDB();
-    return db.all<any>(`SELECT * FROM treatment WHERE deleted = 0 AND hive_id = ? ORDER BY date DESC`, [hiveId]);
+    return db.all<any>(
+      `SELECT * FROM treatment WHERE deleted = 0 AND hive_id = ? ORDER BY date DESC`,
+      [hiveId]
+    );
   },
   remove: (id: string, apiaryId: string) => remove('treatment', id, apiaryId)
 };
@@ -181,7 +260,7 @@ export const treatments = {
 // 2/7 yellow, 3/8 red, 4/9 green, 5/0 blue). Matches the MarkingColor enum
 // (1=white … 5=blue) in proto/openbeehive/v1/common.proto.
 export function markingForYear(year: number): number {
-  return ((year % 10) + 4) % 5 + 1;
+  return (((year % 10) + 4) % 5) + 1;
 }
 export const MARKING_COLORS = ['', '#f4f1ea', '#e9c33b', '#c8402f', '#3f8c4f', '#3566b5'];
 export const MARKING_NAMES = ['', 'White', 'Yellow', 'Red', 'Green', 'Blue'];
@@ -191,11 +270,17 @@ export const MARKING_NAMES = ['', 'White', 'Yellow', 'Red', 'Green', 'Blue'];
 export const queens = {
   async listByHive(hiveId: string) {
     const db = await getDB();
-    return db.all<any>(`SELECT * FROM queen WHERE deleted = 0 AND hive_id = ? ORDER BY introduced_at DESC`, [hiveId]);
+    return db.all<any>(
+      `SELECT * FROM queen WHERE deleted = 0 AND hive_id = ? ORDER BY introduced_at DESC`,
+      [hiveId]
+    );
   },
   async current(hiveId: string) {
     const db = await getDB();
-    return db.get<any>(`SELECT * FROM queen WHERE deleted = 0 AND hive_id = ? AND active = 1 ORDER BY introduced_at DESC LIMIT 1`, [hiveId]);
+    return db.get<any>(
+      `SELECT * FROM queen WHERE deleted = 0 AND hive_id = ? AND active = 1 ORDER BY introduced_at DESC LIMIT 1`,
+      [hiveId]
+    );
   },
   update: (id: string, scopeApiaryId: string, fields: Record<string, unknown>) =>
     patch('queen', id, scopeApiaryId, { ...fields, updated_at: new Date().toISOString() }),
@@ -214,16 +299,29 @@ export const tasks = {
   },
   async openCount() {
     const db = await getDB();
-    const r = await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM task WHERE deleted = 0 AND done = 0`);
+    const r = await db.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM task WHERE deleted = 0 AND done = 0`
+    );
     return r?.n ?? 0;
   },
-  async create(s: { title: string; due_at?: string; apiary_id?: string; hive_id?: string; priority?: number }) {
+  async create(s: {
+    title: string;
+    due_at?: string;
+    apiary_id?: string;
+    hive_id?: string;
+    priority?: number;
+  }) {
     const id = crypto.randomUUID();
     await patch('task', id, taskScope(s.apiary_id), {
       organization_id: localStorage.getItem('obh.orgId') ?? 'local',
-      title: s.title, apiary_id: s.apiary_id ?? '', hive_id: s.hive_id ?? '',
-      due_at: s.due_at ?? '', done: 0, priority: s.priority ?? 0,
-      created_at: new Date().toISOString(), deleted: 0
+      title: s.title,
+      apiary_id: s.apiary_id ?? '',
+      hive_id: s.hive_id ?? '',
+      due_at: s.due_at ?? '',
+      done: 0,
+      priority: s.priority ?? 0,
+      created_at: new Date().toISOString(),
+      deleted: 0
     });
     return id;
   },
@@ -231,6 +329,5 @@ export const tasks = {
     patch('task', t.id, taskScope(t.apiary_id), { done: t.done ? 0 : 1 }),
   update: (t: { id: string; apiary_id?: string }, fields: Record<string, unknown>) =>
     patch('task', t.id, taskScope(t.apiary_id), fields),
-  remove: (t: { id: string; apiary_id?: string }) =>
-    remove('task', t.id, taskScope(t.apiary_id))
+  remove: (t: { id: string; apiary_id?: string }) => remove('task', t.id, taskScope(t.apiary_id))
 };

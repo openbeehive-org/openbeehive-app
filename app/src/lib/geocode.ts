@@ -8,16 +8,14 @@
 // 'unreachable' — network/service failure (offline, blocked, rate-limited).
 export type GeoHit = { lat: number; lng: number; label: string };
 export type GeoResult<T> =
-  | { status: 'found'; value: T }
-  | { status: 'none' }
-  | { status: 'unreachable' };
+  { status: 'found'; value: T } | { status: 'none' } | { status: 'unreachable' };
 
 const BASE = 'https://nominatim.openstreetmap.org';
 
 async function ask(path: string): Promise<GeoResult<any>> {
   try {
     const r = await fetch(`${BASE}${path}`, {
-      headers: { Accept: 'application/json', 'Accept-Language': navigator.language ?? 'en' },
+      headers: { Accept: 'application/json', 'Accept-Language': navigator.language ?? 'en' }
     });
     if (!r.ok) return { status: 'unreachable' };
     return { status: 'found', value: await r.json() };

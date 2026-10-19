@@ -14,13 +14,16 @@
   async function load() {
     hive = await hives.get(id);
     if (hive) {
-      apiaryName = hive.apiary_id ? (await apiaries.get(hive.apiary_id))?.name ?? '' : '';
+      apiaryName = hive.apiary_id ? ((await apiaries.get(hive.apiary_id))?.name ?? '') : '';
       queen = await queens.current(id);
       visits = await inspections.listByHive(id); // newest first
     }
     loaded = true;
   }
-  $effect(() => { $dataVersion; load(); });
+  $effect(() => {
+    $dataVersion;
+    load();
+  });
 
   const yn = (v: any) => (v ? '✓' : '');
   const num = (v: any) => (v === null || v === undefined || v === '' || +v === 0 ? '' : v);
@@ -36,9 +39,13 @@
       <div>
         <h1>{$_('insp.stockkarte')}</h1>
         <p class="muted">
-          {hive.name}{#if apiaryName} · {apiaryName}{/if}
-          {#if hive.type} · {$_('hivetype.' + hive.type)}{/if}
-          {#if queen} · 👑 {queen.year}{#if queen.marking} {$_('queens.marking')}: {MARKING_NAMES[queen.marking] ?? ''}{/if}{/if}
+          {hive.name}{#if apiaryName}
+            · {apiaryName}{/if}
+          {#if hive.type}
+            · {$_('hivetype.' + hive.type)}{/if}
+          {#if queen}
+            · 👑 {queen.year}{#if queen.marking}
+              {$_('queens.marking')}: {MARKING_NAMES[queen.marking] ?? ''}{/if}{/if}
         </p>
       </div>
       <button class="print" onclick={() => window.print()}>🖨 {$_('qr.print')}</button>
@@ -110,31 +117,111 @@
 </div>
 
 <style>
-  .page { max-width: 100%; margin: 0 auto; padding: 22px 18px 96px; }
-  .back { color: var(--honey-d, #a4641a); font-weight: 700; text-decoration: none; font-size: .9rem; }
-  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px;
-    margin: 12px 0 16px; flex-wrap: wrap; }
-  h1 { font-family: 'Fraunces', serif; font-size: 1.7rem; margin: 0; }
-  .muted { color: var(--ink-soft, #6b5e48); font-size: .9rem; margin: 4px 0 0; }
-  .empty { margin-top: 24px; }
-  .print { font: inherit; font-weight: 700; cursor: pointer; border: 1px solid var(--line, #e5dcc6);
-    border-radius: 11px; padding: 9px 16px; background: #fff; color: var(--ink, #2c2316); }
+  .page {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 22px 18px 96px;
+  }
+  .back {
+    color: var(--honey-d, #a4641a);
+    font-weight: 700;
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    margin: 12px 0 16px;
+    flex-wrap: wrap;
+  }
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 1.7rem;
+    margin: 0;
+  }
+  .muted {
+    color: var(--ink-soft, #6b5e48);
+    font-size: 0.9rem;
+    margin: 4px 0 0;
+  }
+  .empty {
+    margin-top: 24px;
+  }
+  .print {
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid var(--line, #e5dcc6);
+    border-radius: 11px;
+    padding: 9px 16px;
+    background: #fff;
+    color: var(--ink, #2c2316);
+  }
 
-  .scroll { overflow-x: auto; border: 1px solid var(--line, #e5dcc6); border-radius: 14px; background: #fff; }
-  .card-table { border-collapse: collapse; font-size: .8rem; white-space: nowrap; }
-  .card-table th, .card-table td { border: 1px solid var(--line, #e5dcc6); padding: 7px 9px; text-align: center; }
-  .card-table thead th { background: var(--cream, #fbf6ea); color: var(--ink-soft, #6b5e48);
-    font-weight: 700; position: sticky; top: 0; z-index: 1; }
-  .card-table tbody tr:nth-child(even) td { background: rgba(199,127,34,.04); }
-  .card-table td.t { text-align: left; white-space: normal; max-width: 160px; }
-  .card-table td.note { color: var(--ink-soft, #6b5e48); }
-  .sticky { position: sticky; left: 0; background: var(--cream2, #fffdf7); font-weight: 700; z-index: 2; }
-  .card-table thead th.sticky { z-index: 3; background: var(--cream, #fbf6ea); }
+  .scroll {
+    overflow-x: auto;
+    border: 1px solid var(--line, #e5dcc6);
+    border-radius: 14px;
+    background: #fff;
+  }
+  .card-table {
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+  .card-table th,
+  .card-table td {
+    border: 1px solid var(--line, #e5dcc6);
+    padding: 7px 9px;
+    text-align: center;
+  }
+  .card-table thead th {
+    background: var(--cream, #fbf6ea);
+    color: var(--ink-soft, #6b5e48);
+    font-weight: 700;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .card-table tbody tr:nth-child(even) td {
+    background: rgba(199, 127, 34, 0.04);
+  }
+  .card-table td.t {
+    text-align: left;
+    white-space: normal;
+    max-width: 160px;
+  }
+  .card-table td.note {
+    color: var(--ink-soft, #6b5e48);
+  }
+  .sticky {
+    position: sticky;
+    left: 0;
+    background: var(--cream2, #fffdf7);
+    font-weight: 700;
+    z-index: 2;
+  }
+  .card-table thead th.sticky {
+    z-index: 3;
+    background: var(--cream, #fbf6ea);
+  }
 
   @media print {
-    .back, .print { display: none; }
-    .scroll { overflow: visible; border: none; }
-    .card-table { font-size: 9px; }
-    .page { padding: 0; }
+    .back,
+    .print {
+      display: none;
+    }
+    .scroll {
+      overflow: visible;
+      border: none;
+    }
+    .card-table {
+      font-size: 9px;
+    }
+    .page {
+      padding: 0;
+    }
   }
 </style>

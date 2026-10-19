@@ -37,7 +37,13 @@ const stamp = (ms: number, node: string) => `${String(ms).padStart(15, '0')}:000
 async function drainOutbox(db: LocalDB): Promise<Change[]> {
   const rows = await db.all<any>(`SELECT * FROM outbox ORDER BY hlc ASC`);
   await db.exec(`DELETE FROM outbox`);
-  return rows.map((r) => ({ entity: r.entity, entityId: r.entity_id, op: r.op, payloadJson: r.payload, hlc: r.hlc }));
+  return rows.map((r) => ({
+    entity: r.entity,
+    entityId: r.entity_id,
+    op: r.op,
+    payloadJson: r.payload,
+    hlc: r.hlc
+  }));
 }
 
 async function applyOn(db: LocalDB, changes: Change[]) {
@@ -72,11 +78,15 @@ describe('two offline devices converge', () => {
     await applyOn(B, created);
 
     // Offline edits: B renames at t=1500 and writes a note; A renames at t=2000.
-    const fromB: Change[] = [{
-      entity: 'apiary', entityId: id, op: 1,
-      payloadJson: JSON.stringify({ name: 'B-name', note: 'from B' }),
-      hlc: stamp(1_500_000, 'devB')
-    }];
+    const fromB: Change[] = [
+      {
+        entity: 'apiary',
+        entityId: id,
+        op: 1,
+        payloadJson: JSON.stringify({ name: 'B-name', note: 'from B' }),
+        hlc: stamp(1_500_000, 'devB')
+      }
+    ];
     await applyOn(B, fromB); // B's own edit lands on B first
     vi.setSystemTime(2_000_000);
     setCurrentDB(A);
@@ -101,7 +111,9 @@ describe('two offline devices converge', () => {
     await applyOn(B, await drainOutbox(A));
 
     // B deletes at t=1500; A edits the name at t=2000 (after the delete stamp).
-    const del: Change[] = [{ entity: 'apiary', entityId: id, op: 2, payloadJson: '', hlc: stamp(11_500_000, 'devB') }];
+    const del: Change[] = [
+      { entity: 'apiary', entityId: id, op: 2, payloadJson: '', hlc: stamp(11_500_000, 'devB') }
+    ];
     await applyOn(B, del); // B's own delete lands on B first
     vi.setSystemTime(12_000_000);
     setCurrentDB(A);
@@ -132,11 +144,15 @@ describe('two offline devices converge', () => {
     await setRemove('inspection', 'i1', 'a1', 'photo_keys', 'p1');
     const fromA = await drainOutbox(A);
 
-    const fromB: Change[] = [{
-      entity: 'inspection', entityId: 'i1', op: 1,
-      payloadJson: JSON.stringify({ photo_keys: { add: ['p1', 'p2'] } }),
-      hlc: stamp(22_000_500, 'devB')
-    }];
+    const fromB: Change[] = [
+      {
+        entity: 'inspection',
+        entityId: 'i1',
+        op: 1,
+        payloadJson: JSON.stringify({ photo_keys: { add: ['p1', 'p2'] } }),
+        hlc: stamp(22_000_500, 'devB')
+      }
+    ];
     await applyOn(B, fromB); // B's own adds land on B first
 
     await applyOn(A, fromB);

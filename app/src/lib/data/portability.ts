@@ -28,27 +28,157 @@ type ScopeFn = (r: Row, ctx: { hiveApiary: Record<string, string> }) => string;
 type Entity = { table: string; cols: string[]; scope: ScopeFn };
 
 export const ENTITIES: Entity[] = [
-  { table: 'apiary', scope: (r) => r.id,
-    cols: ['id', 'name', 'address', 'lat', 'lng', 'note', 'created_at', 'updated_at'] },
-  { table: 'hive', scope: (r) => r.apiary_id,
-    cols: ['id', 'apiary_id', 'name', 'type', 'status', 'boxes', 'colony_origin', 'note', 'qr_code', 'created_at', 'updated_at'] },
-  { table: 'queen', scope: (r, c) => c.hiveApiary[r.hive_id] || '',
-    cols: ['id', 'hive_id', 'year', 'marking', 'origin', 'breeder_number', 'introduced_at', 'replaced_at', 'active', 'note', 'created_at', 'updated_at'] },
-  { table: 'placement', scope: (r) => r.apiary_id,
-    cols: ['id', 'hive_id', 'apiary_id', 'start_at', 'end_at'] },
-  { table: 'inspection', scope: (r, c) => c.hiveApiary[r.hive_id] || '',
-    cols: ['id', 'hive_id', 'date', 'weather', 'queen_seen', 'eggs_seen', 'temperament', 'frames', 'stores',
-      'queen_cells', 'varroa', 'honey_kg', 'brood_frames', 'calmness', 'fed_kg', 'frames_added', 'frames_removed',
-      'drone_frame_cut', 'super_added', 'weight_kg', 'youngest_larva', 'covered_larva',
-      'temp_hive', 'temp_outside', 'humidity_hive', 'humidity_outside', 'note', 'created_at'] },
-  { table: 'harvest', scope: (r) => r.apiary_id,
-    cols: ['id', 'apiary_id', 'hive_id', 'queen_id', 'date', 'variety', 'amount_kg', 'water_content', 'batch_number', 'best_before', 'note'] },
-  { table: 'treatment', scope: (r) => r.apiary_id,
-    cols: ['id', 'apiary_id', 'hive_id', 'queen_id', 'date', 'product', 'active_ingredient', 'dose', 'method', 'batch_number', 'withdrawal_until', 'reason', 'note'] },
-  { table: 'task', scope: (r) => r.apiary_id || 'user:' + userId(),
-    cols: ['id', 'title', 'apiary_id', 'hive_id', 'due_at', 'done', 'priority', 'note', 'recurrence', 'assigned_to', 'created_at'] },
-  { table: 'event', scope: (r) => r.scope_id,
-    cols: ['id', 'scope_id', 'type', 'date', 'apiary_id', 'hive_id', 'queen_id', 'ref_entity', 'ref_id', 'title', 'amount_kg', 'detail', 'author_id'] }
+  {
+    table: 'apiary',
+    scope: (r) => r.id,
+    cols: ['id', 'name', 'address', 'lat', 'lng', 'note', 'created_at', 'updated_at']
+  },
+  {
+    table: 'hive',
+    scope: (r) => r.apiary_id,
+    cols: [
+      'id',
+      'apiary_id',
+      'name',
+      'type',
+      'status',
+      'boxes',
+      'colony_origin',
+      'note',
+      'qr_code',
+      'created_at',
+      'updated_at'
+    ]
+  },
+  {
+    table: 'queen',
+    scope: (r, c) => c.hiveApiary[r.hive_id] || '',
+    cols: [
+      'id',
+      'hive_id',
+      'year',
+      'marking',
+      'origin',
+      'breeder_number',
+      'introduced_at',
+      'replaced_at',
+      'active',
+      'note',
+      'created_at',
+      'updated_at'
+    ]
+  },
+  {
+    table: 'placement',
+    scope: (r) => r.apiary_id,
+    cols: ['id', 'hive_id', 'apiary_id', 'start_at', 'end_at']
+  },
+  {
+    table: 'inspection',
+    scope: (r, c) => c.hiveApiary[r.hive_id] || '',
+    cols: [
+      'id',
+      'hive_id',
+      'date',
+      'weather',
+      'queen_seen',
+      'eggs_seen',
+      'temperament',
+      'frames',
+      'stores',
+      'queen_cells',
+      'varroa',
+      'honey_kg',
+      'brood_frames',
+      'calmness',
+      'fed_kg',
+      'frames_added',
+      'frames_removed',
+      'drone_frame_cut',
+      'super_added',
+      'weight_kg',
+      'youngest_larva',
+      'covered_larva',
+      'temp_hive',
+      'temp_outside',
+      'humidity_hive',
+      'humidity_outside',
+      'note',
+      'created_at'
+    ]
+  },
+  {
+    table: 'harvest',
+    scope: (r) => r.apiary_id,
+    cols: [
+      'id',
+      'apiary_id',
+      'hive_id',
+      'queen_id',
+      'date',
+      'variety',
+      'amount_kg',
+      'water_content',
+      'batch_number',
+      'best_before',
+      'note'
+    ]
+  },
+  {
+    table: 'treatment',
+    scope: (r) => r.apiary_id,
+    cols: [
+      'id',
+      'apiary_id',
+      'hive_id',
+      'queen_id',
+      'date',
+      'product',
+      'active_ingredient',
+      'dose',
+      'method',
+      'batch_number',
+      'withdrawal_until',
+      'reason',
+      'note'
+    ]
+  },
+  {
+    table: 'task',
+    scope: (r) => r.apiary_id || 'user:' + userId(),
+    cols: [
+      'id',
+      'title',
+      'apiary_id',
+      'hive_id',
+      'due_at',
+      'done',
+      'priority',
+      'note',
+      'recurrence',
+      'assigned_to',
+      'created_at'
+    ]
+  },
+  {
+    table: 'event',
+    scope: (r) => r.scope_id,
+    cols: [
+      'id',
+      'scope_id',
+      'type',
+      'date',
+      'apiary_id',
+      'hive_id',
+      'queen_id',
+      'ref_entity',
+      'ref_id',
+      'title',
+      'amount_kg',
+      'detail',
+      'author_id'
+    ]
+  }
 ];
 
 const INTERNAL = new Set(['field_hlc', 'deleted', 'photo_keys']);
@@ -82,8 +212,11 @@ function hiveApiaryMap(data: Dataset): Record<string, string> {
 export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
@@ -113,16 +246,20 @@ export async function exportJSON() {
     exported_at: new Date().toISOString(),
     data
   };
-  downloadBlob(`openbeehive-backup-${stamp()}.json`,
-    new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' }));
+  downloadBlob(
+    `openbeehive-backup-${stamp()}.json`,
+    new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
+  );
 }
 
 export async function exportCSVZip() {
   const data = await gatherAll();
-  const entries = ENTITIES
-    .filter((e) => (data[e.table] ?? []).length)
-    .map((e) => ({ name: `${e.table}.csv`, data: toCSV(e.cols, data[e.table]) }));
-  if (!entries.length) entries.push({ name: 'apiary.csv', data: toCSV(ENTITIES[0].cols, []) });
+  const entries = ENTITIES.filter((e) => (data[e.table] ?? []).length).map((e) => ({
+    name: `${e.table}.csv`,
+    data: toCSV(e.cols, data[e.table] ?? [])
+  }));
+  if (!entries.length)
+    entries.push({ name: 'apiary.csv', data: toCSV(ENTITIES[0]?.cols ?? [], []) });
   downloadBlob(`openbeehive-csv-${stamp()}.zip`, buildZip(entries));
 }
 
@@ -136,7 +273,10 @@ export async function exportXLSX() {
 }
 
 const xmlEsc = (s: any) =>
-  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 
 export async function exportBeeXML() {
   const data = await gatherAll();
@@ -157,27 +297,40 @@ export async function exportBeeXML() {
   ];
   for (const a of data.apiary ?? []) {
     lines.push(`  <apiary id="${xmlEsc(a.id)}">`);
-    lines.push(`    ${field('name', a.name)}${field('latitude', a.lat)}${field('longitude', a.lng)}${field('address', a.address)}${field('note', a.note)}`);
+    lines.push(
+      `    ${field('name', a.name)}${field('latitude', a.lat)}${field('longitude', a.lng)}${field('address', a.address)}${field('note', a.note)}`
+    );
     for (const h of hivesByApiary[a.id] ?? []) {
       lines.push(`    <hive id="${xmlEsc(h.id)}">`);
-      lines.push(`      ${field('name', h.name)}${field('type', h.type)}${field('status', h.status)}${field('note', h.note)}`);
+      lines.push(
+        `      ${field('name', h.name)}${field('type', h.type)}${field('status', h.status)}${field('note', h.note)}`
+      );
       for (const q of queensByHive[h.id] ?? [])
-        lines.push(`      <queen id="${xmlEsc(q.id)}">${field('year', q.year)}${field('marking', q.marking)}${field('origin', q.origin)}${field('active', q.active)}</queen>`);
+        lines.push(
+          `      <queen id="${xmlEsc(q.id)}">${field('year', q.year)}${field('marking', q.marking)}${field('origin', q.origin)}${field('active', q.active)}</queen>`
+        );
       for (const i of inspByHive[h.id] ?? [])
-        lines.push(`      <inspection id="${xmlEsc(i.id)}">${field('date', i.date)}${field('tempHive', i.temp_hive)}${field('tempOutside', i.temp_outside)}${field('humidityHive', i.humidity_hive)}${field('humidityOutside', i.humidity_outside)}${field('varroa', i.varroa)}${field('note', i.note)}</inspection>`);
+        lines.push(
+          `      <inspection id="${xmlEsc(i.id)}">${field('date', i.date)}${field('tempHive', i.temp_hive)}${field('tempOutside', i.temp_outside)}${field('humidityHive', i.humidity_hive)}${field('humidityOutside', i.humidity_outside)}${field('varroa', i.varroa)}${field('note', i.note)}</inspection>`
+        );
       lines.push('    </hive>');
     }
     lines.push('  </apiary>');
   }
   lines.push('</beexml>');
-  downloadBlob(`openbeehive-beexml-${stamp()}.xml`,
-    new Blob([lines.join('\n')], { type: 'application/xml' }));
+  downloadBlob(
+    `openbeehive-beexml-${stamp()}.xml`,
+    new Blob([lines.join('\n')], { type: 'application/xml' })
+  );
 }
 
 // --- PDF report (via the browser's print / "Save as PDF") ---
 
 const HTML_ESC = (s: any) =>
-  String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 
 const MARKING = ['', 'White', 'Yellow', 'Red', 'Green', 'Blue'];
 
@@ -195,22 +348,29 @@ export async function printReport() {
     if (!cur || String(i.date) > String(cur.date)) lastInspByHive[i.hive_id] = i;
   }
 
-  const rows = (apiaryId: string) => (hivesByApiary[apiaryId] ?? []).map((h) => {
-    const q = queenByHive[h.id];
-    const i = lastInspByHive[h.id] ?? {};
-    const climate = [
-      i.temp_hive != null ? `${i.temp_hive}°C` : '',
-      i.humidity_hive != null ? `${i.humidity_hive}%` : '',
-      i.weight_kg ? `${i.weight_kg}kg` : ''
-    ].filter(Boolean).join(' · ');
-    return `<tr><td>${HTML_ESC(h.name)}</td>
+  const rows = (apiaryId: string) =>
+    (hivesByApiary[apiaryId] ?? [])
+      .map((h) => {
+        const q = queenByHive[h.id];
+        const i = lastInspByHive[h.id] ?? {};
+        const climate = [
+          i.temp_hive != null ? `${i.temp_hive}°C` : '',
+          i.humidity_hive != null ? `${i.humidity_hive}%` : '',
+          i.weight_kg ? `${i.weight_kg}kg` : ''
+        ]
+          .filter(Boolean)
+          .join(' · ');
+        return `<tr><td>${HTML_ESC(h.name)}</td>
       <td>${q ? HTML_ESC((q.year || '') + ' ' + (MARKING[q.marking] || '')) : '—'}</td>
       <td>${HTML_ESC(i.date ? String(i.date).slice(0, 10) : '—')}</td>
       <td>${HTML_ESC(climate || '—')}</td>
       <td>${HTML_ESC(i.note ?? '')}</td></tr>`;
-  }).join('');
+      })
+      .join('');
 
-  const sections = (data.apiary ?? []).map((a) => `
+  const sections = (data.apiary ?? [])
+    .map(
+      (a) => `
     <section>
       <h2>${HTML_ESC(a.name)}</h2>
       ${a.address ? `<p class="addr">${HTML_ESC(a.address)}</p>` : ''}
@@ -218,7 +378,9 @@ export async function printReport() {
         <thead><tr><th>Hive</th><th>Queen</th><th>Last visit</th><th>Climate / weight</th><th>Note</th></tr></thead>
         <tbody>${rows(a.id) || '<tr><td colspan="5">No hives.</td></tr>'}</tbody>
       </table>
-    </section>`).join('');
+    </section>`
+    )
+    .join('');
 
   const html = `<!doctype html><html><head><meta charset="utf-8">
     <title>Openbeehive report</title>
@@ -287,22 +449,56 @@ export async function importJSON(text: string): Promise<ImportResult> {
 export async function importBeeXML(text: string): Promise<ImportResult> {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
   if (doc.querySelector('parsererror')) throw new Error('Invalid XML.');
-  const t = (el: Element | null, tag: string) => el?.querySelector(':scope > ' + tag)?.textContent?.trim() ?? '';
-  const data: Dataset = { apiary: [], hive: [], queen: [], inspection: [] };
+  const t = (el: Element | null, tag: string) =>
+    el?.querySelector(':scope > ' + tag)?.textContent?.trim() ?? '';
+  const data = {
+    apiary: [] as Row[],
+    hive: [] as Row[],
+    queen: [] as Row[],
+    inspection: [] as Row[]
+  } satisfies Dataset;
 
   for (const a of Array.from(doc.querySelectorAll('beexml > apiary, apiary'))) {
     const aid = a.getAttribute('id') || crypto.randomUUID();
-    data.apiary.push({ id: aid, name: t(a, 'name'), lat: +t(a, 'latitude') || 0, lng: +t(a, 'longitude') || 0, address: t(a, 'address'), note: t(a, 'note') });
+    data.apiary.push({
+      id: aid,
+      name: t(a, 'name'),
+      lat: +t(a, 'latitude') || 0,
+      lng: +t(a, 'longitude') || 0,
+      address: t(a, 'address'),
+      note: t(a, 'note')
+    });
     for (const h of Array.from(a.querySelectorAll(':scope > hive'))) {
       const hid = h.getAttribute('id') || crypto.randomUUID();
-      data.hive.push({ id: hid, apiary_id: aid, name: t(h, 'name'), type: +t(h, 'type') || 0, status: +t(h, 'status') || 0, note: t(h, 'note') });
+      data.hive.push({
+        id: hid,
+        apiary_id: aid,
+        name: t(h, 'name'),
+        type: +t(h, 'type') || 0,
+        status: +t(h, 'status') || 0,
+        note: t(h, 'note')
+      });
       for (const q of Array.from(h.querySelectorAll(':scope > queen')))
-        data.queen.push({ id: q.getAttribute('id') || crypto.randomUUID(), hive_id: hid, year: +t(q, 'year') || 0, marking: +t(q, 'marking') || 0, origin: t(q, 'origin'), active: +t(q, 'active') || 0 });
+        data.queen.push({
+          id: q.getAttribute('id') || crypto.randomUUID(),
+          hive_id: hid,
+          year: +t(q, 'year') || 0,
+          marking: +t(q, 'marking') || 0,
+          origin: t(q, 'origin'),
+          active: +t(q, 'active') || 0
+        });
       for (const i of Array.from(h.querySelectorAll(':scope > inspection')))
-        data.inspection.push({ id: i.getAttribute('id') || crypto.randomUUID(), hive_id: hid, date: t(i, 'date'),
-          temp_hive: num(t(i, 'tempHive')), temp_outside: num(t(i, 'tempOutside')),
-          humidity_hive: num(t(i, 'humidityHive')), humidity_outside: num(t(i, 'humidityOutside')),
-          varroa: t(i, 'varroa'), note: t(i, 'note') });
+        data.inspection.push({
+          id: i.getAttribute('id') || crypto.randomUUID(),
+          hive_id: hid,
+          date: t(i, 'date'),
+          temp_hive: num(t(i, 'tempHive')),
+          temp_outside: num(t(i, 'tempOutside')),
+          humidity_hive: num(t(i, 'humidityHive')),
+          humidity_outside: num(t(i, 'humidityOutside')),
+          varroa: t(i, 'varroa'),
+          note: t(i, 'note')
+        });
     }
   }
   return importDataset(data);
@@ -313,20 +509,37 @@ const num = (s: string) => (s === '' || s == null ? null : Number(s));
 // --- generic beekeeping CSV import (migration from other apps) ---
 
 function parseCSV(text: string): string[][] {
-  const rows: string[][] = []; let row: string[] = []; let cur = ''; let q = false;
-  text = text.replace(/^﻿/, '');
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cur = '';
+  let q = false;
+  text = text.replace(/^\uFEFF/, '');
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (q) {
-      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
-      else cur += ch;
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else q = false;
+      } else cur += ch;
     } else if (ch === '"') q = true;
-    else if (ch === ',') { row.push(cur); cur = ''; }
-    else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
-    else if (ch === '\r') { /* skip */ }
-    else cur += ch;
+    else if (ch === ',') {
+      row.push(cur);
+      cur = '';
+    } else if (ch === '\n') {
+      row.push(cur);
+      rows.push(row);
+      row = [];
+      cur = '';
+    } else if (ch === '\r') {
+      /* skip */
+    } else cur += ch;
   }
-  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  if (cur !== '' || row.length) {
+    row.push(cur);
+    rows.push(row);
+  }
   return rows.filter((r) => r.some((c) => c.trim() !== ''));
 }
 
@@ -354,7 +567,10 @@ function resolveHeaders(headers: string[]): Record<number, string> {
   headers.forEach((h, idx) => {
     const n = norm(h);
     for (const [field, names] of Object.entries(ALIASES))
-      if (names.includes(n)) { map[idx] = field; break; }
+      if (names.includes(n)) {
+        map[idx] = field;
+        break;
+      }
   });
   return map;
 }
@@ -363,47 +579,77 @@ function resolveHeaders(headers: string[]): Record<number, string> {
 export async function importBeekeepingCSV(text: string): Promise<ImportResult> {
   const rows = parseCSV(text);
   if (rows.length < 2) throw new Error('CSV has no data rows.');
-  const colMap = resolveHeaders(rows[0]);
+  const header = rows[0];
+  if (!header) throw new Error('CSV has no header row.');
+  const colMap = resolveHeaders(header);
   const fields = Object.values(colMap);
   if (!fields.includes('hive') && !fields.includes('date'))
     throw new Error('Could not recognise this CSV. Expected at least a hive or date column.');
 
-  const data: Dataset = { apiary: [], hive: [], queen: [], placement: [], inspection: [], harvest: [], task: [], event: [] };
+  const data = {
+    apiary: [] as Row[],
+    hive: [] as Row[],
+    queen: [] as Row[],
+    placement: [] as Row[],
+    inspection: [] as Row[],
+    harvest: [] as Row[],
+    task: [] as Row[],
+    event: [] as Row[]
+  } satisfies Dataset;
   const apiaryByName: Record<string, string> = {};
   const hiveByName: Record<string, string> = {};
   const DEFAULT_APIARY = 'Imported';
 
-  const ensureApiary = (name: string) => {
+  const ensureApiary = (name: string): string => {
     name = name || DEFAULT_APIARY;
-    if (!apiaryByName[name]) {
-      const id = crypto.randomUUID();
+    let id = apiaryByName[name];
+    if (!id) {
+      id = crypto.randomUUID();
       apiaryByName[name] = id;
       data.apiary.push({ id, name });
     }
-    return apiaryByName[name];
+    return id;
   };
-  const ensureHive = (name: string, apiaryId: string) => {
+  const ensureHive = (name: string, apiaryId: string): string => {
     const key = apiaryId + '/' + name;
-    if (!hiveByName[key]) {
-      const id = crypto.randomUUID();
+    let id = hiveByName[key];
+    if (!id) {
+      id = crypto.randomUUID();
       hiveByName[key] = id;
       data.hive.push({ id, apiary_id: apiaryId, name: name || 'Hive' });
     }
-    return hiveByName[key];
+    return id;
   };
 
   for (let r = 1; r < rows.length; r++) {
     const get = (f: string) => {
       const idx = Object.keys(colMap).find((k) => colMap[+k] === f);
-      return idx !== undefined ? rows[r][+idx]?.trim() ?? '' : '';
+      return idx !== undefined ? (rows[r]?.[+idx]?.trim() ?? '') : '';
     };
     const apiaryId = ensureApiary(get('apiary'));
     const hiveId = ensureHive(get('hive') || 'Hive ' + r, apiaryId);
     const insp: Row = { id: crypto.randomUUID(), hive_id: hiveId };
     let any = false;
-    for (const f of ['date', 'weather', 'note', 'varroa']) { const v = get(f); if (v) { insp[f] = v; any = true; } }
-    for (const f of ['temp_hive', 'temp_outside', 'humidity_hive', 'humidity_outside', 'weight_kg', 'honey_kg']) {
-      const v = get(f); if (v !== '' && !isNaN(+v)) { insp[f] = +v; any = true; }
+    for (const f of ['date', 'weather', 'note', 'varroa']) {
+      const v = get(f);
+      if (v) {
+        insp[f] = v;
+        any = true;
+      }
+    }
+    for (const f of [
+      'temp_hive',
+      'temp_outside',
+      'humidity_hive',
+      'humidity_outside',
+      'weight_kg',
+      'honey_kg'
+    ]) {
+      const v = get(f);
+      if (v !== '' && !isNaN(+v)) {
+        insp[f] = +v;
+        any = true;
+      }
     }
     if (any) data.inspection.push(insp);
   }
