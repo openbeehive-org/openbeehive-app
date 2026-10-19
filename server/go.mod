@@ -1,6 +1,6 @@
 module github.com/openbeehive-org/openbeehive-app/server
 
-go 1.26.0
+go 1.26.7
 
 require (
 	connectrpc.com/connect v1.20.0
