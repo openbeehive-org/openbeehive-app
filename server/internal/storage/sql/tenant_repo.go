@@ -54,7 +54,7 @@ func (r *orgRepo) Delete(ctx context.Context, id string) error {
 	}
 	for _, q := range stmts {
 		if _, err := tx.ExecContext(ctx, tx.Rebind(q), id); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return err
 		}
 	}

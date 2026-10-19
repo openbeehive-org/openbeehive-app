@@ -60,7 +60,7 @@ func (w *Writer) Run(ctx context.Context, id auth.Identity, fn func(t *txWriter)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := fn(&txWriter{ctx: ctx, tx: tx, w: w, id: id}); err != nil {
 		return err
 	}
@@ -101,14 +101,14 @@ func (t *txWriter) apply(ch *wv1.Change) error {
 }
 
 // emit records an immutable history event with frozen context.
-func (t *txWriter) emit(typ int, scope string, e eventInput) (string, error) {
+func (t *txWriter) emit(typ int, scope string, e eventInput) error {
 	id := uuid.NewString()
 	detail := e.detail
 	if detail == nil {
 		detail = map[string]any{}
 	}
 	dj, _ := json.Marshal(detail)
-	return id, t.upsert("event", id, scope, map[string]any{
+	return t.upsert("event", id, scope, map[string]any{
 		"organization_id": t.id.OrgID, "scope_id": scope, "type": typ, "date": e.date,
 		"apiary_id": e.apiaryID, "hive_id": e.hiveID, "queen_id": e.queenID,
 		"ref_entity": e.refEntity, "ref_id": e.refID, "title": e.title,
@@ -236,7 +236,7 @@ func (t *txWriter) createHive(apiaryID, name string, typ, boxes int32, colonyOri
 	}); err != nil {
 		return "", err
 	}
-	_, err := t.emit(evCreated, apiaryID, eventInput{date: ts, apiaryID: apiaryID, hiveID: id, title: name})
+	err := t.emit(evCreated, apiaryID, eventInput{date: ts, apiaryID: apiaryID, hiveID: id, title: name})
 	return id, err
 }
 
@@ -262,7 +262,7 @@ func (t *txWriter) moveHive(hiveID, from, to, ts string) error {
 	if err := t.upsert("hive", hiveID, to, map[string]any{"apiary_id": to, "updated_at": ts}); err != nil {
 		return err
 	}
-	_, err = t.emit(evMoved, to, eventInput{date: ts, apiaryID: to, hiveID: hiveID,
+	err = t.emit(evMoved, to, eventInput{date: ts, apiaryID: to, hiveID: hiveID,
 		detail: map[string]string{"from": from, "to": to}})
 	return err
 }
@@ -282,7 +282,7 @@ func (t *txWriter) setQueen(hiveID, scope string, year, marking int32, origin, b
 		if err := t.upsert("queen", old, scope, map[string]any{"active": 0, "replaced_at": ts}); err != nil {
 			return "", err
 		}
-		if _, err := t.emit(evQueenReplaced, scope, eventInput{date: ts, hiveID: hiveID, queenID: old}); err != nil {
+		if err := t.emit(evQueenReplaced, scope, eventInput{date: ts, hiveID: hiveID, queenID: old}); err != nil {
 			return "", err
 		}
 	}
@@ -295,7 +295,7 @@ func (t *txWriter) setQueen(hiveID, scope string, year, marking int32, origin, b
 	}); err != nil {
 		return "", err
 	}
-	_, err = t.emit(evQueenIntroduced, scope, eventInput{date: ts, hiveID: hiveID, queenID: id,
+	err = t.emit(evQueenIntroduced, scope, eventInput{date: ts, hiveID: hiveID, queenID: id,
 		title: "Queen " + itoa(int64(year))})
 	return id, err
 }
@@ -315,7 +315,7 @@ func (t *txWriter) recordInspection(hiveID, date string, fields map[string]any) 
 	if err := t.upsert("inspection", id, apiaryID, fields); err != nil {
 		return "", err
 	}
-	_, err = t.emit(evInspection, apiaryID, eventInput{date: date, apiaryID: apiaryID, hiveID: hiveID,
+	err = t.emit(evInspection, apiaryID, eventInput{date: date, apiaryID: apiaryID, hiveID: hiveID,
 		queenID: queenID, refEntity: "inspection", refID: id, title: "Inspection"})
 	return id, err
 }
@@ -342,7 +342,7 @@ func (t *txWriter) recordHarvest(hiveID, date string, fields map[string]any) (st
 	if variety == "" {
 		variety = "Honey"
 	}
-	_, err = t.emit(evHarvest, apiaryID, eventInput{date: date, apiaryID: apiaryID, hiveID: hiveID,
+	err = t.emit(evHarvest, apiaryID, eventInput{date: date, apiaryID: apiaryID, hiveID: hiveID,
 		queenID: queenID, refEntity: "harvest", refID: id, amountKg: kg,
 		title: strconv.FormatFloat(kg, 'f', -1, 64) + " kg " + variety})
 	return id, err
@@ -364,7 +364,7 @@ func (t *txWriter) recordTreatment(hiveID, date string, fields map[string]any) (
 	if err := t.upsert("treatment", id, apiaryID, fields); err != nil {
 		return "", err
 	}
-	_, err = t.emit(evTreatment, apiaryID, eventInput{date: date, apiaryID: apiaryID, hiveID: hiveID,
+	err = t.emit(evTreatment, apiaryID, eventInput{date: date, apiaryID: apiaryID, hiveID: hiveID,
 		queenID: queenID, refEntity: "treatment", refID: id, title: rs(fields["product"])})
 	return id, err
 }

@@ -37,24 +37,9 @@ func (s *TaskService) CreateTask(ctx context.Context, req *connect.Request[wv1.C
 	}
 	var out map[string]any
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		apiaryID := m.ApiaryId
-		if m.HiveId != "" {
-			h, err := t.hive(m.HiveId)
-			if err != nil {
-				return err
-			}
-			if apiaryID == "" {
-				apiaryID = rs(h["apiary_id"])
-			}
-		}
-		if apiaryID != "" {
-			ok, err := t.apiaryExists(apiaryID)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return invalid("apiary_id does not exist")
-			}
+		apiaryID, err := t.resolveApiary(m.HiveId, m.ApiaryId)
+		if err != nil {
+			return err
 		}
 		tid := uuid.NewString()
 		if err := t.upsert("task", tid, taskScope(id.UserID, apiaryID), map[string]any{
@@ -64,7 +49,6 @@ func (s *TaskService) CreateTask(ctx context.Context, req *connect.Request[wv1.C
 		}); err != nil {
 			return err
 		}
-		var err error
 		out, err = t.row("task", tid)
 		return err
 	})
@@ -136,4 +120,29 @@ func (s *TaskService) DeleteTask(ctx context.Context, req *connect.Request[wv1.D
 		return nil, writeErr(err)
 	}
 	return connect.NewResponse(&wv1.DeleteTaskResponse{}), nil
+}
+
+// resolveApiary returns the apiary a task belongs to: the hive's when a hive
+// is given and no apiary, else the given one, which must exist.
+func (t *txWriter) resolveApiary(hiveID, apiaryID string) (string, error) {
+	if hiveID != "" {
+		h, err := t.hive(hiveID)
+		if err != nil {
+			return "", err
+		}
+		if apiaryID == "" {
+			apiaryID = rs(h["apiary_id"])
+		}
+	}
+	if apiaryID == "" {
+		return "", nil
+	}
+	ok, err := t.apiaryExists(apiaryID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", invalid("apiary_id does not exist")
+	}
+	return apiaryID, nil
 }

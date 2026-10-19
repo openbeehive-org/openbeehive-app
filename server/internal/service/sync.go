@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -195,9 +196,9 @@ func (s *SyncService) Pull(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
-	scopes, err := s.accessibleScopes(ctx, id.UserID, id.OrgID)
-	if err != nil || len(scopes) == 0 {
-		return connect.NewResponse(&wv1.PullResponse{NextCursor: req.Msg.Cursor}), err
+	scopes := s.accessibleScopes(ctx, id.UserID, id.OrgID)
+	if len(scopes) == 0 {
+		return connect.NewResponse(&wv1.PullResponse{NextCursor: req.Msg.Cursor}), nil
 	}
 	limit := int(req.Msg.Limit)
 	if limit <= 0 || limit > 500 {
@@ -212,7 +213,7 @@ func (s *SyncService) Pull(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*wv1.Change
 	var seqs []int64
@@ -258,10 +259,7 @@ func (s *SyncService) Push(
 	// Writable scopes for this user: same set Pull reads from. Changes outside
 	// it are rejected — otherwise any authenticated user could inject rows into
 	// a foreign tenant's change feed by picking its scope id.
-	scopes, err := s.accessibleScopes(ctx, id.UserID, id.OrgID)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
+	scopes := s.accessibleScopes(ctx, id.UserID, id.OrgID)
 	scopeSet := make(map[string]bool, len(scopes))
 	for _, sc := range scopes {
 		scopeSet[sc] = true
@@ -271,7 +269,7 @@ func (s *SyncService) Push(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, ch := range req.Msg.Changes {
 		s.hlc.Recv(ch.Hlc) // sync clock with origin time
@@ -280,27 +278,11 @@ func (s *SyncService) Push(
 		if !ok {
 			continue
 		}
-		if !scopeSet[ch.ScopeId] {
-			// A new apiary opens its own scope (scope id = apiary id); its
-			// tenant is still enforced against the row in applyChange.
-			if ch.Entity == "apiary" && ch.ScopeId == ch.EntityId {
-				scopeSet[ch.ScopeId] = true
-			} else {
-				return nil, connect.NewError(connect.CodePermissionDenied,
-					fmt.Errorf("scope %q is not writable for this user", ch.ScopeId))
-			}
+		if err := allowScope(scopeSet, ch); err != nil {
+			return nil, err
 		}
-		// Per-field LWW + OR-Set merge. There is no row-level stale gate:
-		// applyChange drops stale fields individually and keeps newer
-		// fields written by other devices.
-		if err := applyChange(ctx, tx, spec, ch, id.OrgID); err != nil {
-			if errors.Is(err, errWrongTenant) {
-				return nil, connect.NewError(connect.CodePermissionDenied, err)
-			}
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		if err := appendChangeLog(ctx, tx, ch, id.OrgID); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
+		if err := applyLogged(ctx, tx, spec, ch, id.OrgID); err != nil {
+			return nil, err
 		}
 	}
 	var cursor int64
@@ -311,6 +293,37 @@ func (s *SyncService) Push(
 	return connect.NewResponse(&wv1.PushResponse{
 		ServerCursor: seqToCursor(cursor), Conflicts: nil,
 	}), nil
+}
+
+// allowScope rejects a change outside the user's writable scopes. A new apiary
+// opens its own scope (scope id = apiary id); its tenant is still enforced
+// against the row in applyChange.
+func allowScope(scopeSet map[string]bool, ch *wv1.Change) error {
+	if scopeSet[ch.ScopeId] {
+		return nil
+	}
+	if ch.Entity == "apiary" && ch.ScopeId == ch.EntityId {
+		scopeSet[ch.ScopeId] = true
+		return nil
+	}
+	return connect.NewError(connect.CodePermissionDenied,
+		fmt.Errorf("scope %q is not writable for this user", ch.ScopeId))
+}
+
+// applyLogged merges one change (per-field LWW + OR-Set; stale fields are
+// dropped individually, newer fields from other devices are kept) and appends
+// it to the change log.
+func applyLogged(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) error {
+	if err := applyChange(ctx, tx, spec, ch, orgID); err != nil {
+		if errors.Is(err, errWrongTenant) {
+			return connect.NewError(connect.CodePermissionDenied, err)
+		}
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	if err := appendChangeLog(ctx, tx, ch, orgID); err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	return nil
 }
 
 // --- Subscribe: optional live channel. Polls the global change cursor and
@@ -381,7 +394,7 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	if exists {
 		_ = rows.MapScan(row)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	if exists {
 		if rowOrg := asString(row["organization_id"]); rowOrg != "" && rowOrg != orgID {
@@ -442,32 +455,19 @@ func updateMerge(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 		if c == "id" || c == "field_hlc" {
 			continue
 		}
-		if isSetCol(spec, c) {
+		switch {
+		case isSetCol(spec, c):
 			// OR-Set: union adds/removes from the delta (merge, not LWW).
 			os := wsync.ParseORSet(asString(row[c]))
 			if d, ok := v.(map[string]any); ok {
-				for _, e := range toStrings(d["add"]) {
-					os.Add(e, ch.Hlc)
-				}
-				removedTags, _ := d["removed_tags"].(map[string]any)
-				for _, e := range toStrings(d["remove"]) {
-					// Newer deltas carry the origin's observed tags; only those
-					// are tombstoned (add-wins). Old deltas remove all present.
-					if tags := toStrings(removedTags[e]); len(tags) > 0 {
-						os.RemoveTags(e, tags)
-					} else {
-						os.Remove(e)
-					}
-				}
+				mergeORSetDelta(os, d, ch.Hlc)
 			}
 			set = append(set, c+" = ?")
 			args = append(args, os.Marshal())
-		} else if inCols(spec, c) {
+		case inCols(spec, c) && fc.Accept(c, ch.Hlc):
 			// Scalar: apply only if ch.Hlc is newer than the field clock.
-			if fc.Accept(c, ch.Hlc) {
-				set = append(set, c+" = ?")
-				args = append(args, v)
-			}
+			set = append(set, c+" = ?")
+			args = append(args, v)
 		}
 	}
 	if len(set) == 0 {
@@ -479,6 +479,23 @@ func updateMerge(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	q := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", spec.table, strings.Join(set, ", "))
 	_, err := tx.ExecContext(ctx, tx.Rebind(q), args...)
 	return err
+}
+
+// mergeORSetDelta applies an add/remove delta to an OR-Set. Newer deltas carry
+// the origin's observed tags; only those are tombstoned (add-wins). Old deltas
+// remove all present.
+func mergeORSetDelta(os wsync.ORSet, d map[string]any, hlc string) {
+	for _, e := range toStrings(d["add"]) {
+		os.Add(e, hlc)
+	}
+	removedTags, _ := d["removed_tags"].(map[string]any)
+	for _, e := range toStrings(d["remove"]) {
+		if tags := toStrings(removedTags[e]); len(tags) > 0 {
+			os.RemoveTags(e, tags)
+		} else {
+			os.Remove(e)
+		}
+	}
 }
 
 func appendChangeLog(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change, orgID string) error {
@@ -498,7 +515,7 @@ func appendChangeLog(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change, orgID str
 }
 
 // accessibleScopes = personal scope + own apiaries + shared apiaries.
-func (s *SyncService) accessibleScopes(ctx context.Context, userID, orgID string) ([]string, error) {
+func (s *SyncService) accessibleScopes(ctx context.Context, userID, orgID string) []string {
 	scopes := []string{"user:" + userID}
 	var owned []string
 	_ = s.db.SelectContext(ctx, &owned, s.db.Rebind(
@@ -507,12 +524,12 @@ func (s *SyncService) accessibleScopes(ctx context.Context, userID, orgID string
 	var shared []string
 	_ = s.db.SelectContext(ctx, &shared, s.db.Rebind(
 		`SELECT apiary_id FROM apiary_share WHERE benutzer_id = ?`), userID)
-	return append(scopes, shared...), nil
+	return append(scopes, shared...)
 }
 
 func cursorToSeq(c string) int64 {
-	var n int64
-	fmt.Sscanf(c, "%d", &n)
+	n, _ := strconv.ParseInt(c, 10, 64)
 	return n
 }
-func seqToCursor(seq int64) string { return fmt.Sprintf("%d", seq) }
+
+func seqToCursor(seq int64) string { return strconv.FormatInt(seq, 10) }

@@ -302,28 +302,15 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 	// commits so a failed delete never loses photos.
 	photoKeys, err := t.orgs.PhotoKeysByOrg(r.Context(), orgID)
 	if err != nil {
-		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err)
+		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err) //nolint:gosec // G706: orgID is an existing organization id (requireOwner)
 	}
 	if err := t.orgs.Delete(r.Context(), orgID); err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	log.Printf("tenant: %s deleted by %s", orgID, id.UserID)
+	log.Printf("tenant: %s deleted by %s", orgID, id.UserID) //nolint:gosec // G706: ids come from the verified session and the owner check
 	if t.blobs != nil && len(photoKeys) > 0 {
-		// Best-effort in the background: the rows are already gone, so a blob
-		// failure only leaves an orphan (logged), never a broken tenant.
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-			failed := 0
-			for _, key := range photoKeys {
-				if err := t.blobs.Delete(ctx, key); err != nil {
-					failed++
-					log.Printf("tenant: %s: blob %s not deleted: %v", orgID, key, err)
-				}
-			}
-			log.Printf("tenant: %s: purged %d/%d photo blobs", orgID, len(photoKeys)-failed, len(photoKeys))
-		}()
+		go t.purgeBlobs(orgID, photoKeys) //nolint:gosec // G118: the purge outlives the request on purpose
 	}
 	next := t.prov.ActiveOrg(r.Context(), id.UserID)
 	if next == "" {
@@ -335,6 +322,22 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	tok := t.reissue(w, id, next)
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "active_org": next, "token": tok})
+}
+
+// purgeBlobs deletes a deleted tenant's photos, best-effort in the background:
+// the rows are already gone, so a blob failure only leaves an orphan (logged),
+// never a broken tenant. Detached from the request on purpose.
+func (t *TenantAPI) purgeBlobs(orgID string, keys []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	failed := 0
+	for _, key := range keys {
+		if err := t.blobs.Delete(ctx, key); err != nil {
+			failed++
+			log.Printf("tenant: %s: blob %s not deleted: %v", orgID, key, err) //nolint:gosec // G706: orgID and key come from our own rows
+		}
+	}
+	log.Printf("tenant: %s: purged %d/%d photo blobs", orgID, len(keys)-failed, len(keys)) //nolint:gosec // G706: orgID is an existing organization id (requireOwner)
 }
 
 type acceptReq struct {

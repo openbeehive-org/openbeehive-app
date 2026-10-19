@@ -39,7 +39,7 @@ func newFixtureStore(t *testing.T) *sqlstore.Store {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	resetSchema(t, store, cfg.DB.Driver)
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -232,7 +232,7 @@ func TestPushAppliesSQLiteClientPayload(t *testing.T) {
 		`SELECT withdrawal_until FROM treatment WHERE id = 'treat-1'`).Scan(&withdrawal); err != nil {
 		t.Fatalf("treatment row: %v", err)
 	}
-	if s, isStr := withdrawal.(string); withdrawal != nil && !(isStr && s == "") {
+	if s, isStr := withdrawal.(string); withdrawal != nil && (!isStr || s != "") {
 		t.Fatalf(`withdrawal_until = %v (%T), want NULL or ""`, withdrawal, withdrawal)
 	}
 

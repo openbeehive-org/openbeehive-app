@@ -42,7 +42,7 @@ func openSQLite(t *testing.T) *Store {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	return s
 }
 
@@ -59,7 +59,7 @@ func openLive(t *testing.T, driver config.DBDriver, envVar string) *Store {
 	if err != nil {
 		t.Fatalf("open %s: %v", driver, err)
 	}
-	t.Cleanup(func() { s.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	resetSchema(t, s)
 	return s
 }

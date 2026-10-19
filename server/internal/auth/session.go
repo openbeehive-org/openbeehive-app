@@ -123,7 +123,7 @@ func (s *SessionManager) SetCookie(w http.ResponseWriter, token string) {
 // LogoutHandler clears the session cookie.
 func (s *SessionManager) LogoutHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", MaxAge: -1})
+		http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

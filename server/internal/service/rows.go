@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -28,7 +29,7 @@ func queryMaps(ctx context.Context, q queryer, query string, args ...any) ([]map
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []map[string]any
 	for rows.Next() {
 		m := map[string]any{}
@@ -174,12 +175,23 @@ func rset(v any) []string {
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
+// i32 narrows to int32, saturating instead of wrapping.
+func i32(n int64) int32 {
+	switch {
+	case n > math.MaxInt32:
+		return math.MaxInt32
+	case n < math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(n)
+}
+
 // --- row -> proto ---
 
 func queenFromRow(r map[string]any) *wv1.Queen {
 	return &wv1.Queen{
 		Id: rs(r["id"]), OrganizationId: rs(r["organization_id"]), HiveId: rs(r["hive_id"]),
-		Year: int32(ri(r["year"])), Marking: wv1.MarkingColor(ri(r["marking"])),
+		Year: i32(ri(r["year"])), Marking: wv1.MarkingColor(i32(ri(r["marking"]))),
 		Origin: rs(r["origin"]), BreederNumber: rs(r["breeder_number"]),
 		IntroducedAt: rt(r["introduced_at"]), ReplacedAt: rt(r["replaced_at"]),
 		Active: rb(r["active"]), Note: rs(r["note"]),
@@ -192,15 +204,15 @@ func inspectionFromRow(r map[string]any) *wv1.Inspection {
 		Id: rs(r["id"]), OrganizationId: rs(r["organization_id"]), HiveId: rs(r["hive_id"]),
 		Date: rt(r["date"]), Weather: rs(r["weather"]),
 		QueenSeen: rb(r["queen_seen"]), EggsSeen: rb(r["eggs_seen"]),
-		Temperament: wv1.Temperament(ri(r["temperament"])), Frames: int32(ri(r["frames"])),
-		Stores: wv1.Stores(ri(r["stores"])), QueenCells: int32(ri(r["queen_cells"])),
+		Temperament: wv1.Temperament(i32(ri(r["temperament"]))), Frames: i32(ri(r["frames"])),
+		Stores: wv1.Stores(i32(ri(r["stores"]))), QueenCells: i32(ri(r["queen_cells"])),
 		Varroa: rs(r["varroa"]), HoneyKg: rf(r["honey_kg"]), Note: rs(r["note"]),
 		PhotoKeys: rset(r["photo_keys"]), CreatedAt: rt(r["created_at"]),
-		BroodFrames: int32(ri(r["brood_frames"])), Calmness: int32(ri(r["calmness"])),
-		FedKg: rf(r["fed_kg"]), FramesAdded: int32(ri(r["frames_added"])),
-		FramesRemoved: int32(ri(r["frames_removed"])), DroneFrameCut: rb(r["drone_frame_cut"]),
+		BroodFrames: i32(ri(r["brood_frames"])), Calmness: i32(ri(r["calmness"])),
+		FedKg: rf(r["fed_kg"]), FramesAdded: i32(ri(r["frames_added"])),
+		FramesRemoved: i32(ri(r["frames_removed"])), DroneFrameCut: rb(r["drone_frame_cut"]),
 		SuperAdded: rb(r["super_added"]), WeightKg: rf(r["weight_kg"]),
-		YoungestLarva: int32(ri(r["youngest_larva"])), CoveredLarva: rb(r["covered_larva"]),
+		YoungestLarva: i32(ri(r["youngest_larva"])), CoveredLarva: rb(r["covered_larva"]),
 		TempHive: rf(r["temp_hive"]), TempOutside: rf(r["temp_outside"]),
 		HumidityHive: rf(r["humidity_hive"]), HumidityOutside: rf(r["humidity_outside"]),
 	}
@@ -210,7 +222,7 @@ func taskFromRow(r map[string]any) *wv1.Task {
 	return &wv1.Task{
 		Id: rs(r["id"]), OrganizationId: rs(r["organization_id"]), Title: rs(r["title"]),
 		HiveId: rs(r["hive_id"]), ApiaryId: rs(r["apiary_id"]), DueAt: rt(r["due_at"]),
-		Done: rb(r["done"]), Priority: wv1.TaskPriority(ri(r["priority"])), Note: rs(r["note"]),
+		Done: rb(r["done"]), Priority: wv1.TaskPriority(i32(ri(r["priority"]))), Note: rs(r["note"]),
 		Recurrence: rs(r["recurrence"]), AssignedTo: rs(r["assigned_to"]), CreatedAt: rt(r["created_at"]),
 	}
 }
@@ -228,7 +240,7 @@ func treatmentFromRow(r map[string]any) *wv1.Treatment {
 func eventFromRow(r map[string]any) *wv1.Event {
 	return &wv1.Event{
 		Id: rs(r["id"]), OrganizationId: rs(r["organization_id"]), ScopeId: rs(r["scope_id"]),
-		Type: wv1.EventType(ri(r["type"])), Date: rt(r["date"]),
+		Type: wv1.EventType(i32(ri(r["type"]))), Date: rt(r["date"]),
 		ApiaryId: rs(r["apiary_id"]), HiveId: rs(r["hive_id"]), QueenId: rs(r["queen_id"]),
 		RefEntity: rs(r["ref_entity"]), RefId: rs(r["ref_id"]), Title: rs(r["title"]),
 		AmountKg: rf(r["amount_kg"]), DetailJson: rs(r["detail"]), AuthorId: rs(r["author_id"]),

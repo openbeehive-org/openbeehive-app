@@ -1,0 +1,42 @@
+version: "2"
+
+formatters:
+  enable: [gofmt, goimports]
+
+linters:
+  default: standard
+  enable:
+    - misspell
+    - unconvert
+    - unparam
+    - gosec
+    - errorlint
+    - gocognit
+    - funlen
+    - dupl
+    - nolintlint
+  settings:
+    gocognit:
+      min-complexity: 20
+    funlen:
+      lines: 80
+      statements: 50
+    # List handlers share one filter + page shape per entity; the threshold sits above that.
+    dupl:
+      threshold: 250
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    errcheck:
+      # Fire-and-forget writes to stdout/stderr and response writers.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+  exclusions:
+    generated: lax
+    paths: [internal/gen]
+    rules:
+      # Tests use fixed credentials, temp files and local URLs by design.
+      - path: _test\.go
+        linters: [gosec, funlen, gocognit, dupl]
