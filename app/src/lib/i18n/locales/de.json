@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "Openbeehive",
-    "tagline": "Imker-Buchführung"
+    "tagline": "Imker-Buchführung",
+    "offline_banner": "Offline: Änderungen werden gespeichert und später synchronisiert."
   },
   "nav": {
     "dashboard": "Übersicht",

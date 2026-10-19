@@ -1,11 +1,12 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { apiaries, hives, tasks as taskRepo } from '$lib/local/repo';
-  import { getDB } from '$lib/local/db';
-  import { honeyByYear } from '$lib/local/history';
-  import { dataVersion, initialSyncPending } from '$lib/local/live';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import Syncing from '$lib/components/Syncing.svelte';
+  import { apiaries, hives, tasks as taskRepo } from '#lib/local/repo.js';
+  import { getDB } from '#lib/local/db.js';
+  import { honeyByYear } from '#lib/local/history.js';
+  import type { ApiaryRow, HiveRow, TaskRow } from './rows.js';
+  import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import Syncing from '#lib/components/Syncing.svelte';
 
   // Local-first dashboard: every figure is read straight from the device DB.
   let stats = $state({
@@ -26,28 +27,29 @@
 
   async function load() {
     const db = await getDB();
-    const apiaryRows = await apiaries.list();
-    const hiveRows = await hives.list();
+    // The repo returns untyped rows; the shapes are those of rows.ts.
+    const apiaryRows = (await apiaries.list()) as ApiaryRow[];
+    const hiveRows = (await hives.list()) as HiveRow[];
     const queenRow = await db.get<{ n: number }>(
       `SELECT COUNT(*) AS n FROM queen WHERE deleted = 0 AND active = 1`
     );
     const year = new Date().getFullYear().toString();
-    const honey = (await honeyByYear()).find((h: any) => h.year === year) as any;
+    const honey = (await honeyByYear()).find((h) => h.year === year);
 
     stats = {
       apiaries: apiaryRows.length,
       hives: hiveRows.length,
       active_queens: queenRow?.n ?? 0,
       open_tasks: await taskRepo.openCount(),
-      honey_kg_season: Math.round(honey?.kg ?? 0)
+      honey_kg_season: Math.round(Number(honey?.kg ?? 0))
     };
 
     const apiaryName: Record<string, string> = Object.fromEntries(
-      apiaryRows.map((a: any) => [a.id, a.name])
+      apiaryRows.map((a) => [a.id, a.name])
     );
     // Hives sorted by how long since their last inspection (oldest first).
     const withLast = await Promise.all(
-      hiveRows.map(async (h: any) => {
+      hiveRows.map(async (h) => {
         const last = await db.get<{ date: string }>(
           `SELECT MAX(date) AS date FROM inspection WHERE deleted = 0 AND hive_id = ?`,
           [h.id]
@@ -63,10 +65,10 @@
     due = withLast.sort((a, b) => (b.days < 0 ? 1 : a.days < 0 ? -1 : b.days - a.days)).slice(0, 5);
 
     const today = new Date().toISOString().slice(0, 10);
-    tasks = (await taskRepo.list())
-      .filter((t: any) => !t.done)
+    tasks = ((await taskRepo.list()) as TaskRow[])
+      .filter((t) => !t.done)
       .slice(0, 5)
-      .map((t: any) => ({
+      .map((t) => ({
         title: t.title,
         due: t.due_at || '',
         overdue: !!t.due_at && t.due_at.slice(0, 10) < today
@@ -216,8 +218,7 @@
     font-weight: 600;
     font-size: 0.85rem;
   }
-  /* Shimmer placeholder in place of a stat number while the local read runs —
-     rendering a hard 0 would claim "you have nothing" before it is known. */
+  /* Shimmer placeholder for a stat number while the local read runs: a hard 0 would claim "you have nothing" before it is known. */
   .stat .n-skl {
     display: inline-block;
     width: 52px;

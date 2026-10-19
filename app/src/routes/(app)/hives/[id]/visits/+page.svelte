@@ -1,12 +1,13 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
-  import { hives, inspections } from '$lib/local/repo';
-  import { dataVersion } from '$lib/local/live';
+  import { hives, inspections } from '#lib/local/repo.js';
+  import type { HiveRow, InspectionRow } from '../../../rows.js';
+  import { dataVersion } from '#lib/local/live.js';
 
-  const id = $page.params.id ?? '';
-  let hive = $state<any>(null);
-  let visits = $state<any[]>([]);
+  const id = page.params.id ?? '';
+  let hive = $state<HiveRow | null>(null);
+  let visits = $state<InspectionRow[]>([]);
   let loaded = $state(false);
 
   async function load() {
@@ -20,9 +21,9 @@
   });
 
   // Same compact summary as the hive page.
-  function chips(i: any): string[] {
+  function chips(i: InspectionRow): string[] {
     const out: string[] = [];
-    if (i.queen_seen) out.push('👑 ' + $_('insp.queen_seen'));
+    if (i.queen_seen) out.push($_('insp.queen_seen'));
     if (i.eggs_seen) out.push($_('insp.eggs_seen'));
     if (i.youngest_larva) out.push(`${$_('insp.youngest_larva')}: ${i.youngest_larva}d`);
     if (i.covered_larva) out.push($_('insp.covered_larva'));
@@ -35,12 +36,12 @@
     if (i.fed_kg) out.push(`${$_('insp.fed_kg')} ${i.fed_kg} kg`);
     if (i.frames_added) out.push(`+${i.frames_added} ${$_('insp.frames')}`);
     if (i.frames_removed) out.push(`−${i.frames_removed} ${$_('insp.frames')}`);
-    if (i.drone_frame_cut) out.push('✂ ' + $_('insp.drone_frame_cut'));
+    if (i.drone_frame_cut) out.push($_('insp.drone_frame_cut'));
     if (i.super_added) out.push($_('insp.super_added'));
     if (i.weight_kg) out.push(`${i.weight_kg} kg`);
-    if (i.honey_kg) out.push(`🍯 ${i.honey_kg} kg`);
-    if (i.temp_hive != null) out.push(`🌡 ${i.temp_hive}°C`);
-    if (i.humidity_hive != null) out.push(`💧 ${i.humidity_hive}%`);
+    if (i.honey_kg) out.push(`${$_('insp.honey_kg')} ${i.honey_kg} kg`);
+    if (i.temp_hive != null) out.push(`${$_('insp.temp_hive')} ${i.temp_hive}°C`);
+    if (i.humidity_hive != null) out.push(`${$_('insp.humidity_hive')} ${i.humidity_hive}%`);
     if (i.varroa) out.push(`${$_('insp.varroa')}: ${i.varroa}`);
     return out;
   }
@@ -50,7 +51,7 @@
   <a class="back" href={`/hives/${id}`}>‹ {hive?.name ?? $_('hives.title')}</a>
 
   {#if !loaded}
-    <p class="muted">…</p>
+    <p class="muted">...</p>
   {:else if !hive}
     <p class="muted">{$_('hives.not_found')}</p>
   {:else}

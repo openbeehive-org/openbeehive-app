@@ -70,7 +70,7 @@ func TestPushORSetRemoveCarriesObservedTags(t *testing.T) {
 }
 
 // TestPushORSetLegacyRemove: deltas from older app versions carry no
-// removed_tags — the server falls back to removing every tag it currently
+// removed_tags, the server falls back to removing every tag it currently
 // observes (pre-existing behavior, kept for compatibility).
 func TestPushORSetLegacyRemove(t *testing.T) {
 	svc := newSyncFixture(t)

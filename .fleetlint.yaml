@@ -2,6 +2,7 @@
 version: 1
 extends:
   - fleetlint:recommended
+  - fleetlint:slop
 facts:
   visibility: public # as the forge reported it at init; update it if the repository changes hands
 # discovered: stacks=[] forge=github visibility=public tier=1 (default) layout=nested release=yes taskrunner=make container=none

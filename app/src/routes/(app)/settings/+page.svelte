@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { _, locale } from 'svelte-i18n';
-  import { changeLanguage, SUPPORTED, LANG_LABELS, type Lang } from '$lib/i18n';
+  import { Check, KeyRound, Printer, Settings } from '@lucide/svelte';
+  import { changeLanguage, SUPPORTED, LANG_LABELS, type Lang } from '#lib/i18n/index.js';
   import {
     exportJSON,
     exportXLSX,
@@ -10,21 +11,21 @@
     printReport,
     importFile,
     type ImportMode
-  } from '$lib/data/portability';
+  } from '#lib/data/portability.js';
   import {
     enrollPasskey,
     listPasskeys,
     deletePasskey,
     passkeysSupported,
     type PasskeyInfo
-  } from '$lib/webauthn';
+  } from '#lib/webauthn.js';
   import {
     listApiKeys,
     createApiKey,
     deleteApiKey,
     type ApiKeyInfo,
     type ApiKeyScope
-  } from '$lib/apikeys';
+  } from '#lib/apikeys.js';
 
   const API = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 
@@ -197,7 +198,7 @@
         if (copied === link) copied = '';
       }, 2000);
     } catch {
-      /* clipboard unavailable (http, permissions) — link stays selectable */
+      /* clipboard unavailable (http, permissions); link stays selectable */
     }
   }
 
@@ -239,7 +240,7 @@
 
   // Persist the new session + active tenant, then reload so the per-tenant local
   // store opens and the sync client re-authenticates for the new tenant.
-  function applyTenant(j: any) {
+  function applyTenant(j: { token?: string; active_org?: string }) {
     if (j?.token) localStorage.setItem('session', j.token);
     if (j?.active_org) localStorage.setItem('obh.orgId', j.active_org);
     location.reload();
@@ -339,7 +340,9 @@
         <button class="lang" class:on={$locale?.startsWith(l)} onclick={() => pick(l)}>
           <span class="code">{l.toUpperCase()}</span>
           <span class="name">{LABELS[l]}</span>
-          {#if $locale?.startsWith(l)}<span class="tick">✓</span>{/if}
+          {#if $locale?.startsWith(l)}<span class="tick"
+              ><Check size={16} aria-hidden="true" /></span
+            >{/if}
         </button>
       {/each}
     </div>
@@ -356,7 +359,7 @@
             <span class="trole"
               >{t.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span
             >
-            {#if t.id === activeOrg}<span class="ttick">✓ {$_('tenant.active')}</span>{/if}
+            {#if t.id === activeOrg}<span class="ttick">{$_('tenant.active')}</span>{/if}
           </button>
         {/each}
       </div>
@@ -375,7 +378,7 @@
           <div class="invite-link">
             <code>{inviteLink}</code>
             <button class="data-btn" onclick={() => copyLink(inviteLink)}>
-              {copied === inviteLink ? '✓ ' + $_('tenant.copied') : $_('tenant.copy_link')}
+              {copied === inviteLink ? $_('tenant.copied') : $_('tenant.copy_link')}
             </button>
           </div>
         {/if}
@@ -395,7 +398,7 @@
                 </div>
                 <div class="iactions">
                   <button class="data-btn" onclick={() => copyLink(i.link)}>
-                    {copied === i.link ? '✓ ' + $_('tenant.copied') : $_('tenant.copy_link')}
+                    {copied === i.link ? $_('tenant.copied') : $_('tenant.copy_link')}
                   </button>
                   <button class="data-btn danger" onclick={() => revokeInvite(i.id)}
                     >{$_('tenant.invite_revoke')}</button
@@ -423,7 +426,9 @@
           {#each passkeys as k (k.id)}
             <li>
               <div class="imeta">
-                <strong>🔑 {k.name || $_('pk.unnamed')}</strong>
+                <strong
+                  ><KeyRound size={16} aria-hidden="true" /> {k.name || $_('pk.unnamed')}</strong
+                >
                 <span class="idate"
                   >{$_('pk.created')}
                   {new Date(k.created_at).toLocaleDateString($locale ?? undefined)}</span
@@ -467,8 +472,11 @@
           {#each apiKeys as k (k.id)}
             <li>
               <div class="imeta">
-                <strong>⚙ {k.name || $_('apikeys.unnamed')}</strong>
-                <code class="akprefix">{k.prefix}…</code>
+                <strong
+                  ><Settings size={16} aria-hidden="true" />
+                  {k.name || $_('apikeys.unnamed')}</strong
+                >
+                <code class="akprefix">{k.prefix}...</code>
                 <span class="trole"
                   >{k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}</span
                 >
@@ -538,8 +546,11 @@
           {#each tenantKeys as k (k.id)}
             <li>
               <div class="imeta">
-                <strong>⚙ {k.name || $_('apikeys.unnamed')}</strong>
-                <code class="akprefix">{k.prefix}…</code>
+                <strong
+                  ><Settings size={16} aria-hidden="true" />
+                  {k.name || $_('apikeys.unnamed')}</strong
+                >
+                <code class="akprefix">{k.prefix}...</code>
                 <span class="trole"
                   >{k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}</span
                 >
@@ -580,7 +591,7 @@
         >⤓ {$_('data.beexml')}</button
       >
       <button class="data-btn" disabled={busy} onclick={() => runExport(printReport)}
-        >🖨 {$_('data.pdf')}</button
+        ><Printer size={16} aria-hidden="true" /> {$_('data.pdf')}</button
       >
     </div>
 
@@ -702,7 +713,10 @@
   }
   .lang .tick {
     color: var(--honey-d);
-    font-weight: 800;
+    display: inline-flex;
+  }
+  .page :global(.lucide-icon) {
+    vertical-align: -0.15em;
   }
 
   .sub {

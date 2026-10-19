@@ -1,14 +1,23 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
-  import { passkeyLogin, passkeysSupported } from '$lib/webauthn';
+  import { KeyRound, Mail } from '@lucide/svelte';
+  import { passkeyLogin, passkeysSupported } from '#lib/webauthn.js';
 
   // Auth endpoints are on the API origin. Empty = same origin (single-binary prod).
   const API = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 
   type Mode = 'loading' | 'signin' | 'signup' | 'verify' | 'single';
+  // JSON body of the auth endpoints (signin/signup/demo-login/accept-invite).
+  type AuthPayload = {
+    token?: string;
+    user_id?: string;
+    active_org?: string;
+    status?: string;
+    error?: string;
+  };
   let mode = $state<Mode>('loading');
   let hasPassword = $state(true);
   let registration = $state(true);
@@ -21,9 +30,9 @@
   let busy = $state(false);
   let error = $state('');
 
-  const justVerified = $derived($page.url.searchParams.get('verified') === '1');
+  const justVerified = $derived(page.url.searchParams.get('verified') === '1');
   // Invite links land here as /login?invite=<token> (see server tenant.go).
-  const inviteToken = $derived($page.url.searchParams.get('invite') ?? '');
+  const inviteToken = $derived(page.url.searchParams.get('invite') ?? '');
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   onMount(async () => {
@@ -42,16 +51,18 @@
         goto('/');
         return;
       }
-      if (inviteToken && hasPassword)
-        mode = 'signup'; // invited: most likely a fresh account
-      else mode = 'signin';
+
+      if (inviteToken && hasPassword) mode = 'signup';
+      else
+        // invited: most likely a fresh account
+        mode = 'signin';
     } catch {
       mode = 'single';
       goto('/');
     }
   });
 
-  function persist(j: any, fallbackEmail = '') {
+  function persist(j: AuthPayload, fallbackEmail = '') {
     if (j.token) localStorage.setItem('session', j.token);
     if (j.user_id) localStorage.setItem('obh.userId', j.user_id);
     if (j.active_org) localStorage.setItem('obh.orgId', j.active_org);
@@ -61,7 +72,7 @@
 
   // Joins the invited tenant right after sign-in/up, so the invite link works in
   // one pass. Returns the (possibly updated) auth payload to persist.
-  async function acceptInvite(j: any) {
+  async function acceptInvite(j: AuthPayload): Promise<AuthPayload> {
     try {
       const r = await fetch(`${API}/auth/accept-invite`, {
         method: 'POST',
@@ -178,23 +189,28 @@
       <p class="muted">{$_('app.tagline')}</p>
 
       {#if inviteToken}
-        <p class="notice">✉️ {$_('auth.invited_banner')}</p>
+        <p class="notice"><Mail size={16} aria-hidden="true" /> {$_('auth.invited_banner')}</p>
       {:else if !registration}
         <p class="notice">{$_('auth.invite_only_banner')}</p>
       {/if}
 
-      {#if justVerified}<p class="ok">{$_('auth.verified_ok')}</p>{/if}
-      {#if error}<p class="err">{error}</p>{/if}
+      {#if justVerified}
+        <p class="ok">{$_('auth.verified_ok')}</p>
+      {/if}
+
+      {#if error}
+        <p class="err">{error}</p>
+      {/if}
 
       {#if demoEnabled}
         <button class="primary demo" onclick={demoLogin} disabled={busy}
-          >🐝 {$_('auth.try_demo')}</button
+          ><img class="logo" src="/favicon.svg" alt="" /> {$_('auth.try_demo')}</button
         >
       {/if}
 
       {#if webauthn && mode === 'signin' && passkeysSupported()}
         <button class="provider pk" onclick={passkeySignin} disabled={busy}
-          >🔑 {$_('auth.passkey_signin')}</button
+          ><KeyRound size={16} aria-hidden="true" /> {$_('auth.passkey_signin')}</button
         >
       {/if}
 
@@ -206,12 +222,16 @@
               <input bind:value={name} autocomplete="name" /></label
             >
           {/if}
-          <label
-            ><span>{$_('auth.email')}</span>
-            <input type="email" bind:value={email} autocomplete="email" required /></label
-          >
-          <label
-            ><span>{$_('auth.password')}</span>
+
+          <label>
+            <span>{$_('auth.email')}</span>
+
+            <input type="email" bind:value={email} autocomplete="email" required />
+          </label>
+
+          <label>
+            <span>{$_('auth.password')}</span>
+
             <input
               type="password"
               bind:value={password}
@@ -298,6 +318,14 @@
     color: var(--moss, #5c6b4a);
     font-weight: 600;
     font-size: 0.88rem;
+  }
+  .wrap :global(.lucide-icon),
+  .wrap .logo {
+    vertical-align: -0.15em;
+  }
+  .logo {
+    width: 18px;
+    height: 18px;
   }
   .notice {
     background: var(--cream, #fbf6ea);

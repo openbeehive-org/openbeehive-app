@@ -4,7 +4,7 @@
 // for statistics (no joins, permanently correct).
 
 import { getDB } from './db';
-import { patch } from './repo';
+import { patch, type InspectionInput } from './repo';
 
 export const EventType = {
   CREATED: 1,
@@ -287,7 +287,7 @@ export async function recordTreatment(input: {
 }
 
 // Inspection with a context event (completes the history).
-export async function recordInspection(hiveId: string, d: any) {
+export async function recordInspection(hiveId: string, d: InspectionInput) {
   const date = d.date ?? now();
   const ctx = await resolveContext(hiveId, date);
   const id = crypto.randomUUID();

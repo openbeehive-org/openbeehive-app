@@ -1,7 +1,17 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
+  import {
+    ArrowLeftRight,
+    Camera,
+    ChartLine,
+    Pencil,
+    Pill,
+    QrCode,
+    Table,
+    Trash2
+  } from '@lucide/svelte';
   import {
     hives,
     queens,
@@ -12,41 +22,50 @@
     markingForYear,
     MARKING_COLORS,
     MARKING_NAMES
-  } from '$lib/local/repo';
+  } from '#lib/local/repo.js';
   import {
     recordInspection,
     setQueen,
     moveHive,
     recordHarvest,
     recordTreatment
-  } from '$lib/local/history';
-  import { dataVersion } from '$lib/local/live';
-  import { fileToThumbnail } from '$lib/image';
-  import QrLabel from '$lib/components/QrLabel.svelte';
+  } from '#lib/local/history.js';
+  import type {
+    ApiaryRow,
+    HarvestRow,
+    HiveRow,
+    InspectionRow,
+    PlacementRow,
+    QueenRow,
+    TreatmentRow
+  } from '../../rows.js';
+  import { dataVersion } from '#lib/local/live.js';
+  import { fileToThumbnail } from '#lib/image.js';
+  import QrLabel from '#lib/components/QrLabel.svelte';
 
-  const id = $page.params.id ?? '';
-  let hive = $state<any>(null);
+  const id = page.params.id ?? '';
+  let hive = $state<HiveRow | null>(null);
   let apiaryName = $state('');
-  let queen = $state<any>(null);
-  let queenLog = $state<any[]>([]);
-  let visits = $state<any[]>([]);
-  let locations = $state<any[]>([]);
-  let allApiaries = $state<any[]>([]);
+  let queen = $state<QueenRow | null>(null);
+  let queenLog = $state<QueenRow[]>([]);
+  let visits = $state<InspectionRow[]>([]);
+  let locations = $state<PlacementRow[]>([]);
+  let allApiaries = $state<ApiaryRow[]>([]);
   let loaded = $state(false);
   let showQr = $state(false);
 
-  // ---- move ----
+  // move
   let moveForm = $state(false);
   let moveTarget = $state('');
   let photoBusy = $state(false);
 
-  // ---- hive edit ----
+  // hive edit
   let editingHive = $state(false);
   let hName = $state('');
   let hType = $state(0);
   let hStatus = $state(1);
 
-  // ---- queen form ----
+  // queen form
   let queenForm = $state(false);
   const thisYear = new Date().getFullYear();
   let qYear = $state(thisYear);
@@ -57,7 +76,7 @@
   let qNote = $state('');
   const effMarking = $derived(qMarkingAuto ? markingForYear(qYear) : qMarking);
 
-  // ---- visit form ----
+  // visit form
   const today = () => new Date().toISOString().slice(0, 10);
   function emptyVisit() {
     return {
@@ -92,8 +111,8 @@
   let v = $state(emptyVisit());
   let vPhotos = $state<string[]>([]);
 
-  // ---- harvest ----
-  let harvestList = $state<any[]>([]);
+  // harvest
+  let harvestList = $state<HarvestRow[]>([]);
   let harvestTotal = $state(0);
   let harvestForm = $state(false);
   function emptyHarvest() {
@@ -109,8 +128,8 @@
   }
   let hv = $state(emptyHarvest());
 
-  // ---- treatments (Bestandsbuch) ----
-  let treatmentList = $state<any[]>([]);
+  // treatments (Bestandsbuch)
+  let treatmentList = $state<TreatmentRow[]>([]);
   let treatmentForm = $state(false);
   function emptyTreatment() {
     return {
@@ -128,7 +147,7 @@
   let tr = $state(emptyTreatment());
 
   // Latest-reading pills (link into the development charts) + capped visit list.
-  const PILL_KEYS: { key: string; label: string; unit?: string; parse?: boolean }[] = [
+  const PILL_KEYS: { key: keyof InspectionRow; label: string; unit?: string; parse?: boolean }[] = [
     { key: 'frames', label: 'insp.frames' },
     { key: 'brood_frames', label: 'insp.brood_frames' },
     { key: 'queen_cells', label: 'insp.queen_cells' },
@@ -140,12 +159,12 @@
     latestVisit
       ? PILL_KEYS.map((p) => ({
           ...p,
-          value: p.parse ? parseFloat(latestVisit[p.key]) : Number(latestVisit[p.key])
+          value: p.parse ? parseFloat(String(latestVisit[p.key] ?? '')) : Number(latestVisit[p.key])
         })).filter((p) => !isNaN(p.value) && p.value > 0)
       : []
   );
-  const recentVisits = $derived(visits.slice(0, 5));
 
+  const recentVisits = $derived(visits.slice(0, 5));
   const TEMPERAMENTS = [1, 2, 3, 4, 5];
   const STORES = [1, 2, 3, 4];
   const CALM = [1, 2, 3, 4];
@@ -161,7 +180,7 @@
       queenLog = await queens.listByHive(id);
       visits = await inspections.listByHive(id);
       locations = await hives.locationHistory(id);
-      allApiaries = await apiaries.list();
+      allApiaries = (await apiaries.list()) as ApiaryRow[];
       harvestList = await harvests.listByHive(id);
       harvestTotal = await harvests.totalByHive(id);
       treatmentList = await treatments.listByHive(id);
@@ -213,7 +232,7 @@
 
   async function onPhoto(e: Event) {
     const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
+    if (!file || !hive) return;
     photoBusy = true;
     try {
       const dataUrl = await fileToThumbnail(file);
@@ -224,16 +243,17 @@
     }
   }
   async function removePhoto() {
+    if (!hive) return;
     await hives.setPhoto(id, hive.apiary_id, '');
     await load();
   }
 
   function openMove() {
-    moveTarget = allApiaries.find((a: any) => a.id !== hive.apiary_id)?.id ?? '';
+    moveTarget = allApiaries.find((a) => a.id !== hive?.apiary_id)?.id ?? '';
     moveForm = true;
   }
   async function doMove() {
-    if (!moveTarget || moveTarget === hive.apiary_id) {
+    if (!hive || !moveTarget || moveTarget === hive.apiary_id) {
       moveForm = false;
       return;
     }
@@ -243,19 +263,20 @@
   }
 
   function startEditHive() {
+    if (!hive) return;
     hName = hive.name;
     hType = hive.type ?? 0;
     hStatus = hive.status ?? 1;
     editingHive = true;
   }
   async function saveHive() {
-    if (!hName.trim()) return;
+    if (!hive || !hName.trim()) return;
     await hives.update(id, hive.apiary_id, { name: hName.trim(), type: hType, status: hStatus });
     editingHive = false;
     await load();
   }
   async function delHive() {
-    if (!confirm($_('common.confirm_delete'))) return;
+    if (!hive || !confirm($_('common.confirm_delete'))) return;
     const back = hive.apiary_id;
     await hives.remove(id, hive.apiary_id);
     await goto(back ? `/apiaries/${back}` : '/hives', { replaceState: true });
@@ -271,6 +292,7 @@
     queenForm = true;
   }
   async function saveQueen() {
+    if (!hive) return;
     await setQueen(id, hive.apiary_id, {
       year: qYear,
       origin: qOrigin.trim(),
@@ -292,6 +314,7 @@
 
   let visitError = $state('');
   async function saveVisit() {
+    if (!hive) return;
     visitError = '';
     try {
       const inspId = await recordInspection(id, {
@@ -333,9 +356,9 @@
   }
 
   // Compact list of chips summarising a recorded visit.
-  function chips(i: any): string[] {
+  function chips(i: InspectionRow): string[] {
     const out: string[] = [];
-    if (i.queen_seen) out.push('👑 ' + $_('insp.queen_seen'));
+    if (i.queen_seen) out.push($_('insp.queen_seen'));
     if (i.eggs_seen) out.push($_('insp.eggs_seen'));
     if (i.youngest_larva) out.push(`${$_('insp.youngest_larva')}: ${i.youngest_larva}d`);
     if (i.covered_larva) out.push($_('insp.covered_larva'));
@@ -348,12 +371,12 @@
     if (i.fed_kg) out.push(`${$_('insp.fed_kg')} ${i.fed_kg} kg`);
     if (i.frames_added) out.push(`+${i.frames_added} ${$_('insp.frames')}`);
     if (i.frames_removed) out.push(`−${i.frames_removed} ${$_('insp.frames')}`);
-    if (i.drone_frame_cut) out.push('✂ ' + $_('insp.drone_frame_cut'));
+    if (i.drone_frame_cut) out.push($_('insp.drone_frame_cut'));
     if (i.super_added) out.push($_('insp.super_added'));
     if (i.weight_kg) out.push(`${i.weight_kg} kg`);
-    if (i.honey_kg) out.push(`🍯 ${i.honey_kg} kg`);
-    if (i.temp_hive != null) out.push(`🌡 ${i.temp_hive}°C`);
-    if (i.humidity_hive != null) out.push(`💧 ${i.humidity_hive}%`);
+    if (i.honey_kg) out.push(`${$_('insp.honey_kg')} ${i.honey_kg} kg`);
+    if (i.temp_hive != null) out.push(`${$_('insp.temp_hive')} ${i.temp_hive}°C`);
+    if (i.humidity_hive != null) out.push(`${$_('insp.humidity_hive')} ${i.humidity_hive}%`);
     if (i.varroa) out.push(`${$_('insp.varroa')}: ${i.varroa}`);
     return out;
   }
@@ -370,7 +393,7 @@
   </a>
 
   {#if !loaded}
-    <p class="muted">…</p>
+    <p class="muted">...</p>
   {:else if !hive}
     <p class="muted">{$_('hives.not_found')}</p>
   {:else}
@@ -380,10 +403,12 @@
           {#if hive.photo}
             <img src={hive.photo} alt={hive.name} />
           {:else}
-            <span class="ph">🐝</span>
+            <img class="ph" src="/favicon.svg" alt="" />
           {/if}
           <input type="file" accept="image/*" onchange={onPhoto} hidden />
-          <span class="cam">{photoBusy ? '…' : '📷'}</span>
+          <span class="cam"
+            >{#if photoBusy}...{:else}<Camera size={12} aria-hidden="true" />{/if}</span
+          >
         </label>
         <div>
           <h1>{hive.name}</h1>
@@ -397,12 +422,29 @@
         </div>
       </div>
       <div class="acts">
-        <a class="icon" href={`/hives/${id}/stockkarte`} title={$_('insp.stockkarte')}>▦</a>
-        <a class="icon" href={`/hives/${id}/stats`} title={$_('stats.title')}>📈</a>
-        <button class="icon" onclick={startEditHive} title={$_('hives.edit')}>✎</button>
-        <button class="icon" onclick={openMove} title={$_('hives.move')}>⇄</button>
-        <button class="icon" onclick={() => (showQr = !showQr)} title="QR">⬚</button>
-        <button class="icon danger" onclick={delHive} title={$_('common.delete')}>🗑</button>
+        <a class="icon" href={`/hives/${id}/stockkarte`} title={$_('insp.stockkarte')}
+          ><Table size={18} aria-hidden="true" /></a
+        >
+
+        <a class="icon" href={`/hives/${id}/stats`} title={$_('stats.title')}
+          ><ChartLine size={18} aria-hidden="true" /></a
+        >
+
+        <button class="icon" onclick={startEditHive} title={$_('hives.edit')}
+          ><Pencil size={18} aria-hidden="true" /></button
+        >
+
+        <button class="icon" onclick={openMove} title={$_('hives.move')}
+          ><ArrowLeftRight size={18} aria-hidden="true" /></button
+        >
+
+        <button class="icon" onclick={() => (showQr = !showQr)} title="QR"
+          ><QrCode size={18} aria-hidden="true" /></button
+        >
+
+        <button class="icon danger" onclick={delHive} title={$_('common.delete')}
+          ><Trash2 size={18} aria-hidden="true" /></button
+        >
       </div>
     </header>
 
@@ -414,7 +456,9 @@
             <strong>{p.value}{p.unit ? ' ' + p.unit : ''}</strong>
           </a>
         {/each}
-        <a class="pill dev" href={`/hives/${id}/stats`}>📈 {$_('stats.title')}</a>
+        <a class="pill dev" href={`/hives/${id}/stats`}
+          ><ChartLine size={16} aria-hidden="true" /> {$_('stats.title')}</a
+        >
       </div>
     {/if}
 
@@ -429,7 +473,7 @@
         <label class="field">
           <span>{$_('hives.move_to')}</span>
           <select bind:value={moveTarget}>
-            {#each allApiaries.filter((a) => a.id !== hive.apiary_id) as a}
+            {#each allApiaries.filter((a) => a.id !== hive?.apiary_id) as a}
               <option value={a.id}>{a.name}</option>
             {/each}
           </select>
@@ -438,6 +482,7 @@
           <button type="button" class="ghost" onclick={() => (moveForm = false)}
             >{$_('common.cancel')}</button
           >
+
           <button type="submit" class="primary" disabled={!moveTarget}>{$_('hives.move')}</button>
         </div>
       </form>
@@ -468,6 +513,7 @@
           <button type="button" class="ghost" onclick={() => (editingHive = false)}
             >{$_('common.cancel')}</button
           >
+
           <button type="submit" class="primary" disabled={!hName.trim()}>{$_('common.save')}</button
           >
         </div>
@@ -498,12 +544,15 @@
           }}
         >
           <div class="grid2">
-            <label class="field"
-              ><span>{$_('queens.year')}</span>
-              <input type="number" bind:value={qYear} min="2000" max="2100" /></label
-            >
-            <label class="field"
-              ><span>{$_('queens.number')}</span>
+            <label class="field">
+              <span>{$_('queens.year')}</span>
+
+              <input type="number" bind:value={qYear} min="2000" max="2100" />
+            </label>
+
+            <label class="field">
+              <span>{$_('queens.number')}</span>
+
               <input
                 bind:value={qNumber}
                 inputmode="numeric"
@@ -532,6 +581,7 @@
             <button type="button" class="ghost" onclick={() => (queenForm = false)}
               >{$_('common.cancel')}</button
             >
+
             <button type="submit" class="primary">{$_('common.save')}</button>
           </div>
         </form>
@@ -576,7 +626,7 @@
                 {q.year}
                 <span class="muted sm">
                   {q.introduced_at ? new Date(q.introduced_at).toLocaleDateString() : ''}
-                  {q.replaced_at ? '– ' + new Date(q.replaced_at).toLocaleDateString() : ''}
+                  {q.replaced_at ? '- ' + new Date(q.replaced_at).toLocaleDateString() : ''}
                 </span>
               </li>
             {/each}
@@ -589,6 +639,7 @@
     <section>
       <div class="sec-head">
         <h2>{$_('insp.log')}</h2>
+
         <button class="primary sm" onclick={() => (visitForm = !visitForm)}
           >+ {$_('insp.record')}</button
         >
@@ -652,7 +703,7 @@
             <label class="field"
               ><span>{$_('insp.stores')}</span>
               <select bind:value={v.stores}
-                ><option value={0}>—</option>{#each STORES as s}<option value={s}
+                ><option value={0}>-</option>{#each STORES as s}<option value={s}
                     >{$_('storeslvl.' + s)}</option
                   >{/each}</select
               ></label
@@ -667,7 +718,7 @@
             <label class="field"
               ><span>{$_('insp.temperament')}</span>
               <select bind:value={v.temperament}
-                ><option value={0}>—</option>{#each TEMPERAMENTS as t}<option value={t}
+                ><option value={0}>-</option>{#each TEMPERAMENTS as t}<option value={t}
                     >{$_('temperament.' + t)}</option
                   >{/each}</select
               ></label
@@ -675,7 +726,7 @@
             <label class="field"
               ><span>{$_('insp.calmness')}</span>
               <select bind:value={v.calmness}
-                ><option value={0}>—</option>{#each CALM as c}<option value={c}
+                ><option value={0}>-</option>{#each CALM as c}<option value={c}
                     >{$_('calmlvl.' + c)}</option
                   >{/each}</select
               ></label
@@ -698,19 +749,15 @@
 
           <h3>{$_('insp.climate')}</h3>
           <div class="grid2">
-            <label class="field"
-              ><span>{$_('insp.temp_hive')} (°C)</span><input
-                type="number"
-                step="0.1"
-                bind:value={v.temp_hive}
-              /></label
-            >
-            <label class="field"
-              ><span>{$_('insp.temp_outside')} (°C)</span><input
-                type="number"
-                step="0.1"
-                bind:value={v.temp_outside}
-              /></label
+            <label class="field">
+              <span>{$_('insp.temp_hive')} (°C)</span>
+              <input type="number" step="0.1" bind:value={v.temp_hive} />
+            </label>
+
+            <label class="field">
+              <span>{$_('insp.temp_outside')} (°C)</span>
+
+              <input type="number" step="0.1" bind:value={v.temp_outside} /></label
             >
             <label class="field"
               ><span>{$_('insp.humidity_hive')} (%)</span><input
@@ -748,21 +795,18 @@
                 min="0"
                 step="0.1"
                 bind:value={v.honey_kg}
-              /></label
-            >
-            <label class="field"
-              ><span>{$_('insp.frames_added')}</span><input
-                type="number"
-                min="0"
-                bind:value={v.frames_added}
-              /></label
-            >
-            <label class="field"
-              ><span>{$_('insp.frames_removed')}</span><input
-                type="number"
-                min="0"
-                bind:value={v.frames_removed}
-              /></label
+              />
+            </label>
+
+            <label class="field">
+              <span>{$_('insp.frames_added')}</span>
+              <input type="number" min="0" bind:value={v.frames_added} />
+            </label>
+
+            <label class="field">
+              <span>{$_('insp.frames_removed')}</span>
+
+              <input type="number" min="0" bind:value={v.frames_removed} /></label
             >
           </div>
           <div class="checks">
@@ -794,7 +838,7 @@
             {/each}
             <label class="addphoto">
               <input type="file" accept="image/*" multiple onchange={onVisitPhotos} hidden />
-              <span>📷 {$_('insp.add_photo')}</span>
+              <span><Camera size={16} aria-hidden="true" /> {$_('insp.add_photo')}</span>
             </label>
           </div>
 
@@ -845,7 +889,7 @@
         </ul>
         {#if visits.length > recentVisits.length}
           <a class="see-all" href={`/hives/${id}/visits`}>
-            {$_('insp.see_all', { values: { n: visits.length } })} →
+            {$_('insp.see_all', { values: { n: visits.length } })}
           </a>
         {/if}
       {/if}
@@ -858,6 +902,7 @@
           {$_('harvest.title')}{#if harvestTotal}
             · {harvestTotal} kg{/if}
         </h2>
+
         <button class="primary sm" onclick={() => (harvestForm = !harvestForm)}
           >+ {$_('harvest.record')}</button
         >
@@ -932,7 +977,7 @@
             <li class="card visit">
               <div class="vhead">
                 <strong
-                  >🍯 {h.amount_kg} kg{#if h.variety}
+                  >{h.amount_kg} kg{#if h.variety}
                     · {h.variety}{/if}</strong
                 >
                 <span class="muted sm">{new Date(h.date).toLocaleDateString()}</span>
@@ -960,6 +1005,7 @@
     <section>
       <div class="sec-head">
         <h2>{$_('treat.title')}</h2>
+
         <button class="primary sm" onclick={() => (treatmentForm = !treatmentForm)}
           >+ {$_('treat.record')}</button
         >
@@ -1041,7 +1087,7 @@
           {#each treatmentList as t}
             <li class="card visit">
               <div class="vhead">
-                <strong>💊 {t.product}</strong>
+                <strong><Pill size={16} aria-hidden="true" /> {t.product}</strong>
                 <span class="muted sm">{new Date(t.date).toLocaleDateString()}</span>
               </div>
               <div class="chips">
@@ -1072,12 +1118,12 @@
             <li>
               <span class="loc-dot" class:cur={idx === 0 && !p.end_at}></span>
               <div class="loc-body">
-                <strong>{p.apiary_name ?? '—'}</strong>
+                <strong>{p.apiary_name ?? '-'}</strong>
                 <span class="muted sm">
                   {p.start_at ? new Date(p.start_at).toLocaleDateString() : ''}
                   {p.end_at
-                    ? '– ' + new Date(p.end_at).toLocaleDateString()
-                    : '– ' + $_('hives.present')}
+                    ? '- ' + new Date(p.end_at).toLocaleDateString()
+                    : '- ' + $_('hives.present')}
                 </span>
               </div>
             </li>
@@ -1144,10 +1190,12 @@
     object-fit: cover;
   }
   .avatar .ph {
-    font-size: 1.9rem;
-    filter: grayscale(0.1);
+    width: 30px;
+    height: 30px;
   }
   .avatar .cam {
+    display: flex;
+    align-items: center;
     position: absolute;
     right: 3px;
     bottom: 3px;
@@ -1189,8 +1237,7 @@
     gap: 8px;
     flex-shrink: 0;
   }
-  /* .icon sits on <a> and <button> alike — center the glyph explicitly, since
-     anchors have no default centering and buttons differ per browser. */
+  /* .icon sits on <a> and <button> alike: center the glyph explicitly (anchors have no default centering, buttons differ per browser). */
   .icon {
     width: 38px;
     height: 38px;
@@ -1445,6 +1492,11 @@
   .vhead {
     display: flex;
     align-items: baseline;
+  }
+  .vhead strong {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     gap: 10px;
     margin-bottom: 8px;
   }
@@ -1507,6 +1559,11 @@
     color: #fff;
     cursor: pointer;
     font-size: 0.8rem;
+  }
+  .addphoto span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
   .addphoto {
     width: 64px;

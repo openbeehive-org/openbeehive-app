@@ -91,7 +91,7 @@ func push(svc *SyncService, ctx context.Context, changes ...*wv1.Change) error {
 }
 
 // One clock for all test changes: a fresh HLC per change would restart at
-// counter 0 and hand two changes in the same millisecond identical stamps —
+// counter 0 and hand two changes in the same millisecond identical stamps;
 // the second write then loses the LWW comparison and is dropped as stale.
 var testHLC = wsync.NewHLC("dev")
 

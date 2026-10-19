@@ -19,7 +19,7 @@ import (
 // WebAuthn implements passkeys bound to registered accounts: enrollment
 // requires an authenticated session and attaches the credential to users.id;
 // login is usernameless (discoverable credential) and issues a session with
-// the account's stored role and resolved tenant — exactly like a password
+// the account's stored role and resolved tenant, exactly like a password
 // sign-in, never more.
 type WebAuthn struct {
 	wa       *webauthn.WebAuthn
@@ -153,7 +153,7 @@ func (a *WebAuthn) loadChallenge(r *http.Request) (*waChallenge, bool) {
 
 // --- enrollment (session required) ---
 
-// identity authenticates the request and refuses read-only demo sessions —
+// identity authenticates the request and refuses read-only demo sessions:
 // the demo account is shared, so letting visitors attach passkeys to it would
 // hand out permanent demo-tenant access tokens.
 func (a *WebAuthn) identity(w http.ResponseWriter, r *http.Request) (Identity, bool) {

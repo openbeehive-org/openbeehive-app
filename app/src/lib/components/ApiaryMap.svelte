@@ -2,17 +2,21 @@
   import 'leaflet/dist/leaflet.css';
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
+  import type * as Leaflet from 'leaflet';
 
-  let { apiaries = [] }: { apiaries: any[] } = $props();
+  type LeafletLib = typeof import('leaflet');
+  type ApiaryPin = { id: string; name: string; lat: number; lng: number };
+
+  let { apiaries = [] }: { apiaries: ApiaryPin[] } = $props();
   let el: HTMLDivElement;
-  let map: any = null;
-  let L: any = null;
-  let layer: any = null;
+  let map: Leaflet.Map | null = null;
+  let L: LeafletLib | null = null;
+  let layer: Leaflet.LayerGroup | null = null;
 
   const located = $derived(apiaries.filter((a) => a.lat || a.lng));
 
   // Honey-coloured teardrop pin as an HTML marker (avoids bundler image issues).
-  function pin(Lib: any) {
+  function pin(Lib: LeafletLib) {
     return Lib.divIcon({
       className: 'obh-pin',
       html: '<span></span>',
@@ -25,14 +29,15 @@
     if (!map || !L) return;
     if (layer) layer.remove();
     layer = L.layerGroup().addTo(map);
-    const pts: [number, number][] = [];
+    const pts: Leaflet.LatLngTuple[] = [];
     for (const a of located) {
       const m = L.marker([a.lat, a.lng], { icon: pin(L) }).addTo(layer);
       m.bindPopup(`<strong>${a.name}</strong>`);
       m.on('click', () => goto(`/apiaries/${a.id}`));
       pts.push([a.lat, a.lng]);
     }
-    if (pts.length === 1) map.setView(pts[0], 13);
+    const [first] = pts;
+    if (pts.length === 1 && first) map.setView(first, 13);
     else if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 });
   }
 
@@ -62,7 +67,7 @@
 <div class="map" bind:this={el}></div>
 {#if located.length === 0}
   <p class="hint">
-    No apiary has coordinates yet — set a location in an apiary's settings to place it on the map.
+    No apiary has coordinates yet: set a location in an apiary's settings to place it on the map.
   </p>
 {/if}
 

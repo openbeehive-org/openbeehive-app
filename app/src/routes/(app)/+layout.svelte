@@ -1,12 +1,12 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { startSync } from '$lib/local/sync';
-  import NavIcon from '$lib/components/NavIcon.svelte';
-  import Toasts from '$lib/components/Toasts.svelte';
-  import { toast } from '$lib/toast';
+  import { startSync } from '#lib/local/sync.js';
+  import NavIcon from '#lib/components/NavIcon.svelte';
+  import Toasts from '#lib/components/Toasts.svelte';
+  import { toast } from '#lib/toast.js';
   import { get } from 'svelte/store';
 
   const api = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
@@ -37,7 +37,9 @@
     // die silently (the classic symptom: a button that "does nothing"). Show
     // the error, so the user knows the action did not stick.
     const onRejection = (e: PromiseRejectionEvent) => {
-      const msg = String((e.reason as Error)?.message ?? e.reason ?? 'unknown error');
+      const msg = String(
+        (e.reason as Error)?.message ?? e.reason ?? 'unhandled promise rejection without a message'
+      );
       toast(get(_)('common.save_failed', { values: { msg } }));
     };
     addEventListener('unhandledrejection', onRejection);
@@ -47,7 +49,7 @@
     // sync loop 401s. (Async work in an IIFE so onMount can still return the
     // listener cleanup synchronously.)
     void (async () => {
-      // Both requests are independent — fetch them in parallel so sync (and
+      // Both requests are independent, so fetch them in parallel: sync (and
       // with it the first data on a fresh device) starts a round-trip earlier.
       const tok = localStorage.getItem('session');
       const [instRes, me] = await Promise.all([
@@ -65,7 +67,7 @@
       if (authRequired && !me) {
         // Pure-showcase host (BEEHIVE_DEMO_AUTOLOGIN): sign in as the demo user
         // automatically so the URL "just works". Combined production+demo
-        // instances leave this off — visitors get /login, which carries the
+        // instances leave this off: visitors get /login, which carries the
         // demo button. Guarded so a failing demo-login can't loop on reload.
         if (inst.demo_autologin && !sessionStorage.getItem('obh.demoTried')) {
           sessionStorage.setItem('obh.demoTried', '1');
@@ -127,7 +129,7 @@
   ];
 
   function isActive(href: string): boolean {
-    const p = $page.url.pathname;
+    const p = page.url.pathname;
     return href === '/' ? p === '/' : p === href || p.startsWith(href + '/');
   }
 </script>
@@ -165,10 +167,10 @@
 
   <div class="main-col">
     {#if isDemo}
-      <div class="demo-bar">🐝 {$_('demo.banner')}</div>
+      <div class="demo-bar">{$_('demo.banner')}</div>
     {/if}
     {#if !online}
-      <div class="offline-bar">Offline — changes are saved and synced later.</div>
+      <div class="offline-bar">{$_('app.offline_banner')}</div>
     {/if}
     <main class="content">
       {@render children()}

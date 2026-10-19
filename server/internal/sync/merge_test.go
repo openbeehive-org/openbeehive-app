@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// These tests mirror app/src/lib/local/merge.test.ts — the client and server
+// These tests mirror app/src/lib/local/merge.test.ts; the client and server
 // merge logic must stay behaviorally identical.
 
 const (
@@ -85,11 +85,11 @@ func TestORSetRemoveTagsKeepsUnlistedTags(t *testing.T) {
 	s.Add("p1", t2)
 	s.RemoveTags("p1", []string{t1})
 	if got := s.Values(); len(got) != 1 {
-		t.Fatalf("tag t2 was not observed by the remover — element must stay: %v", got)
+		t.Fatalf("tag t2 was not observed by the remover, element must stay: %v", got)
 	}
 	s.RemoveTags("p1", []string{t2})
 	if got := s.Values(); len(got) != 0 {
-		t.Fatalf("all tags tombstoned — element must vanish: %v", got)
+		t.Fatalf("all tags tombstoned, element must vanish: %v", got)
 	}
 }
 

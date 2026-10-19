@@ -9,7 +9,7 @@ vi.mock('./db', async () => {
 
 const pushMock = vi.fn();
 const pullMock = vi.fn();
-vi.mock('$lib/client', () => ({
+vi.mock('#lib/client.js', () => ({
   syncClient: {
     push: (...a: unknown[]) => pushMock(...a),
     pull: (...a: unknown[]) => pullMock(...a)
@@ -64,7 +64,7 @@ describe('push', () => {
     await push(); // must not throw
 
     expect(await getCurrentDB().all(`SELECT * FROM outbox`)).toHaveLength(0);
-    // The local row itself is untouched — only the upload intent is dropped.
+    // The local row itself is untouched; only the upload intent is dropped.
   });
 
   it('does nothing when the outbox is empty', async () => {

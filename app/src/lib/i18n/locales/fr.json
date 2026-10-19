@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "Openbeehive",
-    "tagline": "Carnet d'apiculture"
+    "tagline": "Carnet d'apiculture",
+    "offline_banner": "Hors ligne : les modifications sont enregistrées et synchronisées plus tard."
   },
   "nav": {
     "dashboard": "Vue d'ensemble",

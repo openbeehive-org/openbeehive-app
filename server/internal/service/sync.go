@@ -22,7 +22,7 @@ import (
 // setCols as OR-Set (add-wins). Both stay portable (no UPSERT needed).
 // bools/ints/times drive payload coercion (see coerceFields): clients store
 // rows in SQLite, so their JSON payloads carry 0/1 for booleans, floats for
-// integers and strings (or "") for timestamps — SQLite accepts all of that
+// integers and strings (or "") for timestamps; SQLite accepts all of that
 // verbatim, Postgres and MySQL do not.
 type entitySpec struct {
 	table   string
@@ -257,7 +257,7 @@ func (s *SyncService) Push(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	// Writable scopes for this user: same set Pull reads from. Changes outside
-	// it are rejected — otherwise any authenticated user could inject rows into
+	// it are rejected; otherwise any authenticated user could inject rows into
 	// a foreign tenant's change feed by picking its scope id.
 	scopes := s.accessibleScopes(ctx, id.UserID, id.OrgID)
 	scopeSet := make(map[string]bool, len(scopes))
@@ -365,7 +365,7 @@ var errWrongTenant = errors.New("change targets another tenant's data")
 // applyChange merges an incoming change field-by-field into the row:
 // scalars by LWW (field clock), set columns by OR-Set union.
 // orgID is the caller's active tenant: existing rows must belong to it, new
-// rows are stamped with it — a client cannot write into a foreign tenant, and
+// rows are stamped with it; a client cannot write into a foreign tenant, and
 // cannot move a row across tenants, no matter what its payload claims.
 func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) error {
 	fields := map[string]any{}

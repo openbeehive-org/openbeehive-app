@@ -7,7 +7,8 @@ import { getDB } from './db';
 import { hlc } from './hlc';
 import { parseFieldClock, accept, parseORSet, orAdd, orRemove, orRemoveTags } from './merge';
 import { bumpData, initialSyncPending } from './live';
-import { syncClient } from '$lib/client'; // generated Connect client (SyncService)
+import { syncClient } from '#lib/client.js'; // generated Connect client (SyncService)
+import { ChangeOp, type Change } from '../proto/openbeehive/v1/sync_pb';
 
 const SYNCED_TABLES = [
   'apiary',
@@ -58,10 +59,10 @@ export async function push() {
   } catch (e) {
     // Permission denied is permanent for this batch (read-only demo session,
     // unwritable scope): retrying every 15s can never succeed and would keep
-    // the outbox full forever. Drop the entries — the data itself stays in
+    // the outbox full forever. Drop the entries; the data itself stays in
     // the local tables, only the (rejected) upload intent is discarded.
     if (e instanceof ConnectError && e.code === Code.PermissionDenied) {
-      console.warn('push rejected as read-only — keeping changes locally:', e.message);
+      console.warn('push rejected as read-only, keeping changes locally:', e.message);
       for (const p of pending) {
         await db.exec(`DELETE FROM outbox WHERE id = ?`, [p.id]);
       }
@@ -98,28 +99,33 @@ export async function pull() {
     // sync fills the UI progressively instead of after the whole download.
     if (res.changes.length > 0) bumpData();
   }
-  // This device now holds a full replica — an empty table is a real empty state.
+  // This device now holds a full replica: an empty table is a real empty state.
   initialSyncPending.set(false);
 }
 
+// OR-Set delta carried in a set column of a change payload.
+type SetDelta = { add?: string[]; remove?: string[]; removed_tags?: Record<string, string[]> };
+
 // Per-field LWW + OR-Set: only newer fields are applied, set columns are
 // merged by union.
-async function applyRemote(ch: any) {
+async function applyRemote(ch: Change) {
   if (!SYNCED_TABLES.includes(ch.entity)) return;
   const db = await getDB();
   const cur = await db.get<any>(`SELECT * FROM ${ch.entity} WHERE id = ?`, [ch.entityId]);
-  const fields = ch.op === 2 /* delete */ ? { deleted: 1 } : JSON.parse(ch.payloadJson);
+  const fields: Record<string, unknown> =
+    ch.op === ChangeOp.DELETE ? { deleted: 1 } : JSON.parse(ch.payloadJson);
   const setCols = SET_COLS[ch.entity] ?? [];
 
   if (!cur) {
     const fc: Record<string, string> = {};
     const cols = ['id'];
     const vals: unknown[] = [ch.entityId];
-    for (const [k, v] of Object.entries(fields) as [string, any][]) {
+    for (const [k, v] of Object.entries(fields)) {
       if (k === 'id') continue;
       if (setCols.includes(k)) {
         const os = {};
-        for (const e of v?.add ?? []) orAdd(os, e, ch.hlc);
+        const d = v as SetDelta | undefined;
+        for (const e of d?.add ?? []) orAdd(os, e, ch.hlc);
         cols.push(k);
         vals.push(JSON.stringify(os));
       } else {
@@ -138,15 +144,16 @@ async function applyRemote(ch: any) {
   const fc = parseFieldClock(cur.field_hlc);
   const sets: string[] = [];
   const args: unknown[] = [];
-  for (const [k, v] of Object.entries(fields) as [string, any][]) {
+  for (const [k, v] of Object.entries(fields)) {
     if (k === 'id' || k === 'field_hlc') continue;
     if (setCols.includes(k)) {
       const os = parseORSet(cur[k]);
-      for (const e of v?.add ?? []) orAdd(os, e, ch.hlc);
-      for (const e of v?.remove ?? []) {
+      const d = v as SetDelta | undefined;
+      for (const e of d?.add ?? []) orAdd(os, e, ch.hlc);
+      for (const e of d?.remove ?? []) {
         // Newer deltas say which tags the origin observed; only those are
         // tombstoned (add-wins). Old deltas without tags remove all local ones.
-        const tags = v?.removed_tags?.[e];
+        const tags = d?.removed_tags?.[e];
         if (tags) orRemoveTags(os, e, tags);
         else orRemove(os, e);
       }
@@ -199,7 +206,7 @@ export async function syncOnce() {
     } while (rerun);
   } catch (e) {
     console.warn('sync deferred:', e);
-    // Give up the syncing hint — a later retry delivers data via bumpData.
+    // Give up the syncing hint; a later retry delivers data via bumpData.
     initialSyncPending.set(false);
   } finally {
     running = false;

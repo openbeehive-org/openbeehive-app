@@ -1,12 +1,17 @@
 <script lang="ts">
   // In-app scanner. Uses the native BarcodeDetector when available
   // (Android/Chrome). On platforms without it (e.g. iOS Safari) we tell the
-  // user to use the phone's camera app — the QR is a normal URL and opens the
+  // user to use the phone's camera app; the QR is a normal URL and opens the
   // app the same way. A library like @zxing/browser can be dropped in here.
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
-  import { parseHiveId } from '$lib/qr';
+  import { parseHiveId } from '#lib/qr.js';
+
+  // Minimal typing of the Barcode Detection API, which lib.dom does not ship yet.
+  type BarcodeDetectorLike = { detect(source: ImageBitmapSource): Promise<{ rawValue: string }[]> };
+  type BarcodeDetectorCtor = new (opts: { formats: string[] }) => BarcodeDetectorLike;
+  const win = window as Window & { BarcodeDetector?: BarcodeDetectorCtor };
 
   let video: HTMLVideoElement;
   let stream: MediaStream | null = null;
@@ -14,7 +19,8 @@
   let status = $state<'starting' | 'scanning' | 'unsupported' | 'denied'>('starting');
 
   onMount(async () => {
-    if (!('BarcodeDetector' in window)) {
+    const Detector = win.BarcodeDetector;
+    if (!Detector) {
       status = 'unsupported';
       return;
     }
@@ -22,7 +28,7 @@
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       video.srcObject = stream;
       await video.play();
-      const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+      const detector = new Detector({ formats: ['qr_code'] });
       status = 'scanning';
       const tick = async () => {
         try {

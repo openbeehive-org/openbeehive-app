@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
-  import { hiveUrl, qrSvg, shortCode } from '$lib/qr';
+  import { hiveUrl, qrSvg, shortCode } from '#lib/qr.js';
 
   let { hiveId, name = '' }: { hiveId: string; name?: string } = $props();
   let svg = $state('');

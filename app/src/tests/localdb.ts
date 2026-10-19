@@ -2,8 +2,8 @@
 // running the exact schema from lib/local/schema.ts. Tests exercise the same
 // SQL the browser store runs, minus the OPFS/worker plumbing.
 import { DatabaseSync } from 'node:sqlite';
-import type { LocalDB } from '$lib/local/db';
-import { migrateLocal } from '$lib/local/schema';
+import type { LocalDB } from '#lib/local/db.js';
+import { migrateLocal } from '#lib/local/schema.js';
 
 export async function makeLocalDB(): Promise<LocalDB> {
   const db = new DatabaseSync(':memory:');

@@ -153,7 +153,7 @@ func (m *Manager) CallbackHandler(sessions *SessionManager, users storage.UserRe
 }
 
 // errInviteOnly rejects new-account provisioning on invite-only instances.
-var errInviteOnly = errors.New("this instance is invite-only — ask for an invite, then sign up with email and password first")
+var errInviteOnly = errors.New("this instance is invite-only; ask for an invite, then sign up with email and password first")
 
 // provisionOIDCUser finds the in-app account for an OIDC login: by provider
 // subject, then by matching email (linking an existing email/password profile),

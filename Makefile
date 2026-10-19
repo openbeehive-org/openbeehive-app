@@ -22,7 +22,7 @@ COVER_MIN ?= 53
 LICENSES  ?= MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0
 # Each pin carries a `# renovate:` comment so Renovate bumps it (customManagers:makefileVersions in renovate.json).
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
-GOLANGCI_VERSION    ?= v2.14.0
+GOLANGCI_VERSION    ?= v2.15.0
 # renovate: datasource=go depName=golang.org/x/vuln
 GOVULNCHECK_VERSION ?= v1.9.0
 # renovate: datasource=go depName=github.com/google/go-licenses/v2
@@ -30,7 +30,7 @@ GO_LICENSES_VERSION ?= v2.0.1
 # renovate: datasource=go depName=github.com/fleetlint/fleetlint
 FLEETLINT_VERSION   ?= v0.5.1
 # renovate: datasource=go depName=github.com/bufbuild/buf
-BUF_VERSION         ?= v1.73.0
+BUF_VERSION         ?= v1.74.0
 # Tools are built with this module's toolchain: golangci-lint refuses code that targets a newer Go than it was built with.
 TOOLCHAIN := $(shell cd $(SERVER) && $(GO) env GOVERSION)
 
@@ -53,8 +53,8 @@ tools: ## install the pinned gate tools (Go tools + buf; Node tools come from ap
 	$(GO) install github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION)
 
 fmt: gen app-deps ## format in place (Go + app)
-	cd $(SERVER) && golangci-lint fmt
-	cd $(APP) && npm run format
+	(cd $(SERVER) && golangci-lint fmt)
+	(cd $(APP) && npm run format)
 
 lint: gen proto-lint app-lint ## format check + linters + vet (Go), prettier + eslint + svelte-check (app)
 	cd $(SERVER)
@@ -108,8 +108,9 @@ release: ## refuse dirty/non-main -> check -> signed tag V (its CHANGELOG.md sec
 	@test "$$(git branch --show-current)" = "$(MAIN_BRANCH)" || { echo "not on $(MAIN_BRANCH)"; exit 1; }
 	@grep -q "^## \[$(V:v%=%)\]" CHANGELOG.md || { echo "CHANGELOG.md has no '## [$(V:v%=%)]' section"; exit 1; }
 	$(MAKE) check
-	git tag -s "$(V)" -m "$(V)"
-	@echo "tagged $(V) — push with: git push origin $(V)"
+	# tag body = the CHANGELOG section; release.yml puts it at the top of the release notes
+	notes=$$(mktemp); { echo "$(V)"; echo; awk '/^## \[$(V:v%=%)\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md; } > "$$notes"; git tag -s "$(V)" -F "$$notes"; rm -f "$$notes"
+	@echo "tagged $(V), push with: git push origin $(V)"
 
 tidy: ## go mod tidy
 	cd $(SERVER) && $(GO) mod tidy

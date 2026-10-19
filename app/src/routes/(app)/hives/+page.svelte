@@ -1,5 +1,6 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
+  import { MapPin } from '@lucide/svelte';
   import {
     apiaries,
     hives,
@@ -7,14 +8,16 @@
     inspections,
     MARKING_COLORS,
     MARKING_NAMES
-  } from '$lib/local/repo';
-  import { createHive } from '$lib/local/history';
-  import { dataVersion, initialSyncPending } from '$lib/local/live';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import Syncing from '$lib/components/Syncing.svelte';
+  } from '#lib/local/repo.js';
+  import { createHive } from '#lib/local/history.js';
+  import type { ApiaryRow, HiveRow, QueenRow } from '../rows.js';
+  import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import Syncing from '#lib/components/Syncing.svelte';
 
-  let rows = $state<any[]>([]);
-  let apiaryList = $state<any[]>([]);
+  type HiveCard = HiveRow & { queen: QueenRow | undefined; lastInspection: string | undefined };
+  let rows = $state<HiveCard[]>([]);
+  let apiaryList = $state<ApiaryRow[]>([]);
   let apiaryName = $state<Record<string, string>>({});
   let loaded = $state(false);
   let showForm = $state(false);
@@ -27,17 +30,18 @@
   }
 
   async function load() {
-    apiaryList = await apiaries.list();
-    apiaryName = Object.fromEntries(apiaryList.map((a: any) => [a.id, a.name]));
-    const list = await hives.list();
+    apiaryList = (await apiaries.list()) as ApiaryRow[];
+    apiaryName = Object.fromEntries(apiaryList.map((a) => [a.id, a.name]));
+    const list = (await hives.list()) as HiveRow[];
     rows = await Promise.all(
-      list.map(async (h: any) => {
+      list.map(async (h) => {
         const q = await queens.current(h.id);
         const insp = await inspections.listByHive(h.id);
         return { ...h, queen: q, lastInspection: insp[0]?.date };
       })
     );
-    if (!apiaryId && apiaryList.length) apiaryId = apiaryList[0].id;
+    const first = apiaryList[0];
+    if (!apiaryId && first) apiaryId = first.id;
     loaded = true;
   }
 
@@ -101,12 +105,17 @@
         <li class="card">
           <a href={`/hives/${h.id}`}>
             <span class="thumb">
-              {#if h.photo}<img src={h.photo} alt={h.name} />{:else}<span class="ph">🐝</span>{/if}
+              {#if h.photo}<img src={h.photo} alt={h.name} />{:else}<img
+                  class="ph"
+                  src="/favicon.svg"
+                  alt=""
+                />{/if}
             </span>
             <div class="body">
               <strong>{h.name}</strong>
               <div class="meta">
-                {#if apiaryName[h.apiary_id]}<span class="loc">📍 {apiaryName[h.apiary_id]}</span
+                {#if apiaryName[h.apiary_id]}<span class="loc"
+                    ><MapPin size={14} aria-hidden="true" /> {apiaryName[h.apiary_id]}</span
                   >{/if}
                 <span class="badge status-{h.status}">{$_('hivestatus.' + (h.status ?? 0))}</span>
                 {#if h.queen}
@@ -243,8 +252,8 @@
     object-fit: cover;
   }
   .thumb .ph {
-    font-size: 1.5rem;
-    filter: grayscale(0.1);
+    width: 24px;
+    height: 24px;
   }
   .body {
     flex: 1;
@@ -265,6 +274,9 @@
   }
   .meta .loc {
     font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
   }
   .badge {
     font-weight: 700;

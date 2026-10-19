@@ -3,8 +3,8 @@
 //
 // Device A writes through the real repo layer (repo.ts -> outbox), device B's
 // concurrent edits are hand-stamped changes. Both sides then apply the other's
-// changes through the real pull path (sync.ts applyRemote) — in OPPOSITE
-// orders — and must end up with identical rows.
+// changes through the real pull path (sync.ts applyRemote), in OPPOSITE
+// orders, and must end up with identical rows.
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { makeLocalDB, setCurrentDB } from '../../tests/localdb';
 import type { LocalDB } from './db';
@@ -20,7 +20,7 @@ vi.mock('./sync', async (importOriginal) => {
 });
 
 const pullMock = vi.fn();
-vi.mock('$lib/client', () => ({
+vi.mock('#lib/client.js', () => ({
   syncClient: {
     push: vi.fn(async () => ({ serverCursor: '' })),
     pull: (...a: unknown[]) => pullMock(...a)

@@ -71,7 +71,7 @@ func (s ORSet) Remove(elem string) {
 
 // RemoveTags tombstones exactly the tags the ORIGIN device had observed
 // (carried in the sync delta as removed_tags). Tags added concurrently by
-// other devices stay visible — true add-wins across replicas.
+// other devices stay visible: true add-wins across replicas.
 func (s ORSet) RemoveTags(elem string, tags []string) {
 	e := s[elem]
 	for _, t := range tags {

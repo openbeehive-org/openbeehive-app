@@ -1,13 +1,15 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { apiaries, hives } from '$lib/local/repo';
-  import { dataVersion, initialSyncPending } from '$lib/local/live';
-  import ApiaryMap from '$lib/components/ApiaryMap.svelte';
-  import LocationPicker from '$lib/components/LocationPicker.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import Syncing from '$lib/components/Syncing.svelte';
+  import { MapPin } from '@lucide/svelte';
+  import { apiaries, hives } from '#lib/local/repo.js';
+  import type { ApiaryRow } from '../rows.js';
+  import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import ApiaryMap from '#lib/components/ApiaryMap.svelte';
+  import LocationPicker from '#lib/components/LocationPicker.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import Syncing from '#lib/components/Syncing.svelte';
 
-  let rows = $state<any[]>([]);
+  let rows = $state<ApiaryRow[]>([]);
   let counts = $state<Record<string, number>>({});
   let loaded = $state(false);
   let showForm = $state(false);
@@ -20,7 +22,7 @@
   let saveError = $state('');
 
   async function load() {
-    rows = await apiaries.list();
+    rows = (await apiaries.list()) as ApiaryRow[];
     const c: Record<string, number> = {};
     for (const a of rows) c[a.id] = await hives.count(a.id);
     counts = c;
@@ -105,7 +107,7 @@
       {#each rows as a}
         <li class="card">
           <a href={`/apiaries/${a.id}`}>
-            <div class="lead"><span class="pin">📍</span></div>
+            <div class="lead"><span class="pin"><MapPin size={22} aria-hidden="true" /></span></div>
             <div class="body">
               <strong>{a.name}</strong>
               {#if a.address}<small>{a.address}</small>{/if}

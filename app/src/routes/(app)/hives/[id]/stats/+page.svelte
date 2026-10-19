@@ -1,19 +1,20 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
-  import { hives, inspections, harvests } from '$lib/local/repo';
-  import { dataVersion } from '$lib/local/live';
-  import Sparkline from '$lib/components/Sparkline.svelte';
+  import { hives, inspections, harvests } from '#lib/local/repo.js';
+  import type { HarvestRow, HiveRow, InspectionRow } from '../../../rows.js';
+  import { dataVersion } from '#lib/local/live.js';
+  import Sparkline from '#lib/components/Sparkline.svelte';
 
-  const id = $page.params.id ?? '';
-  let hive = $state<any>(null);
-  let visits = $state<any[]>([]); // oldest → newest
-  let harvestRows = $state<any[]>([]);
+  const id = page.params.id ?? '';
+  let hive = $state<HiveRow | null>(null);
+  let visits = $state<InspectionRow[]>([]); // oldest to newest
+  let harvestRows = $state<HarvestRow[]>([]);
   let loaded = $state(false);
 
   // Numeric metrics charted over the inspection history. A value of 0 means
   // "not recorded" for these fields, so we plot only recorded points.
-  const METRICS: { key: string; label: string; unit?: string; parse?: boolean }[] = [
+  const METRICS: { key: keyof InspectionRow; label: string; unit?: string; parse?: boolean }[] = [
     { key: 'frames', label: 'insp.frames' },
     { key: 'brood_frames', label: 'insp.brood_frames' },
     { key: 'stores', label: 'insp.stores' },
@@ -30,11 +31,20 @@
     { key: 'humidity_outside', label: 'insp.humidity_outside', unit: '%' }
   ];
 
-  const BOOLEANS = ['queen_seen', 'eggs_seen', 'covered_larva', 'drone_frame_cut', 'super_added'];
+  const BOOLEANS: (keyof InspectionRow)[] = [
+    'queen_seen',
+    'eggs_seen',
+    'covered_larva',
+    'drone_frame_cut',
+    'super_added'
+  ];
 
-  function seriesFor(m: { key: string; parse?: boolean }) {
+  function seriesFor(m: { key: keyof InspectionRow; parse?: boolean }) {
     return visits
-      .map((v) => ({ date: v.date, value: m.parse ? parseFloat(v[m.key]) : Number(v[m.key]) }))
+      .map((v) => ({
+        date: v.date,
+        value: m.parse ? parseFloat(String(v[m.key] ?? '')) : Number(v[m.key])
+      }))
       .filter((s) => !isNaN(s.value) && s.value > 0);
   }
 
@@ -72,7 +82,7 @@
     hive = await hives.get(id);
     if (hive) {
       const insp = await inspections.listByHive(id); // newest first
-      visits = [...insp].reverse(); // oldest → newest for charts
+      visits = [...insp].reverse(); // oldest to newest for charts
       harvestRows = [...(await harvests.listByHive(id))].reverse();
     }
     loaded = true;
@@ -88,7 +98,7 @@
   <a class="back" href={`/hives/${id}`}>‹ {hive?.name ?? $_('hives.title')}</a>
 
   {#if !loaded}
-    <p class="muted">…</p>
+    <p class="muted">...</p>
   {:else if !hive}
     <p class="muted">{$_('hives.not_found')}</p>
   {:else}

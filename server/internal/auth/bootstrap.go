@@ -16,7 +16,7 @@ import (
 // BEEHIVE_ADMIN_EMAIL / BEEHIVE_ADMIN_PASSWORD. The env values are
 // authoritative: on every boot the account is created if missing, and
 // otherwise its role is forced back to "admin" and its password hash reset to
-// the configured one — which doubles as password recovery. Sign-up never
+// the configured one, which doubles as password recovery. Sign-up never
 // grants the admin role; this is the only path to it.
 //
 // Called at startup (after migrations, before the demo seeder) whenever
