@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 // apiKeyPrefix marks API keys so the verifier can tell them from session

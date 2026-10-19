@@ -19,11 +19,11 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	wv1 "github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1"
-	"github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
+	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/auth"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 // Implements the generated openbeehivev1connect.ApiaryServiceHandler interface.

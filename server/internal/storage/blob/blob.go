@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
 
 // Store is the object-store surface the server uses. Photos are addressed by

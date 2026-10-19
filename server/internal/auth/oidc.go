@@ -17,8 +17,8 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 type Provider struct {

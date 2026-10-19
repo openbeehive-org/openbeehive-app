@@ -11,9 +11,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage/blob"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/blob"
 )
 
 // TenantAPI exposes multi-tenant onboarding: who am I, which tenants can I use,

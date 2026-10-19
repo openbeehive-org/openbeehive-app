@@ -193,9 +193,9 @@ First public release. 🐝
   Docker image for the cloud profile.
 - **Multi-language UI:** English, German, French, Spanish, Italian.
 
-[0.3.1]: https://github.com/johnnycube/openbeehive-app/releases/tag/v0.3.1
-[0.3.0]: https://github.com/johnnycube/openbeehive-app/releases/tag/v0.3.0
-[0.2.3]: https://github.com/johnnycube/openbeehive-app/releases/tag/v0.2.3
-[0.2.2]: https://github.com/johnnycube/openbeehive-app/releases/tag/v0.2.2
-[0.2.1]: https://github.com/johnnycube/openbeehive-app/releases/tag/v0.2.1
-[0.1.0]: https://github.com/johnnycube/openbeehive-app/releases/tag/v0.1.0
+[0.3.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.3.1
+[0.3.0]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.3.0
+[0.2.3]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.2.3
+[0.2.2]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.2.2
+[0.2.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.2.1
+[0.1.0]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.1.0

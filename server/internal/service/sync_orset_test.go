@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	wv1 "github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
+	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // Fixed device stamps; the change HLC doubles as the OR-Set add tag.

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 type userRepo struct{ s *Store }

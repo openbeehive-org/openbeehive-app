@@ -4,8 +4,8 @@ contact_links:
     url: https://docs.openbeehive.org
     about: Guides for using and self-hosting Openbeehive.
   - name: 💬 Questions & discussion
-    url: https://github.com/johnnycube/openbeehive-app/discussions
+    url: https://github.com/openbeehive-org/openbeehive-app/discussions
     about: Ask questions and share ideas with the community.
   - name: 🔒 Report a security issue
-    url: https://github.com/johnnycube/openbeehive-app/security/advisories/new
+    url: https://github.com/openbeehive-org/openbeehive-app/security/advisories/new
     about: Please report vulnerabilities privately, not as a public issue.

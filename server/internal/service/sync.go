@@ -12,9 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/auth"
-	wv1 "github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
+	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // Column whitelist per entity. cols are merged via per-field LWW,

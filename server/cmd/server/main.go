@@ -14,15 +14,15 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/auth"
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	"github.com/johnnycube/openbeehive-app/server/internal/demo"
-	"github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
-	"github.com/johnnycube/openbeehive-app/server/internal/service"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage/blob"
-	sqlstore "github.com/johnnycube/openbeehive-app/server/internal/storage/sql"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
-	"github.com/johnnycube/openbeehive-app/server/internal/web"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/demo"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/service"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/blob"
+	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/web"
 )
 
 func main() {

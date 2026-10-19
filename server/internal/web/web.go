@@ -11,7 +11,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
 
 //go:embed all:dist

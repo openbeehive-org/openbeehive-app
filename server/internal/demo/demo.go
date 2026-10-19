@@ -21,8 +21,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 const (

@@ -46,7 +46,7 @@ services:
   server:
     # Published by .github/workflows/release.yml on each v* tag.
     # Also available: :0.3 (minor track) and :latest.
-    image: ghcr.io/johnnycube/openbeehive-app:0.3.1
+    image: ghcr.io/openbeehive-org/openbeehive-app:0.3.1
     restart: unless-stopped
     depends_on:
       postgres:
