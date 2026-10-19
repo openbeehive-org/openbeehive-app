@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
-import "google/protobuf/timestamp.proto";
 
 // Pagination for all list calls.
 message PageRequest {

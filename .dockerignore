@@ -1,0 +1,19 @@
+# Build context for the single-binary image (context = repo root).
+# The Dockerfile regenerates the proto stubs itself, so server/internal/gen and
+# app/src/lib/proto need not be in the context.
+.git
+.github
+.claude
+.env
+.env.*
+!.env.example
+app/node_modules
+app/build
+app/.svelte-kit
+app/coverage
+server/bin
+server/data
+*.test
+*.out
+docs/
+*.md
