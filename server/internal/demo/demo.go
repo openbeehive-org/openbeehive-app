@@ -50,7 +50,7 @@ func (s *Seeder) Install(ctx context.Context) error {
 		return err
 	}
 	go s.resetLoop(ctx)
-	log.Printf("demo: installed (%s / %s) — 15 hives, 4 apiaries, reset hourly", s.cfg.Demo.Email, "********")
+	log.Printf("demo: installed (%s / %s): 15 hives, 4 apiaries, reset hourly", s.cfg.Demo.Email, "********")
 	return nil
 }
 
@@ -231,7 +231,7 @@ func round1(x float64) float64 { return math.Round(x*10) / 10 }
 
 // inspectionFields builds a season-appropriate inspection for a given date.
 // Activities are only recorded when they actually make sense for that time of
-// year — no feeding in spring, no supering in winter, etc. (Northern hemisphere.)
+// year: no feeding in spring, no supering in winter, etc. (Northern hemisphere.)
 func inspectionFields(hiveID string, date time.Time, hiveNo, idx int) map[string]any {
 	m := int(date.Month())
 	spring := m >= 3 && m <= 5

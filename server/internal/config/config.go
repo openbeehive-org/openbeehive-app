@@ -5,7 +5,7 @@
 //   - selfhost: SQLite   + filesystem (single beekeeper, single server)
 //
 // BEEHIVE_DEPLOYMENT_PROFILE sets defaults; every option can be overridden. There are
-// no hard-coded operational values elsewhere in the server — everything the
+// no hard-coded operational values elsewhere in the server; everything the
 // process needs at runtime is read here, once, into this struct at bootstrap.
 package config
 
@@ -313,7 +313,7 @@ func loadAuth(c *Config) error {
 		},
 	}
 	// Email/password onboarding. Defaults on for the cloud profile (multi-user),
-	// off for selfhost (single-user, no login) — override with BEEHIVE_PASSWORD_AUTH.
+	// off for selfhost (single-user, no login); override with BEEHIVE_PASSWORD_AUTH.
 	c.Auth.PasswordEnabled = envBool("PASSWORD_AUTH", c.Profile == "cloud")
 	// Open self-registration. When false the instance is invite-only: sign-up
 	// requires a valid invite; existing accounts sign in normally.
@@ -329,7 +329,7 @@ func loadAuth(c *Config) error {
 
 	// Demo tenant (off by default). Enabling it implies password auth so the
 	// demo account can sign in. AutoLogin signs anonymous visitors into the
-	// demo automatically — for pure-showcase hosts; leave it off on a combined
+	// demo automatically, for pure-showcase hosts; leave it off on a combined
 	// production+demo instance so real users get the login screen (with the
 	// demo button on it).
 	c.Demo = DemoConfig{
@@ -343,9 +343,9 @@ func loadAuth(c *Config) error {
 	}
 
 	// Dedicated instance admin. Mandatory whenever a login exists (password
-	// auth enabled — single-user no-auth self-hosting needs none): admin is
+	// auth enabled; single-user no-auth self-hosting needs none): admin is
 	// never granted any other way, and the env values are authoritative at
-	// every boot (see auth.EnsureAdmin — this doubles as password recovery).
+	// every boot (see auth.EnsureAdmin; this doubles as password recovery).
 	c.Auth.AdminEmail = strings.TrimSpace(strings.ToLower(env("ADMIN_EMAIL", "")))
 	c.Auth.AdminPassword = env("ADMIN_PASSWORD", "")
 	if !c.Auth.PasswordEnabled {

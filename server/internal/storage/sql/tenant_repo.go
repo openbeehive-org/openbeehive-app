@@ -35,7 +35,7 @@ func (r *orgRepo) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	stmts := []string{
-		// Shares reference apiaries, not the org — resolve them via the
+		// Shares reference apiaries, not the org; resolve them via the
 		// apiaries being deleted.
 		`DELETE FROM apiary_share WHERE apiary_id IN (SELECT id FROM apiary WHERE organization_id = ?)`,
 		`DELETE FROM event WHERE organization_id = ?`,

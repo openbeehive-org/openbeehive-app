@@ -183,7 +183,7 @@ func registerWeb(mux *http.ServeMux, cfg *config.Config) {
 	}
 	h, err := web.Handler(cfg)
 	if err != nil {
-		log.Printf("web: not serving embedded app (%v) — run vite separately in dev", err)
+		log.Printf("web: not serving embedded app (%v); run vite separately in dev", err)
 		return
 	}
 	mux.Handle("/", h)
@@ -216,7 +216,7 @@ func serve(ctx context.Context, cfg *config.Config, handler http.Handler) {
 	}()
 
 	<-runCtx.Done()
-	log.Printf("shutting down…")
+	log.Printf("shutting down...")
 	shutCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {

@@ -130,7 +130,7 @@ func TestDemoCoexistsWithRegistration(t *testing.T) {
 	}
 }
 
-// TestDemoCoexistsWithInvites: demo on, registration closed — invites still
+// TestDemoCoexistsWithInvites: demo on, registration closed; invites still
 // work (the combination used by a production instance with a public demo).
 func TestDemoCoexistsWithInvites(t *testing.T) {
 	cfg := &config.Config{Profile: "selfhost"}

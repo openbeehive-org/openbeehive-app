@@ -87,7 +87,7 @@ func (p *PasswordAuth) signup(w http.ResponseWriter, r *http.Request) {
 		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "a valid email and an 8+ character password are required"})
 		return
 	}
-	// The demo account is seeded, never signed up — even if the seeder has not
+	// The demo account is seeded, never signed up, even if the seeder has not
 	// run yet, its email must not be claimable by a visitor.
 	if p.cfg.Demo.Enabled && strings.EqualFold(req.Email, p.cfg.Demo.Email) {
 		respondJSON(w, http.StatusForbidden, map[string]any{"error": "this email is reserved"})
@@ -99,7 +99,7 @@ func (p *PasswordAuth) signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Invite-only instance: sign-up requires a valid invite issued to this
-	// email. (The admin account exists from boot — see EnsureAdmin — so there
+	// email. (The admin account exists from boot, see EnsureAdmin, so there
 	// is no first-run exception.) The invite itself is consumed later by
 	// /auth/accept-invite (once the fresh account is signed in).
 	if !p.cfg.Auth.RegistrationOpen {

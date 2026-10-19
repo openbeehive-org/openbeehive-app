@@ -184,7 +184,7 @@ func (t *TenantAPI) invite(w http.ResponseWriter, r *http.Request) {
 	}
 	link := t.inviteLink(inv.Token)
 	// Email the invitee; when SMTP is unset (or fails) log the link instead so
-	// it stays recoverable — the UI shows it to the inviting admin either way.
+	// it stays recoverable; the UI shows it to the inviting admin either way.
 	orgName := req.OrgID
 	if org, err := t.orgs.Get(r.Context(), req.OrgID); err == nil {
 		orgName = org.Name
@@ -223,7 +223,7 @@ func (t *TenantAPI) requireOwner(w http.ResponseWriter, r *http.Request, orgID s
 }
 
 // listInvites returns the tenant's open (not yet accepted) invites, including
-// the signup link so the admin can re-copy it — accepting deletes the row, so
+// the signup link so the admin can re-copy it; accepting deletes the row, so
 // everything listed here is still pending.
 func (t *TenantAPI) listInvites(w http.ResponseWriter, r *http.Request) {
 	_, orgID, ok := t.requireOwner(w, r, r.URL.Query().Get("org_id"))
@@ -284,7 +284,7 @@ type deleteTenantReq struct {
 	OrgID string `json:"org_id"`
 }
 
-// deleteTenant permanently removes a tenant and everything in it — for every
+// deleteTenant permanently removes a tenant and everything in it: for every
 // member, not just the caller. Owner-only. The caller's session is moved to
 // another tenant they belong to (a fresh personal one if none is left).
 func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
@@ -314,7 +314,7 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 	}
 	next := t.prov.ActiveOrg(r.Context(), id.UserID)
 	if next == "" {
-		// The caller deleted their last tenant — recreate a personal one so
+		// The caller deleted their last tenant; recreate a personal one so
 		// the account never ends up orphaned.
 		if u, err := t.users.GetByID(r.Context(), id.UserID); err == nil {
 			next = t.prov.ResolveActiveOrg(r.Context(), u)

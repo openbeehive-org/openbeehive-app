@@ -78,7 +78,7 @@ func TestWebAuthnEnrollRefusesDemoRole(t *testing.T) {
 	}
 }
 
-// A signed-in user gets registration options bound to their own account —
+// A signed-in user gets registration options bound to their own account;
 // never to a name they merely claim.
 func TestWebAuthnEnrollBeginBindsToSessionUser(t *testing.T) {
 	srv, sessions, users := newWebAuthnFixture(t)
@@ -104,7 +104,7 @@ func TestWebAuthnEnrollBeginBindsToSessionUser(t *testing.T) {
 	buf := make([]byte, 4096)
 	n, _ := resp.Body.Read(buf)
 	body := string(buf[:n])
-	// The options' user.id is base64url("user-1") — the session's user, and
+	// The options' user.id is base64url("user-1"), the session's user, and
 	// residentKey is required so login can be usernameless.
 	if !strings.Contains(body, `"dXNlci0x"`) {
 		t.Errorf("options do not carry the session user id: %s", body)

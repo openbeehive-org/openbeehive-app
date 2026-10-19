@@ -42,7 +42,7 @@ type SessionVerifier interface {
 var errMissingToken = errors.New("missing session token")
 
 // ErrDemoReadOnly rejects writes from demo sessions.
-var ErrDemoReadOnly = errors.New("the demo account is read-only — data resets hourly")
+var ErrDemoReadOnly = errors.New("the demo account is read-only; data resets hourly")
 
 // ErrKeyReadOnly rejects writes from read-scoped API keys.
 var ErrKeyReadOnly = errors.New("this API key is read-only")
