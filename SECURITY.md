@@ -28,3 +28,9 @@ Please include:
 
 Reports are triaged privately; a fix and an advisory follow once the issue is
 confirmed. Reporters are credited in the advisory unless they prefer not to be.
+
+## Verifying images
+
+Published images are signed keyless with cosign and carry SBOM and provenance attestations; the
+header of `.github/workflows/release.yml` has the `cosign verify` command. The SBOM (SPDX JSON) is
+attached to each GitHub release.
