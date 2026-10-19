@@ -3,19 +3,19 @@ module github.com/openbeehive-org/openbeehive-app/server
 go 1.26.9
 
 require (
-	connectrpc.com/connect v1.20.0
-	github.com/coreos/go-oidc/v3 v3.20.0
-	github.com/go-sql-driver/mysql v1.10.0
-	github.com/go-webauthn/webauthn v0.17.4
+	connectrpc.com/connect v1.21.1
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/go-sql-driver/mysql v1.10.1
+	github.com/go-webauthn/webauthn v0.18.2
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/minio/minio-go/v7 v7.2.1
+	github.com/minio/minio-go/v7 v7.4.1
 	github.com/rs/cors v1.11.1
-	golang.org/x/crypto v0.57.0
-	golang.org/x/oauth2 v0.36.0
-	google.golang.org/protobuf v1.36.11
-	modernc.org/sqlite v1.53.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/oauth2 v0.37.0
+	google.golang.org/protobuf v1.36.12
+	modernc.org/sqlite v1.60.1
 )
 
 require (
