@@ -2,7 +2,7 @@
   import 'leaflet/dist/leaflet.css';
   import { onMount, onDestroy } from 'svelte';
   import { _ } from 'svelte-i18n';
-  import { geocode, reverseGeocode, fmtCoords } from '$lib/geocode';
+  import { geocode, reverseGeocode, fmtCoords } from '#lib/geocode.js';
 
   // Two-way bound: the parent's address input and the pin stay in sync.
   // Typing an address geocodes it and moves the pin; moving the pin (drag or

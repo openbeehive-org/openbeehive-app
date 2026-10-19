@@ -14,7 +14,7 @@ export interface LocalDB {
 // This module proxies exec/all/get to that worker over postMessage. ---
 import DbWorker from './db.worker?worker';
 import { migrateLocal } from './schema';
-import { toast } from '$lib/toast';
+import { toast } from '#lib/toast.js';
 import { get } from 'svelte/store';
 import { _ } from 'svelte-i18n';
 

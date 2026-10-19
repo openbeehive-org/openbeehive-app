@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { _, locale } from 'svelte-i18n';
-  import { changeLanguage, SUPPORTED, LANG_LABELS, type Lang } from '$lib/i18n';
+  import { changeLanguage, SUPPORTED, LANG_LABELS, type Lang } from '#lib/i18n/index.js';
   import {
     exportJSON,
     exportXLSX,
@@ -10,21 +10,21 @@
     printReport,
     importFile,
     type ImportMode
-  } from '$lib/data/portability';
+  } from '#lib/data/portability.js';
   import {
     enrollPasskey,
     listPasskeys,
     deletePasskey,
     passkeysSupported,
     type PasskeyInfo
-  } from '$lib/webauthn';
+  } from '#lib/webauthn.js';
   import {
     listApiKeys,
     createApiKey,
     deleteApiKey,
     type ApiKeyInfo,
     type ApiKeyScope
-  } from '$lib/apikeys';
+  } from '#lib/apikeys.js';
 
   const API = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 

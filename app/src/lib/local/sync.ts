@@ -7,7 +7,7 @@ import { getDB } from './db';
 import { hlc } from './hlc';
 import { parseFieldClock, accept, parseORSet, orAdd, orRemove, orRemoveTags } from './merge';
 import { bumpData, initialSyncPending } from './live';
-import { syncClient } from '$lib/client'; // generated Connect client (SyncService)
+import { syncClient } from '#lib/client.js'; // generated Connect client (SyncService)
 
 const SYNCED_TABLES = [
   'apiary',

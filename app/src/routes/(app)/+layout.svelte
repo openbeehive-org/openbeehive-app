@@ -1,12 +1,12 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { startSync } from '$lib/local/sync';
-  import NavIcon from '$lib/components/NavIcon.svelte';
-  import Toasts from '$lib/components/Toasts.svelte';
-  import { toast } from '$lib/toast';
+  import { startSync } from '#lib/local/sync.js';
+  import NavIcon from '#lib/components/NavIcon.svelte';
+  import Toasts from '#lib/components/Toasts.svelte';
+  import { toast } from '#lib/toast.js';
   import { get } from 'svelte/store';
 
   const api = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
@@ -127,7 +127,7 @@
   ];
 
   function isActive(href: string): boolean {
-    const p = $page.url.pathname;
+    const p = page.url.pathname;
     return href === '/' ? p === '/' : p === href || p.startsWith(href + '/');
   }
 </script>

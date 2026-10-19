@@ -7,11 +7,11 @@
     inspections,
     MARKING_COLORS,
     MARKING_NAMES
-  } from '$lib/local/repo';
-  import { createHive } from '$lib/local/history';
-  import { dataVersion, initialSyncPending } from '$lib/local/live';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import Syncing from '$lib/components/Syncing.svelte';
+  } from '#lib/local/repo.js';
+  import { createHive } from '#lib/local/history.js';
+  import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import Syncing from '#lib/components/Syncing.svelte';
 
   let rows = $state<any[]>([]);
   let apiaryList = $state<any[]>([]);

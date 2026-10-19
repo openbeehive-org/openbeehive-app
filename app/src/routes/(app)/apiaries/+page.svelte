@@ -1,11 +1,11 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { apiaries, hives } from '$lib/local/repo';
-  import { dataVersion, initialSyncPending } from '$lib/local/live';
-  import ApiaryMap from '$lib/components/ApiaryMap.svelte';
-  import LocationPicker from '$lib/components/LocationPicker.svelte';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import Syncing from '$lib/components/Syncing.svelte';
+  import { apiaries, hives } from '#lib/local/repo.js';
+  import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import ApiaryMap from '#lib/components/ApiaryMap.svelte';
+  import LocationPicker from '#lib/components/LocationPicker.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import Syncing from '#lib/components/Syncing.svelte';
 
   let rows = $state<any[]>([]);
   let counts = $state<Record<string, number>>({});

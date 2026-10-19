@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
   import {
@@ -9,13 +9,13 @@
     inspections,
     MARKING_COLORS,
     MARKING_NAMES
-  } from '$lib/local/repo';
-  import { createHive } from '$lib/local/history';
-  import { dataVersion } from '$lib/local/live';
-  import { qrSvg, hiveUrl, shortCode } from '$lib/qr';
-  import LocationPicker from '$lib/components/LocationPicker.svelte';
+  } from '#lib/local/repo.js';
+  import { createHive } from '#lib/local/history.js';
+  import { dataVersion } from '#lib/local/live.js';
+  import { qrSvg, hiveUrl, shortCode } from '#lib/qr.js';
+  import LocationPicker from '#lib/components/LocationPicker.svelte';
 
-  const id = $page.params.id ?? '';
+  const id = page.params.id ?? '';
   let apiary = $state<any>(null);
   let hiveRows = $state<any[]>([]);
   let loaded = $state(false);
@@ -183,6 +183,7 @@
           <button type="button" class="ghost" onclick={() => (editing = false)}
             >{$_('common.cancel')}</button
           >
+
           <button type="submit" class="primary" disabled={!eName.trim()}>{$_('common.save')}</button
           >
         </div>
@@ -197,6 +198,7 @@
         {#if hiveRows.length}
           <button class="ghost sm" onclick={printQrSheet}>🏷 {$_('apiaries.qr_sheet')}</button>
         {/if}
+
         <button class="primary sm" onclick={() => (addingHive = !addingHive)}
           >+ {$_('apiaries.add_hive')}</button
         >
@@ -216,6 +218,7 @@
           <button type="button" class="ghost" onclick={() => (addingHive = false)}
             >{$_('common.cancel')}</button
           >
+
           <button type="submit" class="primary" disabled={!hiveName.trim()}
             >{$_('common.save')}</button
           >

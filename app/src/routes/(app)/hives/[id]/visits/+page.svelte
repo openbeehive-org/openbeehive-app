@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
-  import { hives, inspections } from '$lib/local/repo';
-  import { dataVersion } from '$lib/local/live';
+  import { hives, inspections } from '#lib/local/repo.js';
+  import { dataVersion } from '#lib/local/live.js';
 
-  const id = $page.params.id ?? '';
+  const id = page.params.id ?? '';
   let hive = $state<any>(null);
   let visits = $state<any[]>([]);
   let loaded = $state(false);

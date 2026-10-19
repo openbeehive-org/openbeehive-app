@@ -2,7 +2,7 @@
 // session) to every RPC.
 import { createClient, type Interceptor } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 // Generated via `make proto` into src/lib/proto (protoc-gen-es v2: services
 // live in the *_pb modules):

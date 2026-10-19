@@ -2,7 +2,7 @@
 // Accept-Language. Add more languages simply by adding a locale file and
 // registering it below.
 import { register, init, getLocaleFromNavigator, locale } from 'svelte-i18n';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 export const SUPPORTED = ['en', 'de', 'fr', 'es', 'it'] as const;
 export type Lang = (typeof SUPPORTED)[number];

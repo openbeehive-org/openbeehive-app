@@ -20,7 +20,7 @@ vi.mock('./sync', async (importOriginal) => {
 });
 
 const pullMock = vi.fn();
-vi.mock('$lib/client', () => ({
+vi.mock('#lib/client.js', () => ({
   syncClient: {
     push: vi.fn(async () => ({ serverCursor: '' })),
     pull: (...a: unknown[]) => pullMock(...a)

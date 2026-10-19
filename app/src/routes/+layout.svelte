@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { setupI18n } from '$lib/i18n';
+  import { setupI18n } from '#lib/i18n/index.js';
   import { isLoading } from 'svelte-i18n';
   setupI18n();
   let { children } = $props();

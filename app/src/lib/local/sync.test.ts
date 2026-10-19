@@ -9,7 +9,7 @@ vi.mock('./db', async () => {
 
 const pushMock = vi.fn();
 const pullMock = vi.fn();
-vi.mock('$lib/client', () => ({
+vi.mock('#lib/client.js', () => ({
   syncClient: {
     push: (...a: unknown[]) => pushMock(...a),
     pull: (...a: unknown[]) => pullMock(...a)

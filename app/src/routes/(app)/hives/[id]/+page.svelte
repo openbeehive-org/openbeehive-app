@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
   import {
@@ -12,19 +12,19 @@
     markingForYear,
     MARKING_COLORS,
     MARKING_NAMES
-  } from '$lib/local/repo';
+  } from '#lib/local/repo.js';
   import {
     recordInspection,
     setQueen,
     moveHive,
     recordHarvest,
     recordTreatment
-  } from '$lib/local/history';
-  import { dataVersion } from '$lib/local/live';
-  import { fileToThumbnail } from '$lib/image';
-  import QrLabel from '$lib/components/QrLabel.svelte';
+  } from '#lib/local/history.js';
+  import { dataVersion } from '#lib/local/live.js';
+  import { fileToThumbnail } from '#lib/image.js';
+  import QrLabel from '#lib/components/QrLabel.svelte';
 
-  const id = $page.params.id ?? '';
+  const id = page.params.id ?? '';
   let hive = $state<any>(null);
   let apiaryName = $state('');
   let queen = $state<any>(null);
@@ -144,8 +144,8 @@
         })).filter((p) => !isNaN(p.value) && p.value > 0)
       : []
   );
-  const recentVisits = $derived(visits.slice(0, 5));
 
+  const recentVisits = $derived(visits.slice(0, 5));
   const TEMPERAMENTS = [1, 2, 3, 4, 5];
   const STORES = [1, 2, 3, 4];
   const CALM = [1, 2, 3, 4];
@@ -398,10 +398,15 @@
       </div>
       <div class="acts">
         <a class="icon" href={`/hives/${id}/stockkarte`} title={$_('insp.stockkarte')}>▦</a>
+
         <a class="icon" href={`/hives/${id}/stats`} title={$_('stats.title')}>📈</a>
+
         <button class="icon" onclick={startEditHive} title={$_('hives.edit')}>✎</button>
+
         <button class="icon" onclick={openMove} title={$_('hives.move')}>⇄</button>
+
         <button class="icon" onclick={() => (showQr = !showQr)} title="QR">⬚</button>
+
         <button class="icon danger" onclick={delHive} title={$_('common.delete')}>🗑</button>
       </div>
     </header>
@@ -438,6 +443,7 @@
           <button type="button" class="ghost" onclick={() => (moveForm = false)}
             >{$_('common.cancel')}</button
           >
+
           <button type="submit" class="primary" disabled={!moveTarget}>{$_('hives.move')}</button>
         </div>
       </form>
@@ -468,6 +474,7 @@
           <button type="button" class="ghost" onclick={() => (editingHive = false)}
             >{$_('common.cancel')}</button
           >
+
           <button type="submit" class="primary" disabled={!hName.trim()}>{$_('common.save')}</button
           >
         </div>
@@ -498,12 +505,15 @@
           }}
         >
           <div class="grid2">
-            <label class="field"
-              ><span>{$_('queens.year')}</span>
-              <input type="number" bind:value={qYear} min="2000" max="2100" /></label
-            >
-            <label class="field"
-              ><span>{$_('queens.number')}</span>
+            <label class="field">
+              <span>{$_('queens.year')}</span>
+
+              <input type="number" bind:value={qYear} min="2000" max="2100" />
+            </label>
+
+            <label class="field">
+              <span>{$_('queens.number')}</span>
+
               <input
                 bind:value={qNumber}
                 inputmode="numeric"
@@ -532,6 +542,7 @@
             <button type="button" class="ghost" onclick={() => (queenForm = false)}
               >{$_('common.cancel')}</button
             >
+
             <button type="submit" class="primary">{$_('common.save')}</button>
           </div>
         </form>
@@ -589,6 +600,7 @@
     <section>
       <div class="sec-head">
         <h2>{$_('insp.log')}</h2>
+
         <button class="primary sm" onclick={() => (visitForm = !visitForm)}
           >+ {$_('insp.record')}</button
         >
@@ -698,19 +710,15 @@
 
           <h3>{$_('insp.climate')}</h3>
           <div class="grid2">
-            <label class="field"
-              ><span>{$_('insp.temp_hive')} (°C)</span><input
-                type="number"
-                step="0.1"
-                bind:value={v.temp_hive}
-              /></label
-            >
-            <label class="field"
-              ><span>{$_('insp.temp_outside')} (°C)</span><input
-                type="number"
-                step="0.1"
-                bind:value={v.temp_outside}
-              /></label
+            <label class="field">
+              <span>{$_('insp.temp_hive')} (°C)</span>
+              <input type="number" step="0.1" bind:value={v.temp_hive} />
+            </label>
+
+            <label class="field">
+              <span>{$_('insp.temp_outside')} (°C)</span>
+
+              <input type="number" step="0.1" bind:value={v.temp_outside} /></label
             >
             <label class="field"
               ><span>{$_('insp.humidity_hive')} (%)</span><input
@@ -748,21 +756,18 @@
                 min="0"
                 step="0.1"
                 bind:value={v.honey_kg}
-              /></label
-            >
-            <label class="field"
-              ><span>{$_('insp.frames_added')}</span><input
-                type="number"
-                min="0"
-                bind:value={v.frames_added}
-              /></label
-            >
-            <label class="field"
-              ><span>{$_('insp.frames_removed')}</span><input
-                type="number"
-                min="0"
-                bind:value={v.frames_removed}
-              /></label
+              />
+            </label>
+
+            <label class="field">
+              <span>{$_('insp.frames_added')}</span>
+              <input type="number" min="0" bind:value={v.frames_added} />
+            </label>
+
+            <label class="field">
+              <span>{$_('insp.frames_removed')}</span>
+
+              <input type="number" min="0" bind:value={v.frames_removed} /></label
             >
           </div>
           <div class="checks">
@@ -858,6 +863,7 @@
           {$_('harvest.title')}{#if harvestTotal}
             · {harvestTotal} kg{/if}
         </h2>
+
         <button class="primary sm" onclick={() => (harvestForm = !harvestForm)}
           >+ {$_('harvest.record')}</button
         >
@@ -960,6 +966,7 @@
     <section>
       <div class="sec-head">
         <h2>{$_('treat.title')}</h2>
+
         <button class="primary sm" onclick={() => (treatmentForm = !treatmentForm)}
           >+ {$_('treat.record')}</button
         >

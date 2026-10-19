@@ -1,11 +1,11 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { apiaries, hives, tasks as taskRepo } from '$lib/local/repo';
-  import { getDB } from '$lib/local/db';
-  import { honeyByYear } from '$lib/local/history';
-  import { dataVersion, initialSyncPending } from '$lib/local/live';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import Syncing from '$lib/components/Syncing.svelte';
+  import { apiaries, hives, tasks as taskRepo } from '#lib/local/repo.js';
+  import { getDB } from '#lib/local/db.js';
+  import { honeyByYear } from '#lib/local/history.js';
+  import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import Syncing from '#lib/components/Syncing.svelte';
 
   // Local-first dashboard: every figure is read straight from the device DB.
   let stats = $state({

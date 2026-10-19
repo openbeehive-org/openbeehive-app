@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
-  import { passkeyLogin, passkeysSupported } from '$lib/webauthn';
+  import { passkeyLogin, passkeysSupported } from '#lib/webauthn.js';
 
   // Auth endpoints are on the API origin. Empty = same origin (single-binary prod).
   const API = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
@@ -21,9 +21,9 @@
   let busy = $state(false);
   let error = $state('');
 
-  const justVerified = $derived($page.url.searchParams.get('verified') === '1');
+  const justVerified = $derived(page.url.searchParams.get('verified') === '1');
   // Invite links land here as /login?invite=<token> (see server tenant.go).
-  const inviteToken = $derived($page.url.searchParams.get('invite') ?? '');
+  const inviteToken = $derived(page.url.searchParams.get('invite') ?? '');
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   onMount(async () => {
@@ -42,9 +42,11 @@
         goto('/');
         return;
       }
-      if (inviteToken && hasPassword)
-        mode = 'signup'; // invited: most likely a fresh account
-      else mode = 'signin';
+
+      if (inviteToken && hasPassword) mode = 'signup';
+      else
+        // invited: most likely a fresh account
+        mode = 'signin';
     } catch {
       mode = 'single';
       goto('/');
@@ -183,8 +185,13 @@
         <p class="notice">{$_('auth.invite_only_banner')}</p>
       {/if}
 
-      {#if justVerified}<p class="ok">{$_('auth.verified_ok')}</p>{/if}
-      {#if error}<p class="err">{error}</p>{/if}
+      {#if justVerified}
+        <p class="ok">{$_('auth.verified_ok')}</p>
+      {/if}
+
+      {#if error}
+        <p class="err">{error}</p>
+      {/if}
 
       {#if demoEnabled}
         <button class="primary demo" onclick={demoLogin} disabled={busy}
@@ -206,12 +213,16 @@
               <input bind:value={name} autocomplete="name" /></label
             >
           {/if}
-          <label
-            ><span>{$_('auth.email')}</span>
-            <input type="email" bind:value={email} autocomplete="email" required /></label
-          >
-          <label
-            ><span>{$_('auth.password')}</span>
+
+          <label>
+            <span>{$_('auth.email')}</span>
+
+            <input type="email" bind:value={email} autocomplete="email" required />
+          </label>
+
+          <label>
+            <span>{$_('auth.password')}</span>
+
             <input
               type="password"
               bind:value={password}

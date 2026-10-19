@@ -6,7 +6,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
-  import { parseHiveId } from '$lib/qr';
+  import { parseHiveId } from '#lib/qr.js';
 
   let video: HTMLVideoElement;
   let stream: MediaStream | null = null;

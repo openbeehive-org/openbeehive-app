@@ -4,13 +4,13 @@
   // shared), we trigger a sync and retry; if still missing, we explain why.
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
-  import { hives } from '$lib/local/repo';
-  import { syncOnce } from '$lib/local/sync';
+  import { hives } from '#lib/local/repo.js';
+  import { syncOnce } from '#lib/local/sync.js';
 
   let state = $state<'resolving' | 'missing' | 'offline'>('resolving');
-  const id = $page.params.id ?? '';
+  const id = page.params.id ?? '';
 
   onMount(async () => {
     try {

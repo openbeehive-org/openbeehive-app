@@ -1,9 +1,9 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { tasks } from '$lib/local/repo';
-  import { dataVersion, initialSyncPending } from '$lib/local/live';
-  import Skeleton from '$lib/components/Skeleton.svelte';
-  import Syncing from '$lib/components/Syncing.svelte';
+  import { tasks } from '#lib/local/repo.js';
+  import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import Skeleton from '#lib/components/Skeleton.svelte';
+  import Syncing from '#lib/components/Syncing.svelte';
 
   let rows = $state<any[]>([]);
   let loaded = $state(false);
