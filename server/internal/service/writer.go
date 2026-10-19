@@ -13,10 +13,10 @@ import (
 	"github.com/jmoiron/sqlx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/auth"
-	wv1 "github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
+	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // Writer is the write path shared by every CRUD service. Each write is

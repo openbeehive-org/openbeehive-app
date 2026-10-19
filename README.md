@@ -7,7 +7,7 @@
 For hobby and professional beekeepers alike.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-c77f22.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/johnnycube/openbeehive-app?color=c77f22)](CHANGELOG.md)
+[![Release](https://img.shields.io/github/v/release/openbeehive-org/openbeehive-app?color=c77f22)](CHANGELOG.md)
 
 [Website](https://openbeehive.org) · [App](https://app.openbeehive.org) · [Docs](https://docs.openbeehive.org)
 
@@ -86,7 +86,7 @@ docker compose up -d          # Postgres + MinIO + the server (which serves the 
 A prebuilt image is published to the GitHub Container Registry on each release:
 
 ```bash
-docker run -p 8080:8080 ghcr.io/johnnycube/openbeehive-app:latest
+docker run -p 8080:8080 ghcr.io/openbeehive-org/openbeehive-app:latest
 ```
 
 See the [self-hosting guide](https://docs.openbeehive.org) for full configuration.
@@ -112,8 +112,8 @@ app/        SvelteKit PWA (local-first store, sync engine, routes, components)
 
 ## Related repositories
 
-- **[openbeehive-site](https://github.com/johnnycube/openbeehive-site)** — marketing site (openbeehive.org)
-- **[openbeehive-docs](https://github.com/johnnycube/openbeehive-docs)** — documentation (docs.openbeehive.org)
+- **[openbeehive-site](https://github.com/openbeehive-org/openbeehive-site)** — marketing site (openbeehive.org)
+- **[openbeehive-docs](https://github.com/openbeehive-org/openbeehive-docs)** — documentation (docs.openbeehive.org)
 
 ## License
 

@@ -7,9 +7,9 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/auth"
-	wv1 "github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1"
-	"github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
+	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
 )
 
 // StatsService computes the dashboard and honey figures from the tenant's

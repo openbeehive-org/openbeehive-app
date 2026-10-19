@@ -12,9 +12,9 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
-	sqlstore "github.com/johnnycube/openbeehive-app/server/internal/storage/sql"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
+	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
 )
 
 func newAuthFixture(t *testing.T, cfg *config.Config) (*httptest.Server, *sqlstore.Store, *SessionManager) {

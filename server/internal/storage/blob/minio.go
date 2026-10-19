@@ -6,7 +6,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
 
 type minioStore struct {

@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // --- Organizations (tenants) ---

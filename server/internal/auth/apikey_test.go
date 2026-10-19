@@ -13,8 +13,8 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 // newAPIKeyFixture: a store with one user in one tenant, the key endpoints

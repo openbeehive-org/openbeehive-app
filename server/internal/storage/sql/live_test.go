@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	"github.com/johnnycube/openbeehive-app/server/internal/storage"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 // syncedTables must all exist after the chain has run.

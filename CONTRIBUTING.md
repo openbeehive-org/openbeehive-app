@@ -2,12 +2,12 @@
 
 This is the **application** repository (Go backend + SvelteKit PWA). The
 website and documentation live in
-[`openbeehive-site`](https://github.com/johnnycube/openbeehive-site) and
-[`openbeehive-docs`](https://github.com/johnnycube/openbeehive-docs).
+[`openbeehive-site`](https://github.com/openbeehive-org/openbeehive-site) and
+[`openbeehive-docs`](https://github.com/openbeehive-org/openbeehive-docs).
 
 ## Ways to contribute
 
-- Report bugs and request features via [issues](https://github.com/johnnycube/openbeehive-app/issues).
+- Report bugs and request features via [issues](https://github.com/openbeehive-org/openbeehive-app/issues).
 - Improve code, tests, or translations.
 - Help triage and review pull requests.
 

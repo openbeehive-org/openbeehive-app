@@ -1,4 +1,4 @@
-module github.com/johnnycube/openbeehive-app/server
+module github.com/openbeehive-org/openbeehive-app/server
 
 go 1.25.0
 

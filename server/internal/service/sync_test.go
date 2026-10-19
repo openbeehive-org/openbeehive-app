@@ -9,11 +9,11 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/johnnycube/openbeehive-app/server/internal/auth"
-	"github.com/johnnycube/openbeehive-app/server/internal/config"
-	wv1 "github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1"
-	sqlstore "github.com/johnnycube/openbeehive-app/server/internal/storage/sql"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // newSyncFixture opens a fresh store with two tenants, one apiary each, and

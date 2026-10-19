@@ -9,8 +9,8 @@ import (
 	"github.com/jmoiron/sqlx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	wv1 "github.com/johnnycube/openbeehive-app/server/internal/gen/openbeehive/v1"
-	wsync "github.com/johnnycube/openbeehive-app/server/internal/sync"
+	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // Row readers for the CRUD services. Rows come back as maps because the
