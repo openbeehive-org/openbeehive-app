@@ -10,10 +10,27 @@
 </p>
 
 <style>
-  .syncing { display: flex; align-items: center; justify-content: center; gap: 10px;
-    color: var(--ink-soft); font-size: .9rem; padding: 36px 0; }
-  .spin { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
-    border: 2px solid var(--line); border-top-color: var(--honey);
-    animation: rot .8s linear infinite; }
-  @keyframes rot { to { transform: rotate(360deg); } }
+  .syncing {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    padding: 36px 0;
+  }
+  .spin {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid var(--line);
+    border-top-color: var(--honey);
+    animation: rot 0.8s linear infinite;
+  }
+  @keyframes rot {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 </style>

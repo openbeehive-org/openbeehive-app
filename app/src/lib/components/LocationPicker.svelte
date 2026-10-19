@@ -11,7 +11,7 @@
   let {
     lat = $bindable(0),
     lng = $bindable(0),
-    address = $bindable(''),
+    address = $bindable('')
   }: { lat?: number; lng?: number; address?: string } = $props();
 
   let el: HTMLDivElement;
@@ -29,7 +29,10 @@
 
   function pin(Lib: any) {
     return Lib.divIcon({
-      className: 'obh-pin', html: '<span></span>', iconSize: [26, 26], iconAnchor: [13, 26]
+      className: 'obh-pin',
+      html: '<span></span>',
+      iconSize: [26, 26],
+      iconAnchor: [13, 26]
     });
   }
 
@@ -63,7 +66,8 @@
   // Coordinates changed from outside (numeric inputs, geolocation button) ->
   // move the pin. A no-op when the pin itself caused the change.
   $effect(() => {
-    const a = lat, b = lng;
+    const a = lat,
+      b = lng;
     if (!map || (!a && !b)) return;
     const cur = marker?.getLatLng();
     if (!cur || Math.abs(cur.lat - a) > 1e-6 || Math.abs(cur.lng - b) > 1e-6) {
@@ -93,10 +97,13 @@
   onMount(async () => {
     L = (await import('leaflet')).default;
     const hasPos = !!(lat || lng);
-    map = L.map(el, { zoomControl: true, attributionControl: true })
-      .setView(hasPos ? [lat, lng] : [50.5, 9.5], hasPos ? 14 : 5);
+    map = L.map(el, { zoomControl: true, attributionControl: true }).setView(
+      hasPos ? [lat, lng] : [50.5, 9.5],
+      hasPos ? 14 : 5
+    );
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '© OpenStreetMap'
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
     }).addTo(map);
     if (hasPos) placeMarker(lat, lng, false);
     map.on('click', (e: any) => {
@@ -129,19 +136,52 @@
 </div>
 
 <style>
-  .map { height: 240px; width: 100%; border-radius: 12px; overflow: hidden;
-    border: 1px solid var(--line); z-index: 0; }
-  .hint { color: var(--ink-soft); font-size: .8rem; margin: 6px 2px 0; }
-  .hint.warn { color: #a8562e; }
-  .hint.ok { color: #41502f; }
-  .hint.busy { display: flex; align-items: center; gap: 6px; }
-  .spin { width: 11px; height: 11px; border-radius: 50%; flex: none;
-    border: 2px solid var(--line); border-top-color: var(--honey, #c77f22);
-    animation: obh-spin .7s linear infinite; }
-  @keyframes obh-spin { to { transform: rotate(360deg); } }
+  .map {
+    height: 240px;
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    z-index: 0;
+  }
+  .hint {
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+    margin: 6px 2px 0;
+  }
+  .hint.warn {
+    color: #a8562e;
+  }
+  .hint.ok {
+    color: #41502f;
+  }
+  .hint.busy {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .spin {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex: none;
+    border: 2px solid var(--line);
+    border-top-color: var(--honey, #c77f22);
+    animation: obh-spin 0.7s linear infinite;
+  }
+  @keyframes obh-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   :global(.obh-pin span) {
-    display: block; width: 20px; height: 20px; border-radius: 50% 50% 50% 0;
-    background: var(--honey, #c77f22); border: 2px solid #fffdf7; transform: rotate(-45deg);
-    box-shadow: 0 2px 5px rgba(0,0,0,.3);
+    display: block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50% 50% 50% 0;
+    background: var(--honey, #c77f22);
+    border: 2px solid #fffdf7;
+    transform: rotate(-45deg);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
   }
 </style>

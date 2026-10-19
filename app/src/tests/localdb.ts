@@ -29,7 +29,9 @@ export async function makeLocalDB(): Promise<LocalDB> {
 // getDB() in lib/local is a singleton; tests that simulate several devices
 // switch the active database here (see the vi.mock in the test files).
 let current: LocalDB | null = null;
-export function setCurrentDB(db: LocalDB) { current = db; }
+export function setCurrentDB(db: LocalDB) {
+  current = db;
+}
 export function getCurrentDB(): LocalDB {
   if (!current) throw new Error('setCurrentDB() first');
   return current;

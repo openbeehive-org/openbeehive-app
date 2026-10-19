@@ -9,14 +9,20 @@ const CACHE = `obh-shell-${version}`;
 const ASSETS = [...build, ...files];
 
 self.addEventListener('install', (e: any) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => (self as any).skipWaiting()));
+  e.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(ASSETS))
+      .then(() => (self as any).skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e: any) => {
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => (self as any).clients.claim())
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => (self as any).clients.claim())
   );
 });
 
@@ -30,9 +36,8 @@ self.addEventListener('fetch', (e: any) => {
 
   // Cache-first for assets, network fallback, offline -> app shell.
   e.respondWith(
-    caches.match(req).then((hit) =>
-      hit ??
-      fetch(req).catch(() => caches.match('/') as Promise<Response>)
-    )
+    caches
+      .match(req)
+      .then((hit) => hit ?? fetch(req).catch(() => caches.match('/') as Promise<Response>))
   );
 });

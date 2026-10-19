@@ -141,14 +141,14 @@ func (s *Store) runMigration(ctx context.Context, name string) error {
 				// handle natively).
 				continue
 			}
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("migration %s: %w", name, err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		tx.Rebind(`INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`),
 		name, time.Now().UTC()); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return fmt.Errorf("migration %s: record version: %w", name, err)
 	}
 	return tx.Commit()

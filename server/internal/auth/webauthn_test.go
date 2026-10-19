@@ -53,7 +53,7 @@ func TestWebAuthnEnrollRequiresSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("credentials list without session: code=%d, want 401", resp.StatusCode)
 	}
@@ -72,7 +72,7 @@ func TestWebAuthnEnrollRefusesDemoRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("demo enroll: code=%d, want 403", resp.StatusCode)
 	}
@@ -97,7 +97,7 @@ func TestWebAuthnEnrollBeginBindsToSessionUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("enroll begin: code=%d, want 200", resp.StatusCode)
 	}

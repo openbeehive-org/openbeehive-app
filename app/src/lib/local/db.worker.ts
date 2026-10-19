@@ -8,7 +8,13 @@
 // them on the same device.
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 
-type Req = { id: number; method: 'open' | 'exec' | 'all'; sql?: string; params?: unknown[]; name?: string };
+type Req = {
+  id: number;
+  method: 'open' | 'exec' | 'all';
+  sql?: string;
+  params?: unknown[];
+  name?: string;
+};
 
 let dbName = 'openbeehive.sqlite3';
 let dbPromise: Promise<any> | null = null;
@@ -32,7 +38,10 @@ async function getDb() {
       for (let attempt = 0; attempt < 3; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
         try {
-          pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'openbeehive', initialCapacity: MIN_POOL_CAPACITY });
+          pool = await sqlite3.installOpfsSAHPoolVfs({
+            name: 'openbeehive',
+            initialCapacity: MIN_POOL_CAPACITY
+          });
           // initialCapacity only applies when the pool is first created; a pool
           // that already exists on the device keeps its old (possibly smaller)
           // capacity. Grow it explicitly so upgraded installs get the slots too.
@@ -87,8 +96,14 @@ self.onmessage = async (e: MessageEvent<Req>) => {
         throw err;
       }
     }
-    (self as unknown as Worker).postMessage(method === 'all' ? { id, ok: true, rows } : { id, ok: true });
+    (self as unknown as Worker).postMessage(
+      method === 'all' ? { id, ok: true, rows } : { id, ok: true }
+    );
   } catch (err) {
-    (self as unknown as Worker).postMessage({ id, ok: false, error: String((err as Error)?.message ?? err) });
+    (self as unknown as Worker).postMessage({
+      id,
+      ok: false,
+      error: String((err as Error)?.message ?? err)
+    });
   }
 };

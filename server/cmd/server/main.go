@@ -11,8 +11,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/rs/cors"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
@@ -34,12 +32,36 @@ func main() {
 	}
 	log.Printf("Openbeehive · profile=%s · DB=%s · Blob=%s", cfg.Profile, cfg.DB.Driver, cfg.Blob.Backend)
 
-	// --- Storage backends (pluggable) ---
+	store := openStore(ctx, cfg)
+	defer func() { _ = store.Close() }()
+
+	blobs, err := blob.New(cfg)
+	if err != nil {
+		log.Fatalf("blob: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	interceptors := setupAuth(ctx, cfg, store, blobs, mux)
+	registerServices(mux, cfg, store, interceptors)
+	registerWeb(mux, cfg)
+
+	// CORS for browser clients; Connect-Web needs these headers.
+	handler := cors.New(cors.Options{
+		AllowedOrigins:   cfg.CORS.AllowedOrigins,
+		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodOptions},
+		AllowedHeaders:   []string{"*"},
+		ExposedHeaders:   []string{"Connect-Protocol-Version", "Grpc-Status", "Grpc-Message"},
+		AllowCredentials: cfg.CORS.AllowCredentials,
+	}).Handler(mux)
+	serve(ctx, cfg, handler)
+}
+
+// openStore opens the database, migrates it and seeds what the profile needs.
+func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 	store, err := sqlstore.Open(cfg)
 	if err != nil {
 		log.Fatalf("database: %v", err)
 	}
-	defer store.Close()
 	if err := store.Migrate(ctx); err != nil {
 		log.Fatalf("migration: %v", err)
 	}
@@ -61,27 +83,27 @@ func main() {
 			log.Printf("demo: install failed: %v", err)
 		}
 	}
+	return store
+}
 
-	blobs, err := blob.New(cfg)
-	if err != nil {
-		log.Fatalf("blob: %v", err)
-	}
-
-	// --- Auth (session + OIDC multi-provider + WebAuthn) ---
+// setupAuth mounts the auth endpoints (session, password, OIDC, WebAuthn,
+// API keys) and returns the interceptors the RPC handlers run behind.
+func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, blobs blob.Store, mux *http.ServeMux) []connect.Interceptor {
 	sessions := auth.NewSessionManager(cfg.Auth.SessionSecret, cfg.Auth.SessionTTL)
-	var interceptors []connect.Interceptor
-
-	mux := http.NewServeMux()
-
 	authEnabled := len(cfg.OIDC.Enabled) > 0 || cfg.Auth.WebAuthn.Enabled || cfg.Auth.PasswordEnabled
 
 	// Provisioner: creates/links users and their tenants (organizations).
 	prov := auth.NewProvisioner(store.Users(), store.Orgs(), store.Members())
 
-	// Multi-tenant endpoints (me / switch / create / invite / accept).
-	if authEnabled {
-		auth.NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, blobs).Routes(mux)
+	if !authEnabled {
+		// Self-host single-user mode: no auth configured -> inject a fixed
+		// local identity so the offline-first app works without login.
+		log.Printf("auth: none configured, single-user mode (user=%s)", auth.LocalUser.UserID)
+		return []connect.Interceptor{auth.DevInterceptor()}
 	}
+
+	// Multi-tenant endpoints (me / switch / create / invite / accept).
+	auth.NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, blobs).Routes(mux)
 
 	// Email + password sign-up (verification optional). The instance admin is
 	// not created here; auth.EnsureAdmin creates it from BEEHIVE_ADMIN_EMAIL /
@@ -110,24 +132,18 @@ func main() {
 		wa.Routes(mux)
 	}
 
-	if authEnabled {
-		mux.HandleFunc("/auth/logout", sessions.LogoutHandler())
-		// API keys for scripts and integrations: managed with a session in
-		// Settings, accepted on RPCs alongside session tokens.
-		keys := auth.NewAPIKeys(store.DB(), sessions, store.Users(), store.Members())
-		keys.Routes(mux)
-		interceptors = append(interceptors, auth.SessionInterceptor(keys))
-		// Demo sessions and read-scoped API keys are read-only: reject
-		// mutating RPCs server-side.
-		interceptors = append(interceptors, auth.ReadOnlyGuard())
-	} else {
-		// Self-host single-user mode: no auth configured -> inject a fixed
-		// local identity so the offline-first app works without login.
-		log.Printf("auth: none configured, single-user mode (user=%s)", auth.LocalUser.UserID)
-		interceptors = append(interceptors, auth.DevInterceptor())
-	}
+	mux.HandleFunc("/auth/logout", sessions.LogoutHandler())
+	// API keys for scripts and integrations: managed with a session in
+	// Settings, accepted on RPCs alongside session tokens.
+	keys := auth.NewAPIKeys(store.DB(), sessions, store.Users(), store.Members())
+	keys.Routes(mux)
+	// Demo sessions and read-scoped API keys are read-only: reject mutating
+	// RPCs server-side.
+	return []connect.Interceptor{auth.SessionInterceptor(keys), auth.ReadOnlyGuard()}
+}
 
-	// --- Connect-RPC handlers ---
+// registerServices mounts the Connect-RPC handlers, blob serving and health.
+func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.Interceptor) {
 	opts := connect.WithInterceptors(interceptors...)
 
 	// One clock for every server-side write, shared with the sync endpoint.
@@ -158,37 +174,38 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+}
 
-	// Embedded SPA (single-binary production). Registered last, as the catch-all.
-	if cfg.Web.Serve {
-		if h, err := web.Handler(cfg); err != nil {
-			log.Printf("web: not serving embedded app (%v) — run vite separately in dev", err)
-		} else {
-			mux.Handle("/", h)
-			log.Printf("web: serving embedded app at /")
-		}
+// registerWeb mounts the embedded SPA (single-binary production) as the catch-all.
+func registerWeb(mux *http.ServeMux, cfg *config.Config) {
+	if !cfg.Web.Serve {
+		return
 	}
+	h, err := web.Handler(cfg)
+	if err != nil {
+		log.Printf("web: not serving embedded app (%v) — run vite separately in dev", err)
+		return
+	}
+	mux.Handle("/", h)
+	log.Printf("web: serving embedded app at /")
+}
 
-	// CORS for browser clients; Connect-Web needs these headers.
-	handler := cors.New(cors.Options{
-		AllowedOrigins:   cfg.CORS.AllowedOrigins,
-		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodOptions},
-		AllowedHeaders:   []string{"*"},
-		ExposedHeaders:   []string{"Connect-Protocol-Version", "Grpc-Status", "Grpc-Message"},
-		AllowCredentials: cfg.CORS.AllowCredentials,
-	}).Handler(mux)
-
+// serve runs the HTTP server until SIGINT/SIGTERM, then shuts down gracefully.
+func serve(ctx context.Context, cfg *config.Config, handler http.Handler) {
+	// Unencrypted HTTP/2 (h2c) allows gRPC without TLS; TLS terminates at the reverse proxy.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	srv := &http.Server{
-		Addr: cfg.Addr,
-		// h2c allows gRPC (HTTP/2) without TLS; TLS termination at the reverse proxy.
-		Handler:           h2c.NewHandler(handler, &http2.Server{}),
+		Addr:              cfg.Addr,
+		Handler:           handler,
+		Protocols:         protocols,
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout,
 		ReadTimeout:       cfg.Server.ReadTimeout,
 		WriteTimeout:      cfg.Server.WriteTimeout,
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
-	// Graceful shutdown on SIGINT/SIGTERM.
 	runCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() {

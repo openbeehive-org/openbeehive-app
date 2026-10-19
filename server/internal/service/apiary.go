@@ -152,7 +152,7 @@ func toProto(m *storage.Apiary, hiveCount int) *wv1.Apiary {
 		Lat:            m.Lat,
 		Lng:            m.Lng,
 		Note:           m.Note,
-		HiveCount:      int32(hiveCount),
+		HiveCount:      i32(int64(hiveCount)),
 		CreatedAt:      timestamppb.New(m.CreatedAt),
 		UpdatedAt:      timestamppb.New(m.UpdatedAt),
 	}
@@ -180,7 +180,7 @@ func pageParams(p *wv1.PageRequest) (limit, offset int) {
 // pageResponse reports the total and the token for the next page ("" when
 // this page was the last one).
 func pageResponse(total, offset, got, limit int) *wv1.PageResponse {
-	r := &wv1.PageResponse{Total: int32(total)}
+	r := &wv1.PageResponse{Total: i32(int64(total))}
 	if got == limit && offset+got < total {
 		r.NextPageToken = strconv.Itoa(offset + got)
 	}

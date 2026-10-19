@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  parseFieldClock, accept, parseORSet, orAdd, orRemove, orMerge, orValues,
+  parseFieldClock,
+  accept,
+  parseORSet,
+  orAdd,
+  orRemove,
+  orMerge,
+  orValues,
   type ORSet
 } from './merge';
 
@@ -80,8 +86,10 @@ describe('OR-Set (add-wins)', () => {
     orAdd(other, 'x', t2);
     orAdd(other, 'y', t3);
 
-    const ab = mk(); orMerge(ab, other);
-    const ba: ORSet = JSON.parse(JSON.stringify(other)); orMerge(ba, mk());
+    const ab = mk();
+    orMerge(ab, other);
+    const ba: ORSet = JSON.parse(JSON.stringify(other));
+    orMerge(ba, mk());
     expect(orValues(ab).sort()).toEqual(orValues(ba).sort());
   });
 
@@ -97,7 +105,7 @@ describe('OR-Set (add-wins)', () => {
     const s: ORSet = {};
     orAdd(s, 'p1', t1);
     orAdd(s, 'p1', t1);
-    expect(s['p1'].a).toEqual([t1]);
+    expect(s['p1']?.a).toEqual([t1]);
   });
 
   it('tolerates malformed set JSON', () => {

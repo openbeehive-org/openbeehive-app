@@ -14,7 +14,10 @@
   let status = $state<'starting' | 'scanning' | 'unsupported' | 'denied'>('starting');
 
   onMount(async () => {
-    if (!('BarcodeDetector' in window)) { status = 'unsupported'; return; }
+    if (!('BarcodeDetector' in window)) {
+      status = 'unsupported';
+      return;
+    }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       video.srcObject = stream;
@@ -26,9 +29,15 @@
           const codes = await detector.detect(video);
           for (const c of codes) {
             const id = parseHiveId(c.rawValue);
-            if (id) { stop(); await goto(`/hives/${id}`); return; }
+            if (id) {
+              stop();
+              await goto(`/hives/${id}`);
+              return;
+            }
           }
-        } catch { /* frame skipped */ }
+        } catch {
+          /* frame skipped */
+        }
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
@@ -64,16 +73,57 @@
 </div>
 
 <style>
-  .scan { position: relative; min-height: 100vh; background: #000; display: grid;
-    place-items: center; overflow: hidden; }
-  video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
-  video.hidden { display: none; }
-  .frame { position: relative; z-index: 2; width: 64vw; max-width: 280px; aspect-ratio: 1;
-    border: 3px solid rgba(255,255,255,.9); border-radius: 22px;
-    box-shadow: 0 0 0 100vmax rgba(0,0,0,.45); }
-  .hint { position: absolute; bottom: 96px; z-index: 3; color: #fff; font-weight: 600;
-    background: rgba(0,0,0,.5); padding: 8px 14px; border-radius: 999px; }
-  .msg { z-index: 3; color: #fff; text-align: center; padding: 26px; max-width: 38ch; }
-  .msg h2 { font-family: 'Fraunces', serif; margin-bottom: 10px; }
-  .msg p { color: #ddd; line-height: 1.5; }
+  .scan {
+    position: relative;
+    min-height: 100vh;
+    background: #000;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    position: absolute;
+    inset: 0;
+  }
+  video.hidden {
+    display: none;
+  }
+  .frame {
+    position: relative;
+    z-index: 2;
+    width: 64vw;
+    max-width: 280px;
+    aspect-ratio: 1;
+    border: 3px solid rgba(255, 255, 255, 0.9);
+    border-radius: 22px;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+  }
+  .hint {
+    position: absolute;
+    bottom: 96px;
+    z-index: 3;
+    color: #fff;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 8px 14px;
+    border-radius: 999px;
+  }
+  .msg {
+    z-index: 3;
+    color: #fff;
+    text-align: center;
+    padding: 26px;
+    max-width: 38ch;
+  }
+  .msg h2 {
+    font-family: 'Fraunces', serif;
+    margin-bottom: 10px;
+  }
+  .msg p {
+    color: #ddd;
+    line-height: 1.5;
+  }
 </style>

@@ -25,7 +25,7 @@ func newAuthFixture(t *testing.T, cfg *config.Config) (*httptest.Server, *sqlsto
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -51,7 +51,7 @@ func postJSON(t *testing.T, url string, body any) (int, map[string]any) {
 	if err != nil {
 		t.Fatalf("post %s: %v", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	out := map[string]any{}
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return resp.StatusCode, out

@@ -74,12 +74,20 @@ export async function migrateLocal(db: LocalDB) {
   // that reference a new column fail on an old local DB (e.g. saving a visit).
   await ensureColumns(db, 'hive', [['photo', 'TEXT']]);
   await ensureColumns(db, 'inspection', [
-    ['brood_frames', 'INTEGER'], ['calmness', 'INTEGER'], ['fed_kg', 'REAL'],
-    ['frames_added', 'INTEGER'], ['frames_removed', 'INTEGER'], ['drone_frame_cut', 'INTEGER'],
-    ['super_added', 'INTEGER'], ['weight_kg', 'REAL'],
-    ['youngest_larva', 'INTEGER'], ['covered_larva', 'INTEGER'],
-    ['temp_hive', 'REAL'], ['temp_outside', 'REAL'],
-    ['humidity_hive', 'REAL'], ['humidity_outside', 'REAL']
+    ['brood_frames', 'INTEGER'],
+    ['calmness', 'INTEGER'],
+    ['fed_kg', 'REAL'],
+    ['frames_added', 'INTEGER'],
+    ['frames_removed', 'INTEGER'],
+    ['drone_frame_cut', 'INTEGER'],
+    ['super_added', 'INTEGER'],
+    ['weight_kg', 'REAL'],
+    ['youngest_larva', 'INTEGER'],
+    ['covered_larva', 'INTEGER'],
+    ['temp_hive', 'REAL'],
+    ['temp_outside', 'REAL'],
+    ['humidity_hive', 'REAL'],
+    ['humidity_outside', 'REAL']
   ]);
 }
 

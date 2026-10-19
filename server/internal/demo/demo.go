@@ -100,7 +100,7 @@ func (s *Seeder) Seed(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Wipe previous demo data.
 	if _, err := tx.ExecContext(ctx, tx.Rebind(`DELETE FROM change_log WHERE org_id = ?`), OrgID); err != nil {
@@ -144,69 +144,77 @@ func (s *Seeder) Seed(ctx context.Context) error {
 
 		for h := 0; h < perApiary[ai]; h++ {
 			hiveNo++
-			hvID := fmt.Sprintf("demo-hive-%d", hiveNo)
-			year := 2023 + (hiveNo % 3)
-			marking := ((year%10)+4)%5 + 1
-			if err := s.put(ctx, tx, "hive", apID, hvID, map[string]any{
-				"organization_id": OrgID, "apiary_id": apID, "name": fmt.Sprintf("Hive %d", hiveNo),
-				"type": hiveTypes[hiveNo%len(hiveTypes)], "status": 1, "boxes": 2 + hiveNo%3,
-				"colony_origin": pick(hiveNo, "swarm 2024", "split from Hive 2", "own rearing", "nucleus"),
-				"note":          "", "created_at": iso(now.AddDate(-1, 0, 0)), "updated_at": iso(now), "deleted": 0,
-			}); err != nil {
-				return err
-			}
-			// Current queen.
-			qID := fmt.Sprintf("demo-queen-%d", hiveNo)
-			if err := s.put(ctx, tx, "queen", apID, qID, map[string]any{
-				"organization_id": OrgID, "hive_id": hvID, "year": year, "marking": marking,
-				"origin": pick(hiveNo, "Buckfast", "Carnica", "own rearing"), "breeder_number": fmt.Sprintf("%d", 10+hiveNo),
-				"introduced_at": iso(mostRecent(now, time.May, 10).AddDate(-(hiveNo % 2), 0, 0)), "replaced_at": nil,
-				"active": 1, "note": "", "created_at": iso(now), "updated_at": iso(now), "deleted": 0,
-			}); err != nil {
-				return err
-			}
-			// Inspections over the trailing ~10 months, densest recently, so the
-			// demo always shows recent activity (it re-seeds hourly).
-			for v, off := range []int{4, 20, 45, 80, 130, 195, 280} {
-				date := now.AddDate(0, 0, -(off + hiveNo%6))
-				inspID := fmt.Sprintf("demo-insp-%d-%d", hiveNo, v)
-				if err := s.put(ctx, tx, "inspection", apID, inspID, inspectionFields(hvID, date, hiveNo, v)); err != nil {
-					return err
-				}
-			}
-			// Last summer's honey harvest (most recent July at or before now).
-			hd := mostRecent(now, time.July, 12+hiveNo%6)
-			if err := s.put(ctx, tx, "harvest", apID, fmt.Sprintf("demo-harv-%d", hiveNo), map[string]any{
-				"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
-				"date": iso(hd), "variety": pick(hiveNo, "spring blossom", "summer flow", "forest"),
-				"amount_kg": round1(10 + float64(hiveNo%8)), "water_content": round1(17 + float64(hiveNo%3)),
-				"batch_number": fmt.Sprintf("B%d-%d", hd.Year(), hiveNo), "best_before": iso(hd.AddDate(2, 0, 0)),
-				"note": "", "deleted": 0,
-			}); err != nil {
-				return err
-			}
-			// Varroa control: late-summer formic acid + midwinter oxalic acid.
-			fa := mostRecent(now, time.August, 18)
-			if err := s.put(ctx, tx, "treatment", apID, fmt.Sprintf("demo-treat-fa-%d", hiveNo), map[string]any{
-				"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
-				"date": iso(fa), "product": "Formic acid 60%", "active_ingredient": "formic acid",
-				"dose": "30 ml", "method": "evaporation", "batch_number": fmt.Sprintf("FA-%d", hiveNo),
-				"withdrawal_until": iso(fa.AddDate(0, 0, 14)), "reason": "varroa", "note": "", "deleted": 0,
-			}); err != nil {
-				return err
-			}
-			ox := mostRecent(now, time.December, 27)
-			if err := s.put(ctx, tx, "treatment", apID, fmt.Sprintf("demo-treat-ox-%d", hiveNo), map[string]any{
-				"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
-				"date": iso(ox), "product": "Oxuvar 5.7%", "active_ingredient": "oxalic acid",
-				"dose": "50 ml", "method": "trickling", "batch_number": fmt.Sprintf("OX-%d", hiveNo),
-				"withdrawal_until": "", "reason": "varroa", "note": "broodless winter treatment", "deleted": 0,
-			}); err != nil {
+			if err := s.seedHive(ctx, tx, apID, hiveNo, hiveTypes, now); err != nil {
 				return err
 			}
 		}
 	}
 	return tx.Commit()
+}
+
+// seedHive writes one hive with its queen, inspections, harvest and treatments.
+func (s *Seeder) seedHive(ctx context.Context, tx *sqlx.Tx, apID string, hiveNo int, hiveTypes []int, now time.Time) error {
+	hvID := fmt.Sprintf("demo-hive-%d", hiveNo)
+	year := 2023 + (hiveNo % 3)
+	marking := ((year%10)+4)%5 + 1
+	if err := s.put(ctx, tx, "hive", apID, hvID, map[string]any{
+		"organization_id": OrgID, "apiary_id": apID, "name": fmt.Sprintf("Hive %d", hiveNo),
+		"type": hiveTypes[hiveNo%len(hiveTypes)], "status": 1, "boxes": 2 + hiveNo%3,
+		"colony_origin": pick(hiveNo, "swarm 2024", "split from Hive 2", "own rearing", "nucleus"),
+		"note":          "", "created_at": iso(now.AddDate(-1, 0, 0)), "updated_at": iso(now), "deleted": 0,
+	}); err != nil {
+		return err
+	}
+	// Current queen.
+	qID := fmt.Sprintf("demo-queen-%d", hiveNo)
+	if err := s.put(ctx, tx, "queen", apID, qID, map[string]any{
+		"organization_id": OrgID, "hive_id": hvID, "year": year, "marking": marking,
+		"origin": pick(hiveNo, "Buckfast", "Carnica", "own rearing"), "breeder_number": fmt.Sprintf("%d", 10+hiveNo),
+		"introduced_at": iso(mostRecent(now, time.May, 10).AddDate(-(hiveNo % 2), 0, 0)), "replaced_at": nil,
+		"active": 1, "note": "", "created_at": iso(now), "updated_at": iso(now), "deleted": 0,
+	}); err != nil {
+		return err
+	}
+	// Inspections over the trailing ~10 months, densest recently, so the
+	// demo always shows recent activity (it re-seeds hourly).
+	for v, off := range []int{4, 20, 45, 80, 130, 195, 280} {
+		date := now.AddDate(0, 0, -(off + hiveNo%6))
+		inspID := fmt.Sprintf("demo-insp-%d-%d", hiveNo, v)
+		if err := s.put(ctx, tx, "inspection", apID, inspID, inspectionFields(hvID, date, hiveNo, v)); err != nil {
+			return err
+		}
+	}
+	// Last summer's honey harvest (most recent July at or before now).
+	hd := mostRecent(now, time.July, 12+hiveNo%6)
+	if err := s.put(ctx, tx, "harvest", apID, fmt.Sprintf("demo-harv-%d", hiveNo), map[string]any{
+		"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
+		"date": iso(hd), "variety": pick(hiveNo, "spring blossom", "summer flow", "forest"),
+		"amount_kg": round1(10 + float64(hiveNo%8)), "water_content": round1(17 + float64(hiveNo%3)),
+		"batch_number": fmt.Sprintf("B%d-%d", hd.Year(), hiveNo), "best_before": iso(hd.AddDate(2, 0, 0)),
+		"note": "", "deleted": 0,
+	}); err != nil {
+		return err
+	}
+	// Varroa control: late-summer formic acid + midwinter oxalic acid.
+	fa := mostRecent(now, time.August, 18)
+	if err := s.put(ctx, tx, "treatment", apID, fmt.Sprintf("demo-treat-fa-%d", hiveNo), map[string]any{
+		"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
+		"date": iso(fa), "product": "Formic acid 60%", "active_ingredient": "formic acid",
+		"dose": "30 ml", "method": "evaporation", "batch_number": fmt.Sprintf("FA-%d", hiveNo),
+		"withdrawal_until": iso(fa.AddDate(0, 0, 14)), "reason": "varroa", "note": "", "deleted": 0,
+	}); err != nil {
+		return err
+	}
+	ox := mostRecent(now, time.December, 27)
+	if err := s.put(ctx, tx, "treatment", apID, fmt.Sprintf("demo-treat-ox-%d", hiveNo), map[string]any{
+		"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
+		"date": iso(ox), "product": "Oxuvar 5.7%", "active_ingredient": "oxalic acid",
+		"dose": "50 ml", "method": "trickling", "batch_number": fmt.Sprintf("OX-%d", hiveNo),
+		"withdrawal_until": "", "reason": "varroa", "note": "broodless winter treatment", "deleted": 0,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 // mostRecent returns the most recent occurrence of month/day at or before `now`

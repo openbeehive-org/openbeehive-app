@@ -220,36 +220,8 @@ func Load() (*Config, error) {
 	c.Profile = env("DEPLOYMENT_PROFILE", "selfhost")
 	c.Addr = env("ADDR", ":8080")
 	c.PublicBaseURL = env("PUBLIC_BASE_URL", "http://localhost:8080")
-
-	// 1) derive storage defaults from the profile ...
-	switch c.Profile {
-	case "cloud":
-		c.DB.Driver = DriverPostgres
-		c.DB.DSN = env("DATABASE_DSN", "postgres://openbeehive:openbeehive@localhost:5432/openbeehive?sslmode=disable")
-		c.Blob.Backend = BlobMinIO
-	case "selfhost":
-		c.DB.Driver = DriverSQLite
-		c.DB.DSN = env("DATABASE_DSN", "file:openbeehive.db?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
-		c.Blob.Backend = BlobFS
-	default:
-		return nil, fmt.Errorf("unknown BEEHIVE_DEPLOYMENT_PROFILE %q (cloud|selfhost)", c.Profile)
-	}
-
-	// 2) ... then let granular ENV variables override them.
-	if v := os.Getenv(envPrefix + "DATABASE_DRIVER"); v != "" {
-		c.DB.Driver = DBDriver(v)
-	}
-	if v := os.Getenv(envPrefix + "DATABASE_DSN"); v != "" {
-		c.DB.DSN = v
-	}
-	if v := os.Getenv(envPrefix + "BLOB_BACKEND"); v != "" {
-		c.Blob.Backend = BlobBackend(v)
-	}
-
-	switch c.DB.Driver {
-	case DriverPostgres, DriverMySQL, DriverSQLite:
-	default:
-		return nil, fmt.Errorf("unsupported BEEHIVE_DATABASE_DRIVER %q", c.DB.Driver)
+	if err := loadStorage(c); err != nil {
+		return nil, err
 	}
 
 	// --- HTTP server ---
@@ -280,6 +252,43 @@ func Load() (*Config, error) {
 		Dir:   env("WEB_DIR", ""),
 	}
 
+	if err := loadAuth(c); err != nil {
+		return nil, err
+	}
+	loadOIDC(c)
+	return c, nil
+}
+
+// loadStorage derives the storage defaults from the profile, then lets the
+// granular ENV variables override them.
+func loadStorage(c *Config) error {
+	switch c.Profile {
+	case "cloud":
+		c.DB.Driver = DriverPostgres
+		c.DB.DSN = env("DATABASE_DSN", "postgres://openbeehive:openbeehive@localhost:5432/openbeehive?sslmode=disable")
+		c.Blob.Backend = BlobMinIO
+	case "selfhost":
+		c.DB.Driver = DriverSQLite
+		c.DB.DSN = env("DATABASE_DSN", "file:openbeehive.db?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+		c.Blob.Backend = BlobFS
+	default:
+		return fmt.Errorf("unknown BEEHIVE_DEPLOYMENT_PROFILE %q (cloud|selfhost)", c.Profile)
+	}
+	if v := os.Getenv(envPrefix + "DATABASE_DRIVER"); v != "" {
+		c.DB.Driver = DBDriver(v)
+	}
+	if v := os.Getenv(envPrefix + "DATABASE_DSN"); v != "" {
+		c.DB.DSN = v
+	}
+	if v := os.Getenv(envPrefix + "BLOB_BACKEND"); v != "" {
+		c.Blob.Backend = BlobBackend(v)
+	}
+	switch c.DB.Driver {
+	case DriverPostgres, DriverMySQL, DriverSQLite:
+	default:
+		return fmt.Errorf("unsupported BEEHIVE_DATABASE_DRIVER %q", c.DB.Driver)
+	}
+
 	// --- blob-specific options ---
 	c.Blob.Endpoint = env("MINIO_ENDPOINT", "localhost:9000")
 	c.Blob.AccessKey = env("MINIO_ACCESS_KEY", "minioadmin")
@@ -288,8 +297,11 @@ func Load() (*Config, error) {
 	c.Blob.UseSSL = envBool("MINIO_USE_SSL", false)
 	c.Blob.BaseDir = env("BLOB_DIR", "./data/blobs")
 	c.Blob.PublicURL = env("BLOB_PUBLIC_URL", c.PublicBaseURL+"/files")
+	return nil
+}
 
-	// --- Auth: app session + WebAuthn ---
+// loadAuth reads session, WebAuthn, password onboarding, SMTP, demo and admin settings.
+func loadAuth(c *Config) error {
 	c.Auth = AuthConfig{
 		SessionSecret: env("SESSION_SECRET", ""),
 		SessionTTL:    envDuration("SESSION_TTL", 720*time.Hour),
@@ -336,19 +348,23 @@ func Load() (*Config, error) {
 	// every boot (see auth.EnsureAdmin — this doubles as password recovery).
 	c.Auth.AdminEmail = strings.TrimSpace(strings.ToLower(env("ADMIN_EMAIL", "")))
 	c.Auth.AdminPassword = env("ADMIN_PASSWORD", "")
-	if c.Auth.PasswordEnabled {
-		switch {
-		case c.Auth.AdminEmail == "" || c.Auth.AdminPassword == "":
-			return nil, fmt.Errorf("BEEHIVE_ADMIN_EMAIL and BEEHIVE_ADMIN_PASSWORD are required when password auth is enabled (it is implied by BEEHIVE_DEMO=true and the cloud profile)")
-		case len(c.Auth.AdminPassword) < 8:
-			return nil, fmt.Errorf("BEEHIVE_ADMIN_PASSWORD must be at least 8 characters")
-		case strings.EqualFold(c.Auth.AdminEmail, c.Demo.Email):
-			return nil, fmt.Errorf("BEEHIVE_ADMIN_EMAIL must not be the demo account email")
-		}
+	if !c.Auth.PasswordEnabled {
+		return nil
 	}
+	switch {
+	case c.Auth.AdminEmail == "" || c.Auth.AdminPassword == "":
+		return fmt.Errorf("BEEHIVE_ADMIN_EMAIL and BEEHIVE_ADMIN_PASSWORD are required when password auth is enabled (it is implied by BEEHIVE_DEMO=true and the cloud profile)")
+	case len(c.Auth.AdminPassword) < 8:
+		return fmt.Errorf("BEEHIVE_ADMIN_PASSWORD must be at least 8 characters")
+	case strings.EqualFold(c.Auth.AdminEmail, c.Demo.Email):
+		return fmt.Errorf("BEEHIVE_ADMIN_EMAIL must not be the demo account email")
+	}
+	return nil
+}
 
-	// --- OIDC: one triple per provider from ENV, e.g.
-	//   BEEHIVE_OIDC_GOOGLE_ISSUER, BEEHIVE_OIDC_GOOGLE_CLIENT_ID, BEEHIVE_OIDC_GOOGLE_CLIENT_SECRET
+// loadOIDC reads one issuer/client id/client secret triple per provider, e.g.
+// BEEHIVE_OIDC_GOOGLE_ISSUER, BEEHIVE_OIDC_GOOGLE_CLIENT_ID, BEEHIVE_OIDC_GOOGLE_CLIENT_SECRET.
+func loadOIDC(c *Config) {
 	c.OIDC.RedirectURL = env("OIDC_REDIRECT_URL", c.PublicBaseURL+"/auth/callback")
 	c.OIDC.Providers = map[string]OIDCProvider{}
 	for _, name := range envList("OIDC_PROVIDERS", nil) {
@@ -362,6 +378,4 @@ func Load() (*Config, error) {
 			Scopes:       envList("OIDC_"+p+"_SCOPES", []string{"openid", "profile", "email"}),
 		}
 	}
-
-	return c, nil
 }

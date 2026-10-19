@@ -9,7 +9,17 @@ import { parseFieldClock, accept, parseORSet, orAdd, orRemove, orRemoveTags } fr
 import { bumpData, initialSyncPending } from './live';
 import { syncClient } from '$lib/client'; // generated Connect client (SyncService)
 
-const SYNCED_TABLES = ['apiary', 'hive', 'queen', 'inspection', 'task', 'placement', 'harvest', 'treatment', 'event'];
+const SYNCED_TABLES = [
+  'apiary',
+  'hive',
+  'queen',
+  'inspection',
+  'task',
+  'placement',
+  'harvest',
+  'treatment',
+  'event'
+];
 const SET_COLS: Record<string, string[]> = { inspection: ['photo_keys'] };
 
 async function getCursor(): Promise<string> {
@@ -21,19 +31,25 @@ async function setCursor(c: string) {
   const db = await getDB();
   await db.exec(
     `INSERT INTO sync_meta (k, v) VALUES ('cursor', ?)
-     ON CONFLICT(k) DO UPDATE SET v = excluded.v`, [c]);
+     ON CONFLICT(k) DO UPDATE SET v = excluded.v`,
+    [c]
+  );
 }
 
 // --- Push: local outbox to the server ---
 export async function push() {
   const db = await getDB();
-  const pending = await db.all<any>(
-    `SELECT * FROM outbox ORDER BY hlc ASC LIMIT 200`);
+  const pending = await db.all<any>(`SELECT * FROM outbox ORDER BY hlc ASC LIMIT 200`);
   if (pending.length === 0) return;
 
   const changes = pending.map((p) => ({
-    entity: p.entity, entityId: p.entity_id, scopeId: p.scope_id,
-    op: p.op, payloadJson: p.payload, hlc: p.hlc, authorId: p.author_id
+    entity: p.entity,
+    entityId: p.entity_id,
+    scopeId: p.scope_id,
+    op: p.op,
+    payloadJson: p.payload,
+    hlc: p.hlc,
+    authorId: p.author_id
   }));
 
   let res;
@@ -64,7 +80,7 @@ export async function push() {
 
 // --- Pull: apply remote changes ---
 export async function pull() {
-  const db = await getDB();
+  await getDB();
   let cursor = await getCursor();
   let hasMore = true;
 
@@ -104,12 +120,16 @@ async function applyRemote(ch: any) {
       if (setCols.includes(k)) {
         const os = {};
         for (const e of v?.add ?? []) orAdd(os, e, ch.hlc);
-        cols.push(k); vals.push(JSON.stringify(os));
+        cols.push(k);
+        vals.push(JSON.stringify(os));
       } else {
-        cols.push(k); vals.push(v); fc[k] = ch.hlc;
+        cols.push(k);
+        vals.push(v);
+        fc[k] = ch.hlc;
       }
     }
-    cols.push('field_hlc'); vals.push(JSON.stringify(fc));
+    cols.push('field_hlc');
+    vals.push(JSON.stringify(fc));
     const ph = cols.map(() => '?').join(', ');
     await db.exec(`INSERT INTO ${ch.entity} (${cols.join(', ')}) VALUES (${ph})`, vals);
     return;
@@ -127,15 +147,19 @@ async function applyRemote(ch: any) {
         // Newer deltas say which tags the origin observed; only those are
         // tombstoned (add-wins). Old deltas without tags remove all local ones.
         const tags = v?.removed_tags?.[e];
-        tags ? orRemoveTags(os, e, tags) : orRemove(os, e);
+        if (tags) orRemoveTags(os, e, tags);
+        else orRemove(os, e);
       }
-      sets.push(`${k} = ?`); args.push(JSON.stringify(os));
+      sets.push(`${k} = ?`);
+      args.push(JSON.stringify(os));
     } else if (accept(fc, k, ch.hlc)) {
-      sets.push(`${k} = ?`); args.push(v);
+      sets.push(`${k} = ?`);
+      args.push(v);
     }
   }
   if (sets.length === 0) return; // everything stale
-  sets.push(`field_hlc = ?`); args.push(JSON.stringify(fc));
+  sets.push(`field_hlc = ?`);
+  args.push(JSON.stringify(fc));
   args.push(ch.entityId);
   await db.exec(`UPDATE ${ch.entity} SET ${sets.join(', ')} WHERE id = ?`, args);
 }
@@ -156,7 +180,10 @@ export async function syncOnce() {
     initialSyncPending.set(false);
     return;
   }
-  if (running) { rerun = true; return; }
+  if (running) {
+    rerun = true;
+    return;
+  }
   running = true;
   try {
     do {
@@ -186,9 +213,11 @@ export function startSync() {
     // a refresh with a genuinely empty account shows its CTA immediately.
     try {
       if (await getCursor()) initialSyncPending.set(false);
-    } catch { /* flag resolves with the first sync instead */ }
+    } catch {
+      /* flag resolves with the first sync instead */
+    }
     await syncOnce();
   })();
-  setInterval(syncOnce, 15_000);                  // periodic fallback
+  setInterval(syncOnce, 15_000); // periodic fallback
   window.addEventListener('online', () => void syncOnce()); // immediately on reconnect
 }

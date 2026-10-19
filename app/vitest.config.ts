@@ -13,6 +13,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
-    setupFiles: ['src/tests/setup.ts']
+    setupFiles: ['src/tests/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      // Honest floors just below today's numbers; raise them as tests land.
+      thresholds: { statements: 80, branches: 75, functions: 65, lines: 80 }
+    }
   }
 });

@@ -14,7 +14,7 @@ type fsStore struct {
 }
 
 func newFS(cfg *config.Config) (Store, error) {
-	if err := os.MkdirAll(cfg.Blob.BaseDir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Blob.BaseDir, 0o750); err != nil {
 		return nil, err
 	}
 	return &fsStore{base: cfg.Blob.BaseDir}, nil

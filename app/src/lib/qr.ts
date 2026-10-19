@@ -73,9 +73,9 @@ export async function qrSvg(text: string, size = 256): Promise<string> {
     }
   }
 
-  const logo = size * 0.26;            // centre mark size
+  const logo = size * 0.26; // centre mark size
   const lo = (size - logo) / 2;
-  const ring = logo * 1.14;            // white knockout behind the mark
+  const ring = logo * 1.14; // white knockout behind the mark
   const ro = (size - ring) / 2;
   const textH = Math.round(size * 0.16);
   const W = size;
@@ -93,9 +93,9 @@ export async function qrSvg(text: string, size = 256): Promise<string> {
 // Extract a hive id from a scanned payload: full URL, custom scheme, or raw id.
 export function parseHiveId(payload: string): string | null {
   const url = payload.match(/\/h\/([A-Za-z0-9-]+)/);
-  if (url) return url[1];
+  if (url) return url[1] ?? null;
   const scheme = payload.match(/^openbeehive:\/\/hive\/([A-Za-z0-9-]+)/i);
-  if (scheme) return scheme[1];
+  if (scheme) return scheme[1] ?? null;
   if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(payload)) return payload; // bare UUID
   return null;
 }

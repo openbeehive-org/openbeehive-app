@@ -6,7 +6,11 @@ export type FieldClock = Record<string, string>;
 
 export function parseFieldClock(s: string | null | undefined): FieldClock {
   if (!s) return {};
-  try { return JSON.parse(s); } catch { return {}; }
+  try {
+    return JSON.parse(s);
+  } catch {
+    return {};
+  }
 }
 
 // Applies the field only if the incoming HLC is newer.
@@ -24,7 +28,11 @@ export type ORSet = Record<string, Elem>;
 
 export function parseORSet(s: string | null | undefined): ORSet {
   if (!s || s === 'null') return {};
-  try { return JSON.parse(s); } catch { return {}; }
+  try {
+    return JSON.parse(s);
+  } catch {
+    return {};
+  }
 }
 
 const uniq = (xs: string[], x: string) => (xs.includes(x) ? xs : [...xs, x]);

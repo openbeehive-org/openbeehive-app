@@ -147,7 +147,7 @@ func (m *Manager) CallbackHandler(sessions *SessionManager, users storage.UserRe
 			return
 		}
 		sessions.SetCookie(w, tok)
-		http.SetCookie(w, &http.Cookie{Name: oauthStateCookie, Value: "", Path: "/", MaxAge: -1})
+		http.SetCookie(w, &http.Cookie{Name: oauthStateCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }

@@ -68,7 +68,7 @@ plus a data folder on one host.
 
 ## Quick start — self-hosted (single binary)
 
-Requires **Go 1.25+**, **Node 24+** and [**buf**](https://buf.build).
+Requires Go (`server/go.mod`), Node (`app/.nvmrc`) and [**buf**](https://buf.build) (`make tools`).
 
 ```bash
 cp .env.example .env          # BEEHIVE_DEPLOYMENT_PROFILE=selfhost
@@ -94,13 +94,15 @@ See the [self-hosting guide](https://docs.openbeehive.org) for full configuratio
 ## Development
 
 ```bash
+make tools                    # pinned gate tools (golangci-lint, govulncheck, go-licenses, fleetlint, buf)
 make proto                    # generate stubs
 make run-server               # backend on :8080
 make dev-app                  # Vite dev server on :5173
+make check                    # the definition of green: lint, tests, coverage, audit, build, fleetlint
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for conventions and architecture,
-and the [documentation](https://docs.openbeehive.org) for design deep-dives.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for conventions, [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+for how the pieces fit together, and the [documentation](https://docs.openbeehive.org) for design deep-dives.
 
 ## Project layout
 

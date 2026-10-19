@@ -46,13 +46,23 @@ func (s *StatsService) GetDashboard(ctx context.Context, req *connect.Request[wv
 	if res.ActiveQueens, err = count32(ctx, db, `SELECT COUNT(*) FROM queen WHERE organization_id = ? AND deleted = FALSE AND active = TRUE`, org); err != nil {
 		return nil, writeErr(err)
 	}
+	for _, fill := range []func(context.Context, queryer, string, time.Time, int, *wv1.DashboardResponse) error{
+		dashboardTasks, dashboardHoney, dashboardDue, dashboardRecent,
+	} {
+		if err := fill(ctx, db, org, now, threshold, res); err != nil {
+			return nil, writeErr(err)
+		}
+	}
+	return connect.NewResponse(res), nil
+}
 
-	// Tasks: open, overdue, and the next five by due date.
+// dashboardTasks: open, overdue, and the next five by due date.
+func dashboardTasks(ctx context.Context, db queryer, org string, now time.Time, _ int, res *wv1.DashboardResponse) error {
 	tasks, err := queryMaps(ctx, db, `SELECT * FROM task WHERE organization_id = ? AND deleted = FALSE AND done = FALSE ORDER BY due_at ASC`, org)
 	if err != nil {
-		return nil, writeErr(err)
+		return err
 	}
-	res.OpenTasks = int32(len(tasks))
+	res.OpenTasks = i32(int64(len(tasks)))
 	for _, r := range tasks {
 		if due, ok := rtime(r["due_at"]); ok && due.Before(now) {
 			res.OverdueTasks++
@@ -61,11 +71,14 @@ func (s *StatsService) GetDashboard(ctx context.Context, req *connect.Request[wv
 			res.NextTasks = append(res.NextTasks, taskFromRow(r))
 		}
 	}
+	return nil
+}
 
-	// Honey from the HARVEST fact rows: this year's total and per-month history.
+// dashboardHoney: this year's total and per-month history from the HARVEST fact rows.
+func dashboardHoney(ctx context.Context, db queryer, org string, now time.Time, _ int, res *wv1.DashboardResponse) error {
 	harvests, err := queryMaps(ctx, db, `SELECT date, amount_kg FROM event WHERE organization_id = ? AND deleted = FALSE AND type = ?`, org, evHarvest)
 	if err != nil {
-		return nil, writeErr(err)
+		return err
 	}
 	months := map[[2]int]float64{}
 	for _, r := range harvests {
@@ -80,24 +93,27 @@ func (s *StatsService) GetDashboard(ctx context.Context, req *connect.Request[wv
 		months[[2]int{d.Year(), int(d.Month())}] += kg
 	}
 	for k, kg := range months {
-		res.HoneyHistory = append(res.HoneyHistory, &wv1.HoneyPerMonth{Year: int32(k[0]), Month: int32(k[1]), Kg: kg})
+		res.HoneyHistory = append(res.HoneyHistory, &wv1.HoneyPerMonth{Year: i32(int64(k[0])), Month: i32(int64(k[1])), Kg: kg})
 	}
 	sort.Slice(res.HoneyHistory, func(i, j int) bool {
 		a, b := res.HoneyHistory[i], res.HoneyHistory[j]
 		return a.Year < b.Year || (a.Year == b.Year && a.Month < b.Month)
 	})
+	return nil
+}
 
-	// Due inspections: days since the last visit per hive, never = -1.
+// dashboardDue: days since the last visit per hive (never = -1), hives at or past the threshold.
+func dashboardDue(ctx context.Context, db queryer, org string, now time.Time, threshold int, res *wv1.DashboardResponse) error {
 	hives, err := queryMaps(ctx, db, `SELECT h.id, h.name, a.name AS apiary_name
 		FROM hive h LEFT JOIN apiary a ON a.id = h.apiary_id
 		WHERE h.organization_id = ? AND h.deleted = FALSE ORDER BY h.name`, org)
 	if err != nil {
-		return nil, writeErr(err)
+		return err
 	}
 	last, err := queryMaps(ctx, db, `SELECT hive_id, MAX(date) AS last_date FROM inspection
 		WHERE organization_id = ? AND deleted = FALSE GROUP BY hive_id`, org)
 	if err != nil {
-		return nil, writeErr(err)
+		return err
 	}
 	lastByHive := map[string]time.Time{}
 	for _, r := range last {
@@ -108,8 +124,8 @@ func (s *StatsService) GetDashboard(ctx context.Context, req *connect.Request[wv
 	for _, h := range hives {
 		days := int32(-1)
 		if d, ok := lastByHive[rs(h["id"])]; ok {
-			days = int32(now.Sub(d).Hours() / 24)
-			if days < int32(threshold) {
+			days = i32(int64(now.Sub(d).Hours() / 24))
+			if days < i32(int64(threshold)) {
 				continue
 			}
 		}
@@ -124,15 +140,19 @@ func (s *StatsService) GetDashboard(ctx context.Context, req *connect.Request[wv
 		}
 		return a > b
 	})
+	return nil
+}
 
+// dashboardRecent: the ten latest inspections.
+func dashboardRecent(ctx context.Context, db queryer, org string, _ time.Time, _ int, res *wv1.DashboardResponse) error {
 	recent, err := queryMaps(ctx, db, `SELECT * FROM inspection WHERE organization_id = ? AND deleted = FALSE ORDER BY date DESC LIMIT 10`, org)
 	if err != nil {
-		return nil, writeErr(err)
+		return err
 	}
 	for _, r := range recent {
 		res.RecentInspections = append(res.RecentInspections, inspectionFromRow(r))
 	}
-	return connect.NewResponse(res), nil
+	return nil
 }
 
 func (s *StatsService) GetHoneyStats(ctx context.Context, req *connect.Request[wv1.HoneyStatsRequest]) (*connect.Response[wv1.HoneyStatsResponse], error) {
@@ -149,7 +169,7 @@ func (s *StatsService) GetHoneyStats(ctx context.Context, req *connect.Request[w
 		if !ok {
 			continue
 		}
-		if req.Msg.Year != 0 && int32(d.Year()) != req.Msg.Year {
+		if req.Msg.Year != 0 && i32(int64(d.Year())) != req.Msg.Year {
 			continue
 		}
 		kg := rf(r["amount_kg"])
@@ -209,5 +229,5 @@ func sums(m map[string]float64, labels map[string]string) []*wv1.HoneySum {
 
 func count32(ctx context.Context, q queryer, query string, args ...any) (int32, error) {
 	n, err := countRows(ctx, q, query, args...)
-	return int32(n), err
+	return i32(int64(n)), err
 }
