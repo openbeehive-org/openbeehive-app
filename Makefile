@@ -109,7 +109,7 @@ release: ## refuse dirty/non-main -> check -> signed tag V (its CHANGELOG.md sec
 	@grep -q "^## \[$(V:v%=%)\]" CHANGELOG.md || { echo "CHANGELOG.md has no '## [$(V:v%=%)]' section"; exit 1; }
 	$(MAKE) check
 	# tag body = the CHANGELOG section; release.yml puts it at the top of the release notes
-	notes=$$(mktemp); { echo "$(V)"; echo; awk '/^## \[$(V:v%=%)\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md; } > "$$notes"; git tag -s "$(V)" -F "$$notes"; rm -f "$$notes"
+	notes=$$(mktemp); { echo "$(V)"; echo; awk '/^## \[$(V:v%=%)\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md; } > "$$notes"; git tag -s --cleanup=whitespace "$(V)" -F "$$notes"; rm -f "$$notes"
 	@echo "tagged $(V), push with: git push origin $(V)"
 
 tidy: ## go mod tidy
