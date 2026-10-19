@@ -1,0 +1,15 @@
+{
+  "threshold": 3,
+  "minTokens": 70,
+  "reporters": ["console"],
+  "ignore": [
+    "**/proto/**",
+    "**/*.test.ts",
+    "**/i18n/**",
+    "**/node_modules/**",
+    "**/build/**",
+    "**/.svelte-kit/**"
+  ],
+  "path": ["src"],
+  "gitignore": true
+}
