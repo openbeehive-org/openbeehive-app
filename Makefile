@@ -84,8 +84,8 @@ audit: gen app-audit ## vulnerabilities, licenses, tidy module graph, secrets
 	cd .. && gitleaks git --no-banner --redact .
 
 build: gen app-build ## build the app, embed it, compile the single binary at server/bin/openbeehive
-	rm -rf $(SERVER)/internal/web/dist
-	mkdir -p $(SERVER)/internal/web/dist
+	# keep the tracked .gitkeep: the embed must compile before the app is built
+	find $(SERVER)/internal/web/dist -mindepth 1 -not -name .gitkeep -delete
 	cp -r $(APP)/build/. $(SERVER)/internal/web/dist/
 	cd $(SERVER) && CGO_ENABLED=0 $(GO) build -trimpath -o bin/openbeehive ./cmd/server
 	@echo "built $(SERVER)/bin/openbeehive (SPA embedded)"
@@ -116,8 +116,8 @@ tidy: ## go mod tidy
 
 clean: ## remove build, coverage and generated output
 	rm -rf $(APP)/build $(APP)/coverage $(SERVER)/bin $(SERVER)/cover.out $(SERVER)/cover.raw.out
-	rm -rf $(SERVER)/internal/web/dist
-	mkdir -p $(SERVER)/internal/web/dist
+	# keep the tracked .gitkeep: the embed must compile before the app is built
+	find $(SERVER)/internal/web/dist -mindepth 1 -not -name .gitkeep -delete
 	touch $(SERVER)/internal/web/dist/.gitkeep
 
 # ----------------------------------------------------------------------------
