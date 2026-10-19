@@ -22,7 +22,7 @@ COVER_MIN ?= 53
 LICENSES  ?= MIT,Apache-2.0,BSD-2-Clause,BSD-3-Clause,ISC,MPL-2.0
 # Each pin carries a `# renovate:` comment so Renovate bumps it (customManagers:makefileVersions in renovate.json).
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
-GOLANGCI_VERSION    ?= v2.14.0
+GOLANGCI_VERSION    ?= v2.15.0
 # renovate: datasource=go depName=golang.org/x/vuln
 GOVULNCHECK_VERSION ?= v1.9.0
 # renovate: datasource=go depName=github.com/google/go-licenses/v2
@@ -30,7 +30,7 @@ GO_LICENSES_VERSION ?= v2.0.1
 # renovate: datasource=go depName=github.com/fleetlint/fleetlint
 FLEETLINT_VERSION   ?= v0.5.1
 # renovate: datasource=go depName=github.com/bufbuild/buf
-BUF_VERSION         ?= v1.73.0
+BUF_VERSION         ?= v1.74.0
 # Tools are built with this module's toolchain: golangci-lint refuses code that targets a newer Go than it was built with.
 TOOLCHAIN := $(shell cd $(SERVER) && $(GO) env GOVERSION)
 

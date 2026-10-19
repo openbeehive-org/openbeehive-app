@@ -8,10 +8,10 @@ managed:
       value: github.com/openbeehive-org/openbeehive-app/server/internal/gen
 plugins:
   # --- Go (Backend) ---
-  - remote: buf.build/protocolbuffers/go:v1.36.11
+  - remote: buf.build/protocolbuffers/go:v1.36.12
     out: server/internal/gen
     opt: paths=source_relative
-  - remote: buf.build/connectrpc/go:v1.20.0
+  - remote: buf.build/connectrpc/go:v1.21.1
     out: server/internal/gen
     opt: paths=source_relative
 
@@ -19,6 +19,6 @@ plugins:
   # protoc-gen-es v2 generates messages AND service descriptors (used by
   # @connectrpc/connect v2's createClient); the separate connect-es plugin is
   # gone. Keep the pin in step with app/package.json (@bufbuild/protobuf@^2).
-  - remote: buf.build/bufbuild/es:v2.12.1
+  - remote: buf.build/bufbuild/es:v2.16.0
     out: app/src/lib/proto
     opt: target=ts
