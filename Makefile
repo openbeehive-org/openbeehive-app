@@ -30,7 +30,7 @@ GO_LICENSES_VERSION ?= v2.0.1
 # renovate: datasource=go depName=github.com/fleetlint/fleetlint
 FLEETLINT_VERSION   ?= v0.5.1
 # renovate: datasource=go depName=github.com/bufbuild/buf
-BUF_VERSION         ?= v1.74.0
+BUF_VERSION         ?= v1.75.0
 # Tools are built with this module's toolchain: golangci-lint refuses code that targets a newer Go than it was built with.
 TOOLCHAIN := $(shell cd $(SERVER) && $(GO) env GOVERSION)
 
