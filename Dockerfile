@@ -3,7 +3,7 @@
 # Base images are pinned by digest; Renovate keeps tag and digest current.
 
 # --- Stage 1: generate proto stubs (Go + TS) ---
-FROM docker.io/bufbuild/buf:1.74.0@sha256:621f108266b19236906aa328e64b7c50340738472c5da4d4b25104f01aa8d204 AS proto
+FROM docker.io/bufbuild/buf:1.75.0@sha256:adf82c7170be6629ec81dc907921ac1699407cd11c4f7fd7521b13c74152f849 AS proto
 WORKDIR /src
 COPY buf.yaml buf.gen.yaml ./
 COPY proto ./proto
