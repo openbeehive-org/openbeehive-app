@@ -19,7 +19,7 @@ COPY --from=proto /src/app/src/lib/proto ./src/lib/proto
 RUN npm run build
 
 # --- Stage 3: compile the server with the SPA embedded ---
-FROM docker.io/library/golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS server
+FROM docker.io/library/golang:1.27-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS server
 WORKDIR /src/server
 COPY server/go.mod server/go.sum ./
 RUN go mod download
