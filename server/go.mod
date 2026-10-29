@@ -3,7 +3,7 @@ module github.com/openbeehive-org/openbeehive-app/server
 go 1.27.3
 
 require (
-	connectrpc.com/connect v1.21.1
+	connectrpc.com/connect/v2 v2.0.2
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/go-webauthn/webauthn v0.18.2
