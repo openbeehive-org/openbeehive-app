@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 )
 
 type ctxKey int
@@ -50,20 +50,20 @@ var ErrKeyReadOnly = errors.New("this API key is read-only")
 // ReadOnlyGuard rejects mutating RPCs for read-only identities: the demo
 // account and read-scoped API keys. Read methods pass; handler streams
 // (Subscribe) are read-only by design and pass unchanged.
-func ReadOnlyGuard() connect.UnaryInterceptorFunc {
-	return func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+func ReadOnlyGuard() connect.ServerInterceptor {
+	return func(next connect.ServerFunc) connect.ServerFunc {
+		return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
 			id, ok := FromContext(ctx)
-			if !ok || readOnlyMethod(req.Spec().Procedure) {
-				return next(ctx, req)
+			if !ok || readOnlyMethod(spec.Procedure) {
+				return next(ctx, spec, stream)
 			}
 			if id.Role == "demo" {
-				return nil, connect.NewError(connect.CodePermissionDenied, ErrDemoReadOnly)
+				return connect.NewError(connect.CodePermissionDenied, ErrDemoReadOnly.Error()).WithCause(ErrDemoReadOnly)
 			}
 			if id.ReadOnly {
-				return nil, connect.NewError(connect.CodePermissionDenied, ErrKeyReadOnly)
+				return connect.NewError(connect.CodePermissionDenied, ErrKeyReadOnly.Error()).WithCause(ErrKeyReadOnly)
 			}
-			return next(ctx, req)
+			return next(ctx, spec, stream)
 		}
 	}
 }

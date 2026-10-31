@@ -5,23 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 )
 
-// fakeRequest lets us exercise the interceptor without generated stubs.
-type fakeRequest struct {
-	connect.AnyRequest
-	procedure string
-}
-
-func (r *fakeRequest) Spec() connect.Spec { return connect.Spec{Procedure: r.procedure} }
-
 func callGuard(ctx context.Context, procedure string) error {
-	next := func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		return nil, nil
-	}
-	_, err := ReadOnlyGuard()(next)(ctx, &fakeRequest{procedure: procedure})
-	return err
+	next := func(context.Context, connect.Spec, connect.ServerStream) error { return nil }
+	return ReadOnlyGuard()(next)(ctx, connect.Spec{Procedure: procedure}, nil)
 }
 
 func TestReadOnlyGuardRejectsDemoWrites(t *testing.T) {

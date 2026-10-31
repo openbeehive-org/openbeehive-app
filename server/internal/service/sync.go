@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
@@ -190,17 +191,17 @@ func NewSyncService(db *sqlx.DB, hlc *wsync.HLC) *SyncService { return &SyncServ
 // --- Pull: returns changes within the scopes visible to the user ---
 
 func (s *SyncService) Pull(
-	ctx context.Context, req *connect.Request[wv1.PullRequest],
-) (*connect.Response[wv1.PullResponse], error) {
+	ctx context.Context, req *wv1.PullRequest,
+) (*wv1.PullResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
 	scopes := s.accessibleScopes(ctx, id.UserID, id.OrgID)
 	if len(scopes) == 0 {
-		return connect.NewResponse(&wv1.PullResponse{NextCursor: req.Msg.Cursor}), nil
+		return &wv1.PullResponse{NextCursor: req.Cursor}, nil
 	}
-	limit := int(req.Msg.Limit)
+	limit := int(req.Limit)
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
@@ -208,10 +209,10 @@ func (s *SyncService) Pull(
 		SELECT scope_id, entity, entity_id, op, payload, hlc, author_id, seq
 		FROM change_log
 		WHERE scope_id IN (?) AND seq > ?
-		ORDER BY seq ASC LIMIT ?`, scopes, cursorToSeq(req.Msg.Cursor), limit+1)
+		ORDER BY seq ASC LIMIT ?`, scopes, cursorToSeq(req.Cursor), limit+1)
 	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(q), args...)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -224,7 +225,7 @@ func (s *SyncService) Pull(
 			Seq                                             int64
 		}
 		if err := rows.Scan(&c.ScopeID, &c.Entity, &c.EntityID, &c.Op, &c.Payload, &c.HLC, &c.Author, &c.Seq); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
+			return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 		}
 		out = append(out, &wv1.Change{
 			Entity: c.Entity, EntityId: c.EntityID, ScopeId: c.ScopeID,
@@ -238,23 +239,23 @@ func (s *SyncService) Pull(
 	if hasMore {
 		out, seqs = out[:limit], seqs[:limit]
 	}
-	next := req.Msg.Cursor
+	next := req.Cursor
 	if len(seqs) > 0 {
 		next = seqToCursor(seqs[len(seqs)-1])
 	}
-	return connect.NewResponse(&wv1.PullResponse{
+	return &wv1.PullResponse{
 		Changes: out, NextCursor: next, HasMore: hasMore,
-	}), nil
+	}, nil
 }
 
 // --- Push: applies incoming changes via LWW ---
 
 func (s *SyncService) Push(
-	ctx context.Context, req *connect.Request[wv1.PushRequest],
-) (*connect.Response[wv1.PushResponse], error) {
+	ctx context.Context, req *wv1.PushRequest,
+) (*wv1.PushResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
 	// Writable scopes for this user: same set Pull reads from. Changes outside
 	// it are rejected; otherwise any authenticated user could inject rows into
@@ -267,11 +268,11 @@ func (s *SyncService) Push(
 
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	for _, ch := range req.Msg.Changes {
+	for _, ch := range req.Changes {
 		s.hlc.Recv(ch.Hlc) // sync clock with origin time
 
 		spec, ok := entityCols[ch.Entity]
@@ -288,11 +289,11 @@ func (s *SyncService) Push(
 	var cursor int64
 	_ = tx.GetContext(ctx, &cursor, "SELECT val FROM seq_counter WHERE name = 'change'")
 	if err := tx.Commit(); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 	}
-	return connect.NewResponse(&wv1.PushResponse{
+	return &wv1.PushResponse{
 		ServerCursor: seqToCursor(cursor), Conflicts: nil,
-	}), nil
+	}, nil
 }
 
 // allowScope rejects a change outside the user's writable scopes. A new apiary
@@ -306,8 +307,8 @@ func allowScope(scopeSet map[string]bool, ch *wv1.Change) error {
 		scopeSet[ch.ScopeId] = true
 		return nil
 	}
-	return connect.NewError(connect.CodePermissionDenied,
-		fmt.Errorf("scope %q is not writable for this user", ch.ScopeId))
+	return connect.Errorf(connect.CodePermissionDenied,
+		"scope %q is not writable for this user", ch.ScopeId)
 }
 
 // applyLogged merges one change (per-field LWW + OR-Set; stale fields are
@@ -316,12 +317,12 @@ func allowScope(scopeSet map[string]bool, ch *wv1.Change) error {
 func applyLogged(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) error {
 	if err := applyChange(ctx, tx, spec, ch, orgID); err != nil {
 		if errors.Is(err, errWrongTenant) {
-			return connect.NewError(connect.CodePermissionDenied, err)
+			return connect.NewError(connect.CodePermissionDenied, err.Error()).WithCause(err)
 		}
-		return connect.NewError(connect.CodeInternal, err)
+		return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 	}
 	if err := appendChangeLog(ctx, tx, ch, orgID); err != nil {
-		return connect.NewError(connect.CodeInternal, err)
+		return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 	}
 	return nil
 }
@@ -330,13 +331,13 @@ func applyLogged(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 // nudges the device whenever it advances, so it can pull immediately. ---
 
 func (s *SyncService) Subscribe(
-	ctx context.Context, req *connect.Request[wv1.SubscribeRequest],
-	stream *connect.ServerStream[wv1.SubscribeEvent],
+	ctx context.Context, req *wv1.SubscribeRequest,
+	stream openbeehivev1connect.SyncServiceSubscribeServerStream,
 ) error {
 	if _, ok := auth.FromContext(ctx); !ok {
-		return connect.NewError(connect.CodeUnauthenticated, nil)
+		return connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	last := cursorToSeq(req.Msg.Cursor)
+	last := cursorToSeq(req.Cursor)
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -347,7 +348,7 @@ func (s *SyncService) Subscribe(
 			var cur int64
 			if err := s.db.GetContext(ctx, &cur,
 				"SELECT val FROM seq_counter WHERE name = 'change'"); err != nil {
-				return connect.NewError(connect.CodeInternal, err)
+				return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 			}
 			if cur > last {
 				last = cur

@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
@@ -17,12 +17,12 @@ type QueenService struct {
 
 func NewQueenService(w *Writer) *QueenService { return &QueenService{w: w} }
 
-func (s *QueenService) CreateQueen(ctx context.Context, req *connect.Request[wv1.CreateQueenRequest]) (*connect.Response[wv1.CreateQueenResponse], error) {
+func (s *QueenService) CreateQueen(ctx context.Context, req *wv1.CreateQueenRequest) (*wv1.CreateQueenResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	m := req.Msg
+	m := req
 	if m.HiveId == "" {
 		return nil, invalid("hive_id is required")
 	}
@@ -46,19 +46,19 @@ func (s *QueenService) CreateQueen(ctx context.Context, req *connect.Request[wv1
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.CreateQueenResponse{Queen: queenFromRow(out)}), nil
+	return &wv1.CreateQueenResponse{Queen: queenFromRow(out)}, nil
 }
 
-func (s *QueenService) ListQueens(ctx context.Context, req *connect.Request[wv1.ListQueensRequest]) (*connect.Response[wv1.ListQueensResponse], error) {
+func (s *QueenService) ListQueens(ctx context.Context, req *wv1.ListQueensRequest) (*wv1.ListQueensResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	limit, offset := pageParams(req.Msg.Page)
+	limit, offset := pageParams(req.Page)
 	where := ` FROM queen WHERE organization_id = ? AND deleted = FALSE`
 	args := []any{id.OrgID}
-	if req.Msg.HiveId != "" {
+	if req.HiveId != "" {
 		where += ` AND hive_id = ?`
-		args = append(args, req.Msg.HiveId)
+		args = append(args, req.HiveId)
 	}
-	if req.Msg.OnlyActive {
+	if req.OnlyActive {
 		where += ` AND active = TRUE`
 	}
 	total, err := countRows(ctx, s.w.db, `SELECT COUNT(*)`+where, args...)
@@ -74,12 +74,12 @@ func (s *QueenService) ListQueens(ctx context.Context, req *connect.Request[wv1.
 	for _, r := range rows {
 		out = append(out, queenFromRow(r))
 	}
-	return connect.NewResponse(&wv1.ListQueensResponse{Queens: out, Page: pageResponse(total, offset, len(rows), limit)}), nil
+	return &wv1.ListQueensResponse{Queens: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
-func (s *QueenService) UpdateQueen(ctx context.Context, req *connect.Request[wv1.UpdateQueenRequest]) (*connect.Response[wv1.UpdateQueenResponse], error) {
+func (s *QueenService) UpdateQueen(ctx context.Context, req *wv1.UpdateQueenRequest) (*wv1.UpdateQueenResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	q := req.Msg.Queen
+	q := req.Queen
 	if q == nil || q.Id == "" {
 		return nil, invalid("queen.id is required")
 	}
@@ -118,13 +118,13 @@ func (s *QueenService) UpdateQueen(ctx context.Context, req *connect.Request[wv1
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.UpdateQueenResponse{Queen: queenFromRow(out)}), nil
+	return &wv1.UpdateQueenResponse{Queen: queenFromRow(out)}, nil
 }
 
-func (s *QueenService) DeleteQueen(ctx context.Context, req *connect.Request[wv1.DeleteQueenRequest]) (*connect.Response[wv1.DeleteQueenResponse], error) {
+func (s *QueenService) DeleteQueen(ctx context.Context, req *wv1.DeleteQueenRequest) (*wv1.DeleteQueenResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("queen", req.Msg.Id)
+		cur, err := t.row("queen", req.Id)
 		if err != nil {
 			return err
 		}
@@ -132,10 +132,10 @@ func (s *QueenService) DeleteQueen(ctx context.Context, req *connect.Request[wv1
 		if err != nil {
 			return err
 		}
-		return t.del("queen", req.Msg.Id, rs(h["apiary_id"]))
+		return t.del("queen", req.Id, rs(h["apiary_id"]))
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.DeleteQueenResponse{}), nil
+	return &wv1.DeleteQueenResponse{}, nil
 }

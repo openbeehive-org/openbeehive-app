@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"

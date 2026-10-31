@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 
-	"connectrpc.com/connect"
-
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
@@ -17,9 +15,9 @@ type EventService struct {
 
 func NewEventService(w *Writer) *EventService { return &EventService{w: w} }
 
-func (s *EventService) ListEvents(ctx context.Context, req *connect.Request[wv1.ListEventsRequest]) (*connect.Response[wv1.ListEventsResponse], error) {
+func (s *EventService) ListEvents(ctx context.Context, req *wv1.ListEventsRequest) (*wv1.ListEventsResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	limit := int(req.Msg.Limit)
+	limit := int(req.Limit)
 	if limit <= 0 {
 		limit = 100
 	}
@@ -28,7 +26,7 @@ func (s *EventService) ListEvents(ctx context.Context, req *connect.Request[wv1.
 	}
 	q := `SELECT * FROM event WHERE organization_id = ? AND deleted = FALSE`
 	args := []any{id.OrgID}
-	for col, v := range map[string]string{"apiary_id": req.Msg.ApiaryId, "hive_id": req.Msg.HiveId, "queen_id": req.Msg.QueenId} {
+	for col, v := range map[string]string{"apiary_id": req.ApiaryId, "hive_id": req.HiveId, "queen_id": req.QueenId} {
 		if v != "" {
 			q += ` AND ` + col + ` = ?`
 			args = append(args, v)
@@ -42,5 +40,5 @@ func (s *EventService) ListEvents(ctx context.Context, req *connect.Request[wv1.
 	for _, r := range rows {
 		out = append(out, eventFromRow(r))
 	}
-	return connect.NewResponse(&wv1.ListEventsResponse{Events: out}), nil
+	return &wv1.ListEventsResponse{Events: out}, nil
 }
