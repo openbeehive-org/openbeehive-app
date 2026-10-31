@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 )
 
 // SessionCookie is the name of the app-session cookie (set after OIDC/WebAuthn
@@ -131,13 +131,23 @@ func (s *SessionManager) LogoutHandler() http.HandlerFunc {
 // SessionInterceptor authenticates Connect requests from the session token,
 // taken from the Authorization: Bearer header or the session cookie. It covers
 // unary calls and handler streams (Subscribe).
-func SessionInterceptor(v SessionVerifier) connect.Interceptor {
-	return sessionInterceptor{v: v}
+func SessionInterceptor(v SessionVerifier) connect.ServerInterceptor {
+	return func(next connect.ServerFunc) connect.ServerFunc {
+		return func(ctx context.Context, spec connect.Spec, stream connect.ServerStream) error {
+			info, ok := connect.CallInfoForServerContext(ctx)
+			if !ok {
+				return connect.NewError(connect.CodeUnauthenticated, errMissingToken.Error()).WithCause(errMissingToken)
+			}
+			id, err := verifyHeaders(ctx, v, info.RequestHeader())
+			if err != nil {
+				return connect.NewError(connect.CodeUnauthenticated, err.Error()).WithCause(err)
+			}
+			return next(WithIdentity(ctx, id), spec, stream)
+		}
+	}
 }
 
-type sessionInterceptor struct{ v SessionVerifier }
-
-func (s sessionInterceptor) verifyHeaders(ctx context.Context, h http.Header) (Identity, error) {
+func verifyHeaders(ctx context.Context, v SessionVerifier, h *connect.Header) (Identity, error) {
 	token := bearer(h.Get("Authorization"))
 	if token == "" {
 		token = cookieToken(h.Get("Cookie"))
@@ -145,31 +155,7 @@ func (s sessionInterceptor) verifyHeaders(ctx context.Context, h http.Header) (I
 	if token == "" {
 		return Identity{}, errMissingToken
 	}
-	return s.v.Verify(ctx, token)
-}
-
-func (s sessionInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
-	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		id, err := s.verifyHeaders(ctx, req.Header())
-		if err != nil {
-			return nil, connect.NewError(connect.CodeUnauthenticated, err)
-		}
-		return next(WithIdentity(ctx, id), req)
-	}
-}
-
-func (s sessionInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return next
-}
-
-func (s sessionInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
-		id, err := s.verifyHeaders(ctx, conn.RequestHeader())
-		if err != nil {
-			return connect.NewError(connect.CodeUnauthenticated, err)
-		}
-		return next(WithIdentity(ctx, id), conn)
-	}
+	return v.Verify(ctx, token)
 }
 
 func bearer(authz string) string {

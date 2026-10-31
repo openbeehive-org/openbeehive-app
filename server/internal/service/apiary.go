@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -38,22 +38,22 @@ func NewApiaryService(repo storage.ApiaryRepo, w *Writer) *ApiaryService {
 }
 
 func (s *ApiaryService) CreateApiary(
-	ctx context.Context, req *connect.Request[wv1.CreateApiaryRequest],
-) (*connect.Response[wv1.CreateApiaryResponse], error) {
+	ctx context.Context, req *wv1.CreateApiaryRequest,
+) (*wv1.CreateApiaryResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	if req.Msg.Name == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errEmptyName)
+	if req.Name == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errEmptyName.Error()).WithCause(errEmptyName)
 	}
 	aid := uuid.NewString()
 	now := jsTimeNow()
 	// scope = own id: a new apiary opens its own sync scope, as in the app.
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
 		return t.upsert("apiary", aid, aid, map[string]any{
-			"organization_id": id.OrgID, "name": req.Msg.Name, "address": req.Msg.Address,
-			"lat": req.Msg.Lat, "lng": req.Msg.Lng, "note": req.Msg.Note,
+			"organization_id": id.OrgID, "name": req.Name, "address": req.Address,
+			"lat": req.Lat, "lng": req.Lng, "note": req.Note,
 			"created_at": now, "updated_at": now, "deleted": 0,
 		})
 	})
@@ -64,81 +64,81 @@ func (s *ApiaryService) CreateApiary(
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	return connect.NewResponse(&wv1.CreateApiaryResponse{Apiary: toProto(m, 0)}), nil
+	return &wv1.CreateApiaryResponse{Apiary: toProto(m, 0)}, nil
 }
 
 func (s *ApiaryService) GetApiary(
-	ctx context.Context, req *connect.Request[wv1.GetApiaryRequest],
-) (*connect.Response[wv1.GetApiaryResponse], error) {
+	ctx context.Context, req *wv1.GetApiaryRequest,
+) (*wv1.GetApiaryResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	m, err := s.repo.Get(ctx, id.OrgID, req.Msg.Id)
+	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	cnt, _ := s.repo.HiveCount(ctx, id.OrgID, m.ID)
-	return connect.NewResponse(&wv1.GetApiaryResponse{Apiary: toProto(m, cnt)}), nil
+	return &wv1.GetApiaryResponse{Apiary: toProto(m, cnt)}, nil
 }
 
 func (s *ApiaryService) ListApiaries(
-	ctx context.Context, req *connect.Request[wv1.ListApiariesRequest],
-) (*connect.Response[wv1.ListApiariesResponse], error) {
+	ctx context.Context, req *wv1.ListApiariesRequest,
+) (*wv1.ListApiariesResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	limit, offset := pageParams(req.Msg.Page)
+	limit, offset := pageParams(req.Page)
 	rows, total, err := s.repo.List(ctx, id.OrgID, limit, offset)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 	}
 	out := make([]*wv1.Apiary, 0, len(rows))
 	for i := range rows {
 		cnt, _ := s.repo.HiveCount(ctx, id.OrgID, rows[i].ID)
 		out = append(out, toProto(&rows[i], cnt))
 	}
-	return connect.NewResponse(&wv1.ListApiariesResponse{
+	return &wv1.ListApiariesResponse{
 		Apiaries: out,
 		Page:     pageResponse(total, offset, len(rows), limit),
-	}), nil
+	}, nil
 }
 
 func (s *ApiaryService) UpdateApiary(
-	ctx context.Context, req *connect.Request[wv1.UpdateApiaryRequest],
-) (*connect.Response[wv1.UpdateApiaryResponse], error) {
+	ctx context.Context, req *wv1.UpdateApiaryRequest,
+) (*wv1.UpdateApiaryResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	if _, err := s.repo.Get(ctx, id.OrgID, req.Msg.Id); err != nil {
+	if _, err := s.repo.Get(ctx, id.OrgID, req.Id); err != nil {
 		return nil, mapErr(err)
 	}
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		return t.upsert("apiary", req.Msg.Id, req.Msg.Id, map[string]any{
-			"name": req.Msg.Name, "address": req.Msg.Address, "lat": req.Msg.Lat, "lng": req.Msg.Lng,
-			"note": req.Msg.Note, "updated_at": jsTimeNow(),
+		return t.upsert("apiary", req.Id, req.Id, map[string]any{
+			"name": req.Name, "address": req.Address, "lat": req.Lat, "lng": req.Lng,
+			"note": req.Note, "updated_at": jsTimeNow(),
 		})
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	m, err := s.repo.Get(ctx, id.OrgID, req.Msg.Id)
+	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	cnt, _ := s.repo.HiveCount(ctx, id.OrgID, m.ID)
-	return connect.NewResponse(&wv1.UpdateApiaryResponse{Apiary: toProto(m, cnt)}), nil
+	return &wv1.UpdateApiaryResponse{Apiary: toProto(m, cnt)}, nil
 }
 
 // DeleteApiary soft-deletes the apiary (like the app). Its hives keep their
 // rows and stay reachable through the API and sync.
 func (s *ApiaryService) DeleteApiary(
-	ctx context.Context, req *connect.Request[wv1.DeleteApiaryRequest],
-) (*connect.Response[wv1.DeleteApiaryResponse], error) {
+	ctx context.Context, req *wv1.DeleteApiaryRequest,
+) (*wv1.DeleteApiaryResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	if _, err := s.repo.Get(ctx, id.OrgID, req.Msg.Id); err != nil {
+	if _, err := s.repo.Get(ctx, id.OrgID, req.Id); err != nil {
 		return nil, mapErr(err)
 	}
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		return t.del("apiary", req.Msg.Id, req.Msg.Id)
+		return t.del("apiary", req.Id, req.Id)
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.DeleteApiaryResponse{}), nil
+	return &wv1.DeleteApiaryResponse{}, nil
 }
 
 // --- Helpers ---
@@ -191,9 +191,9 @@ func jsTimeNow() string { return jsTime(time.Now()) }
 
 func mapErr(err error) error {
 	if errors.Is(err, storage.ErrNotFound) {
-		return connect.NewError(connect.CodeNotFound, err)
+		return connect.NewError(connect.CodeNotFound, err.Error()).WithCause(err)
 	}
-	return connect.NewError(connect.CodeInternal, err)
+	return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 }
 
 var errEmptyName = errors.New("name must not be empty")

@@ -9,7 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/rs/cors"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
@@ -88,7 +89,7 @@ func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 
 // setupAuth mounts the auth endpoints (session, password, OIDC, WebAuthn,
 // API keys) and returns the interceptors the RPC handlers run behind.
-func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, blobs blob.Store, mux *http.ServeMux) []connect.Interceptor {
+func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, blobs blob.Store, mux *http.ServeMux) []connect.ServerInterceptor {
 	sessions := auth.NewSessionManager(cfg.Auth.SessionSecret, cfg.Auth.SessionTTL)
 	authEnabled := len(cfg.OIDC.Enabled) > 0 || cfg.Auth.WebAuthn.Enabled || cfg.Auth.PasswordEnabled
 
@@ -99,7 +100,7 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 		// Self-host single-user mode: no auth configured -> inject a fixed
 		// local identity so the offline-first app works without login.
 		log.Printf("auth: none configured, single-user mode (user=%s)", auth.LocalUser.UserID)
-		return []connect.Interceptor{auth.DevInterceptor()}
+		return []connect.ServerInterceptor{auth.DevInterceptor()}
 	}
 
 	// Multi-tenant endpoints (me / switch / create / invite / accept).
@@ -139,30 +140,31 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 	keys.Routes(mux)
 	// Demo sessions and read-scoped API keys are read-only: reject mutating
 	// RPCs server-side.
-	return []connect.Interceptor{auth.SessionInterceptor(keys), auth.ReadOnlyGuard()}
+	return []connect.ServerInterceptor{auth.SessionInterceptor(keys), auth.ReadOnlyGuard()}
 }
 
 // registerServices mounts the Connect-RPC handlers, blob serving and health.
-func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.Interceptor) {
-	opts := connect.WithInterceptors(interceptors...)
+func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.ServerInterceptor) {
+	server := connect.NewServer(interceptors...)
 
 	// One clock for every server-side write, shared with the sync endpoint.
 	hlc := wsync.NewHLC(cfg.Sync.NodeID)
 	// Offline sync: central push/pull endpoint (the app's write path).
-	mux.Handle(openbeehivev1connect.NewSyncServiceHandler(
-		service.NewSyncService(store.DB(), hlc), opts))
+	openbeehivev1connect.RegisterSyncServiceHandler(server, service.NewSyncService(store.DB(), hlc))
 	// CRUD services for scripts and integrations. Their writes go through the
 	// same merge + change log as Push, so they show up on devices.
 	w := service.NewWriter(store.DB(), hlc)
-	mux.Handle(openbeehivev1connect.NewApiaryServiceHandler(service.NewApiaryService(store.Apiaries(), w), opts))
-	mux.Handle(openbeehivev1connect.NewHiveServiceHandler(service.NewHiveService(store.Hives(), w), opts))
-	mux.Handle(openbeehivev1connect.NewQueenServiceHandler(service.NewQueenService(w), opts))
-	mux.Handle(openbeehivev1connect.NewInspectionServiceHandler(service.NewInspectionService(w), opts))
-	mux.Handle(openbeehivev1connect.NewTaskServiceHandler(service.NewTaskService(w), opts))
-	mux.Handle(openbeehivev1connect.NewTreatmentServiceHandler(service.NewTreatmentService(w), opts))
-	mux.Handle(openbeehivev1connect.NewHarvestServiceHandler(service.NewHarvestService(w), opts))
-	mux.Handle(openbeehivev1connect.NewEventServiceHandler(service.NewEventService(w), opts))
-	mux.Handle(openbeehivev1connect.NewStatsServiceHandler(service.NewStatsService(w), opts))
+	openbeehivev1connect.RegisterApiaryServiceHandler(server, service.NewApiaryService(store.Apiaries(), w))
+	openbeehivev1connect.RegisterHiveServiceHandler(server, service.NewHiveService(store.Hives(), w))
+	openbeehivev1connect.RegisterQueenServiceHandler(server, service.NewQueenService(w))
+	openbeehivev1connect.RegisterInspectionServiceHandler(server, service.NewInspectionService(w))
+	openbeehivev1connect.RegisterTaskServiceHandler(server, service.NewTaskService(w))
+	openbeehivev1connect.RegisterTreatmentServiceHandler(server, service.NewTreatmentService(w))
+	openbeehivev1connect.RegisterHarvestServiceHandler(server, service.NewHarvestService(w))
+	openbeehivev1connect.RegisterEventServiceHandler(server, service.NewEventService(w))
+	openbeehivev1connect.RegisterStatsServiceHandler(server, service.NewStatsService(w))
+	// Unbounded like v1: a Push after a long offline period can exceed v2's 4 MiB default.
+	connecthttp.Mount(mux, server, connecthttp.WithReadMaxBytes(0))
 
 	// FS blob serving in self-host mode (files only, no directory listings).
 	if cfg.Blob.Backend == config.BlobFS {

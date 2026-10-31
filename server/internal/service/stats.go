@@ -5,8 +5,6 @@ import (
 	"sort"
 	"time"
 
-	"connectrpc.com/connect"
-
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
@@ -25,11 +23,11 @@ func NewStatsService(w *Writer) *StatsService { return &StatsService{w: w} }
 
 const defaultDueDays = 21 // the app highlights hives unvisited for 21+ days
 
-func (s *StatsService) GetDashboard(ctx context.Context, req *connect.Request[wv1.DashboardRequest]) (*connect.Response[wv1.DashboardResponse], error) {
+func (s *StatsService) GetDashboard(ctx context.Context, req *wv1.DashboardRequest) (*wv1.DashboardResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	db := s.w.db
 	org := id.OrgID
-	threshold := int(req.Msg.ThresholdDays)
+	threshold := int(req.ThresholdDays)
 	if threshold <= 0 {
 		threshold = defaultDueDays
 	}
@@ -53,7 +51,7 @@ func (s *StatsService) GetDashboard(ctx context.Context, req *connect.Request[wv
 			return nil, writeErr(err)
 		}
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // dashboardTasks: open, overdue, and the next five by due date.
@@ -155,7 +153,7 @@ func dashboardRecent(ctx context.Context, db queryer, org string, _ time.Time, _
 	return nil
 }
 
-func (s *StatsService) GetHoneyStats(ctx context.Context, req *connect.Request[wv1.HoneyStatsRequest]) (*connect.Response[wv1.HoneyStatsResponse], error) {
+func (s *StatsService) GetHoneyStats(ctx context.Context, req *wv1.HoneyStatsRequest) (*wv1.HoneyStatsResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	db := s.w.db
 	rows, err := queryMaps(ctx, db, `SELECT date, amount_kg, queen_id, apiary_id FROM event
@@ -169,7 +167,7 @@ func (s *StatsService) GetHoneyStats(ctx context.Context, req *connect.Request[w
 		if !ok {
 			continue
 		}
-		if req.Msg.Year != 0 && i32(int64(d.Year())) != req.Msg.Year {
+		if req.Year != 0 && i32(int64(d.Year())) != req.Year {
 			continue
 		}
 		kg := rf(r["amount_kg"])
@@ -203,7 +201,7 @@ func (s *StatsService) GetHoneyStats(ctx context.Context, req *connect.Request[w
 		PerApiary: sums(perApiary, apiaryNames),
 		PerYear:   sums(perYear, nil),
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // sums turns a key -> kg map into a list sorted by kg descending (years ascending).

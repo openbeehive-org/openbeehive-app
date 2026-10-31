@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -413,17 +413,17 @@ func writeErr(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, storage.ErrNotFound), errors.Is(err, sql.ErrNoRows):
-		return connect.NewError(connect.CodeNotFound, err)
+		return connect.NewError(connect.CodeNotFound, err.Error()).WithCause(err)
 	case errors.Is(err, errWrongTenant):
-		return connect.NewError(connect.CodePermissionDenied, err)
+		return connect.NewError(connect.CodePermissionDenied, err.Error()).WithCause(err)
 	}
 	var ce *connect.Error
 	if errors.As(err, &ce) {
 		return err
 	}
-	return connect.NewError(connect.CodeInternal, err)
+	return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 }
 
 func invalid(msg string) error {
-	return connect.NewError(connect.CodeInvalidArgument, errors.New(msg))
+	return connect.NewError(connect.CodeInvalidArgument, msg)
 }

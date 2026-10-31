@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/google/uuid"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
@@ -26,12 +26,12 @@ func taskScope(userID, apiaryID string) string {
 	return "user:" + userID
 }
 
-func (s *TaskService) CreateTask(ctx context.Context, req *connect.Request[wv1.CreateTaskRequest]) (*connect.Response[wv1.CreateTaskResponse], error) {
+func (s *TaskService) CreateTask(ctx context.Context, req *wv1.CreateTaskRequest) (*wv1.CreateTaskResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	m := req.Msg
+	m := req
 	if m.Title == "" {
 		return nil, invalid("title is required")
 	}
@@ -55,19 +55,19 @@ func (s *TaskService) CreateTask(ctx context.Context, req *connect.Request[wv1.C
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.CreateTaskResponse{Task: taskFromRow(out)}), nil
+	return &wv1.CreateTaskResponse{Task: taskFromRow(out)}, nil
 }
 
-func (s *TaskService) ListTasks(ctx context.Context, req *connect.Request[wv1.ListTasksRequest]) (*connect.Response[wv1.ListTasksResponse], error) {
+func (s *TaskService) ListTasks(ctx context.Context, req *wv1.ListTasksRequest) (*wv1.ListTasksResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	limit, offset := pageParams(req.Msg.Page)
+	limit, offset := pageParams(req.Page)
 	where := ` FROM task WHERE organization_id = ? AND deleted = FALSE`
 	args := []any{id.OrgID}
-	if req.Msg.HiveId != "" {
+	if req.HiveId != "" {
 		where += ` AND hive_id = ?`
-		args = append(args, req.Msg.HiveId)
+		args = append(args, req.HiveId)
 	}
-	if req.Msg.OnlyOpen {
+	if req.OnlyOpen {
 		where += ` AND done = FALSE`
 	}
 	total, err := countRows(ctx, s.w.db, `SELECT COUNT(*)`+where, args...)
@@ -83,43 +83,43 @@ func (s *TaskService) ListTasks(ctx context.Context, req *connect.Request[wv1.Li
 	for _, r := range rows {
 		out = append(out, taskFromRow(r))
 	}
-	return connect.NewResponse(&wv1.ListTasksResponse{Tasks: out, Page: pageResponse(total, offset, len(rows), limit)}), nil
+	return &wv1.ListTasksResponse{Tasks: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
-func (s *TaskService) SetTaskDone(ctx context.Context, req *connect.Request[wv1.SetTaskDoneRequest]) (*connect.Response[wv1.SetTaskDoneResponse], error) {
+func (s *TaskService) SetTaskDone(ctx context.Context, req *wv1.SetTaskDoneRequest) (*wv1.SetTaskDoneResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	var out map[string]any
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("task", req.Msg.Id)
+		cur, err := t.row("task", req.Id)
 		if err != nil {
 			return err
 		}
-		if err := t.upsert("task", req.Msg.Id, taskScope(id.UserID, rs(cur["apiary_id"])),
-			map[string]any{"done": b2i(req.Msg.Done)}); err != nil {
+		if err := t.upsert("task", req.Id, taskScope(id.UserID, rs(cur["apiary_id"])),
+			map[string]any{"done": b2i(req.Done)}); err != nil {
 			return err
 		}
-		out, err = t.row("task", req.Msg.Id)
+		out, err = t.row("task", req.Id)
 		return err
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.SetTaskDoneResponse{Task: taskFromRow(out)}), nil
+	return &wv1.SetTaskDoneResponse{Task: taskFromRow(out)}, nil
 }
 
-func (s *TaskService) DeleteTask(ctx context.Context, req *connect.Request[wv1.DeleteTaskRequest]) (*connect.Response[wv1.DeleteTaskResponse], error) {
+func (s *TaskService) DeleteTask(ctx context.Context, req *wv1.DeleteTaskRequest) (*wv1.DeleteTaskResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("task", req.Msg.Id)
+		cur, err := t.row("task", req.Id)
 		if err != nil {
 			return err
 		}
-		return t.del("task", req.Msg.Id, taskScope(id.UserID, rs(cur["apiary_id"])))
+		return t.del("task", req.Id, taskScope(id.UserID, rs(cur["apiary_id"])))
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.DeleteTaskResponse{}), nil
+	return &wv1.DeleteTaskResponse{}, nil
 }
 
 // resolveApiary returns the apiary a task belongs to: the hive's when a hive

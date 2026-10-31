@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
@@ -86,7 +86,7 @@ func identityCtx(user, org string) context.Context {
 }
 
 func push(svc *SyncService, ctx context.Context, changes ...*wv1.Change) error {
-	_, err := svc.Push(ctx, connect.NewRequest(&wv1.PushRequest{Changes: changes}))
+	_, err := svc.Push(ctx, &wv1.PushRequest{Changes: changes})
 	return err
 }
 
@@ -181,17 +181,17 @@ func TestPullFiltersByScope(t *testing.T) {
 		t.Fatalf("push b: %v", err)
 	}
 	resp, err := svc.Pull(identityCtx("user-b", "org-b"),
-		connect.NewRequest(&wv1.PullRequest{}))
+		&wv1.PullRequest{})
 	if err != nil {
 		t.Fatalf("pull: %v", err)
 	}
-	for _, ch := range resp.Msg.Changes {
+	for _, ch := range resp.Changes {
 		if ch.ScopeId != "apiary-b" && ch.ScopeId != "user:user-b" {
 			t.Fatalf("pull leaked foreign scope %q", ch.ScopeId)
 		}
 	}
-	if len(resp.Msg.Changes) != 1 {
-		t.Fatalf("want exactly the own change, got %d", len(resp.Msg.Changes))
+	if len(resp.Changes) != 1 {
+		t.Fatalf("want exactly the own change, got %d", len(resp.Changes))
 	}
 }
 

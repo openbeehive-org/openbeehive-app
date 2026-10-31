@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
@@ -17,12 +17,12 @@ type TreatmentService struct {
 
 func NewTreatmentService(w *Writer) *TreatmentService { return &TreatmentService{w: w} }
 
-func (s *TreatmentService) CreateTreatment(ctx context.Context, req *connect.Request[wv1.CreateTreatmentRequest]) (*connect.Response[wv1.CreateTreatmentResponse], error) {
+func (s *TreatmentService) CreateTreatment(ctx context.Context, req *wv1.CreateTreatmentRequest) (*wv1.CreateTreatmentResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	m := req.Msg
+	m := req
 	if m.HiveId == "" {
 		return nil, invalid("hive_id is required")
 	}
@@ -53,17 +53,17 @@ func (s *TreatmentService) CreateTreatment(ctx context.Context, req *connect.Req
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.CreateTreatmentResponse{Treatment: treatmentFromRow(out)}), nil
+	return &wv1.CreateTreatmentResponse{Treatment: treatmentFromRow(out)}, nil
 }
 
-func (s *TreatmentService) ListTreatments(ctx context.Context, req *connect.Request[wv1.ListTreatmentsRequest]) (*connect.Response[wv1.ListTreatmentsResponse], error) {
+func (s *TreatmentService) ListTreatments(ctx context.Context, req *wv1.ListTreatmentsRequest) (*wv1.ListTreatmentsResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	limit, offset := pageParams(req.Msg.Page)
+	limit, offset := pageParams(req.Page)
 	where := ` FROM treatment WHERE organization_id = ? AND deleted = FALSE`
 	args := []any{id.OrgID}
-	if req.Msg.HiveId != "" {
+	if req.HiveId != "" {
 		where += ` AND hive_id = ?`
-		args = append(args, req.Msg.HiveId)
+		args = append(args, req.HiveId)
 	}
 	total, err := countRows(ctx, s.w.db, `SELECT COUNT(*)`+where, args...)
 	if err != nil {
@@ -78,20 +78,20 @@ func (s *TreatmentService) ListTreatments(ctx context.Context, req *connect.Requ
 	for _, r := range rows {
 		out = append(out, treatmentFromRow(r))
 	}
-	return connect.NewResponse(&wv1.ListTreatmentsResponse{Treatments: out, Page: pageResponse(total, offset, len(rows), limit)}), nil
+	return &wv1.ListTreatmentsResponse{Treatments: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
-func (s *TreatmentService) DeleteTreatment(ctx context.Context, req *connect.Request[wv1.DeleteTreatmentRequest]) (*connect.Response[wv1.DeleteTreatmentResponse], error) {
+func (s *TreatmentService) DeleteTreatment(ctx context.Context, req *wv1.DeleteTreatmentRequest) (*wv1.DeleteTreatmentResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("treatment", req.Msg.Id)
+		cur, err := t.row("treatment", req.Id)
 		if err != nil {
 			return err
 		}
-		return t.del("treatment", req.Msg.Id, rs(cur["apiary_id"]))
+		return t.del("treatment", req.Id, rs(cur["apiary_id"]))
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.DeleteTreatmentResponse{}), nil
+	return &wv1.DeleteTreatmentResponse{}, nil
 }

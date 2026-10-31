@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
@@ -22,12 +22,12 @@ func NewInspectionService(w *Writer) *InspectionService { return &InspectionServ
 // thumbnails (tens of KB); a data URL is replicated to every device.
 const maxPhotoBytes = 512 * 1024
 
-func (s *InspectionService) CreateInspection(ctx context.Context, req *connect.Request[wv1.CreateInspectionRequest]) (*connect.Response[wv1.CreateInspectionResponse], error) {
+func (s *InspectionService) CreateInspection(ctx context.Context, req *wv1.CreateInspectionRequest) (*wv1.CreateInspectionResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	m := req.Msg
+	m := req
 	if m.HiveId == "" {
 		return nil, invalid("hive_id is required")
 	}
@@ -57,17 +57,17 @@ func (s *InspectionService) CreateInspection(ctx context.Context, req *connect.R
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.CreateInspectionResponse{Inspection: inspectionFromRow(out)}), nil
+	return &wv1.CreateInspectionResponse{Inspection: inspectionFromRow(out)}, nil
 }
 
-func (s *InspectionService) ListInspections(ctx context.Context, req *connect.Request[wv1.ListInspectionsRequest]) (*connect.Response[wv1.ListInspectionsResponse], error) {
+func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListInspectionsRequest) (*wv1.ListInspectionsResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	limit, offset := pageParams(req.Msg.Page)
+	limit, offset := pageParams(req.Page)
 	where := ` FROM inspection WHERE organization_id = ? AND deleted = FALSE`
 	args := []any{id.OrgID}
-	if req.Msg.HiveId != "" {
+	if req.HiveId != "" {
 		where += ` AND hive_id = ?`
-		args = append(args, req.Msg.HiveId)
+		args = append(args, req.HiveId)
 	}
 	total, err := countRows(ctx, s.w.db, `SELECT COUNT(*)`+where, args...)
 	if err != nil {
@@ -82,13 +82,13 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *connect.Re
 	for _, r := range rows {
 		out = append(out, inspectionFromRow(r))
 	}
-	return connect.NewResponse(&wv1.ListInspectionsResponse{Inspections: out, Page: pageResponse(total, offset, len(rows), limit)}), nil
+	return &wv1.ListInspectionsResponse{Inspections: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
-func (s *InspectionService) DeleteInspection(ctx context.Context, req *connect.Request[wv1.DeleteInspectionRequest]) (*connect.Response[wv1.DeleteInspectionResponse], error) {
+func (s *InspectionService) DeleteInspection(ctx context.Context, req *wv1.DeleteInspectionRequest) (*wv1.DeleteInspectionResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("inspection", req.Msg.Id)
+		cur, err := t.row("inspection", req.Id)
 		if err != nil {
 			return err
 		}
@@ -96,38 +96,38 @@ func (s *InspectionService) DeleteInspection(ctx context.Context, req *connect.R
 		if err != nil {
 			return err
 		}
-		return t.del("inspection", req.Msg.Id, scope)
+		return t.del("inspection", req.Id, scope)
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return connect.NewResponse(&wv1.DeleteInspectionResponse{}), nil
+	return &wv1.DeleteInspectionResponse{}, nil
 }
 
-func (s *InspectionService) AddInspectionPhoto(ctx context.Context, req *connect.Request[wv1.AddInspectionPhotoRequest]) (*connect.Response[wv1.AddInspectionPhotoResponse], error) {
+func (s *InspectionService) AddInspectionPhoto(ctx context.Context, req *wv1.AddInspectionPhotoRequest) (*wv1.AddInspectionPhotoResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	if !strings.HasPrefix(req.Msg.Photo, "data:image/") {
+	if !strings.HasPrefix(req.Photo, "data:image/") {
 		return nil, invalid("photo must be a data URL (data:image/...)")
 	}
-	if len(req.Msg.Photo) > maxPhotoBytes {
+	if len(req.Photo) > maxPhotoBytes {
 		return nil, invalid("photo exceeds 512 KiB; send a thumbnail")
 	}
-	out, err := s.photoDelta(ctx, id, req.Msg.InspectionId, map[string]any{"add": []string{req.Msg.Photo}})
+	out, err := s.photoDelta(ctx, id, req.InspectionId, map[string]any{"add": []string{req.Photo}})
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&wv1.AddInspectionPhotoResponse{Inspection: out}), nil
+	return &wv1.AddInspectionPhotoResponse{Inspection: out}, nil
 }
 
-func (s *InspectionService) RemoveInspectionPhoto(ctx context.Context, req *connect.Request[wv1.RemoveInspectionPhotoRequest]) (*connect.Response[wv1.RemoveInspectionPhotoResponse], error) {
+func (s *InspectionService) RemoveInspectionPhoto(ctx context.Context, req *wv1.RemoveInspectionPhotoRequest) (*wv1.RemoveInspectionPhotoResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	// No removed_tags: the server is the origin and tombstones every add tag
 	// it currently holds (the legacy remove-all form both sides accept).
-	out, err := s.photoDelta(ctx, id, req.Msg.InspectionId, map[string]any{"remove": []string{req.Msg.Photo}})
+	out, err := s.photoDelta(ctx, id, req.InspectionId, map[string]any{"remove": []string{req.Photo}})
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&wv1.RemoveInspectionPhotoResponse{Inspection: out}), nil
+	return &wv1.RemoveInspectionPhotoResponse{Inspection: out}, nil
 }
 
 // photoDelta applies an OR-Set delta to photo_keys in the inspection's scope.
