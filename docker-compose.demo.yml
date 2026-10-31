@@ -16,7 +16,7 @@
 # TLS terminates at your reverse proxy, which forwards to :8080.
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
     restart: unless-stopped
     environment:
       POSTGRES_USER: openbeehive
@@ -30,7 +30,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: unless-stopped
     command: server /data
     environment:
