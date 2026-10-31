@@ -5,7 +5,7 @@ services:
     # Note: Postgres does not auto-upgrade data directories. If you have an
     # existing volume from an older major (e.g. 16), dump/restore or pg_upgrade
     # before switching the image tag.
-    image: postgres:18-alpine
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
     environment:
       POSTGRES_USER: openbeehive
       POSTGRES_PASSWORD: openbeehive
@@ -14,7 +14,7 @@ services:
     ports: ["5432:5432"]
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
