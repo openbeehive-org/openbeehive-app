@@ -58,7 +58,7 @@ func newWired(t *testing.T, cfg *config.Config) *wired {
 	photos := service.NewPhotos(store.DB(), hlc, blobs)
 	mux := http.NewServeMux()
 	interceptors := setupAuth(ctx, cfg, store, blobs, photos, mux)
-	registerServices(mux, cfg, store, interceptors, hlc, photos)
+	registerServices(t.Context(), mux, cfg, store, interceptors, hlc, photos)
 	srv := httptest.NewServer(harden(cfg, mux))
 	t.Cleanup(srv.Close)
 	return &wired{t: t, srv: srv, blobs: blobs, blobDir: cfg.Blob.BaseDir}

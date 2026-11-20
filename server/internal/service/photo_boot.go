@@ -42,6 +42,10 @@ func (p *Photos) ConvertInlinePhotos(ctx context.Context) error {
 	if err != nil || done > 0 {
 		return err
 	}
+	// The server listens only once this is done. Each record is converted in
+	// a transaction of its own and skipped when it is converted already, so
+	// a restart in between (a health check that gave up) keeps the progress.
+	log.Printf("photos: converting the inline photos of 0.4.x, once; the server starts listening when this is done")
 	visits, err := p.convertRows(ctx, "inspection", `photo_keys LIKE '%data:%'`, p.convertVisit)
 	if err != nil {
 		return err

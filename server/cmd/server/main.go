@@ -29,7 +29,9 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	// Ends on SIGINT/SIGTERM: stops the background loops and the server.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -57,7 +59,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	interceptors := setupAuth(ctx, cfg, store, blobs, photos, mux)
-	registerServices(mux, cfg, store, interceptors, hlc, photos)
+	registerServices(ctx, mux, cfg, store, interceptors, hlc, photos)
 	registerWeb(mux, cfg)
 
 	serve(ctx, cfg, harden(cfg, mux))
@@ -288,7 +290,7 @@ func mountRPC(mux *http.ServeMux, server *connect.Server) {
 }
 
 // registerServices mounts the Connect-RPC handlers and health.
-func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.ServerInterceptor, hlc *wsync.HLC, photos *service.Photos) {
+func registerServices(ctx context.Context, mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.ServerInterceptor, hlc *wsync.HLC, photos *service.Photos) {
 	server := connect.NewServer(interceptors...)
 
 	// Offline sync: central push/pull endpoint (the app's write path).
@@ -297,7 +299,7 @@ func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.St
 	syncSvc.UsePhotos(photos)
 	openbeehivev1connect.RegisterSyncServiceHandler(server, syncSvc)
 	// Daily clean-up of the change log; devices older than it load a snapshot.
-	go syncSvc.CompactDaily(context.Background(), cfg.Sync.ChangeLogRetentionDays)
+	go syncSvc.CompactDaily(ctx, cfg.Sync.ChangeLogRetentionDays)
 	// CRUD services for scripts and integrations. Their writes go through the
 	// same merge + change log as Push, so they show up on devices.
 	w := service.NewWriter(store.DB(), hlc)
@@ -351,8 +353,6 @@ func serve(ctx context.Context, cfg *config.Config, handler http.Handler) {
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
-	runCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 	go func() {
 		log.Printf("listening on %s", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -360,7 +360,7 @@ func serve(ctx context.Context, cfg *config.Config, handler http.Handler) {
 		}
 	}()
 
-	<-runCtx.Done()
+	<-ctx.Done()
 	log.Printf("shutting down...")
 	shutCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
