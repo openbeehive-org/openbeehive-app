@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
@@ -122,6 +124,76 @@ func (r *memberRepo) ListByUser(ctx context.Context, userID string) ([]storage.T
 		 FROM member m JOIN organization o ON o.id = m.organization_id
 		 WHERE m.benutzer_id = ? ORDER BY o.name ASC`), userID)
 	return out, err
+}
+
+func (r *memberRepo) ListByOrg(ctx context.Context, orgID string) ([]storage.Member, error) {
+	out := []storage.Member{}
+	err := r.s.db.SelectContext(ctx, &out, r.s.db.Rebind(
+		`SELECT m.benutzer_id AS user_id, COALESCE(u.name, '') AS name, COALESCE(u.email, '') AS email, m.role
+		 FROM member m LEFT JOIN users u ON u.id = m.benutzer_id
+		 WHERE m.organization_id = ? ORDER BY m.role DESC, u.email ASC, m.benutzer_id ASC`), orgID)
+	return out, err
+}
+
+// changeMember runs fn on one membership inside a transaction that holds the
+// workspace's row lock, so two concurrent changes cannot both pass the
+// last-owner check. fn gets the member's role and whether another owner
+// exists.
+func (r *memberRepo) changeMember(ctx context.Context, orgID, userID string, fn func(tx *sqlx.Tx, role string, otherOwner bool) error) error {
+	tx, err := r.s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, tx.Rebind(`UPDATE organization SET name = name WHERE id = ?`), orgID); err != nil {
+		return err
+	}
+	var role string
+	err = tx.GetContext(ctx, &role, tx.Rebind(
+		`SELECT role FROM member WHERE organization_id = ? AND benutzer_id = ?`), orgID, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	var others int
+	if err := tx.GetContext(ctx, &others, tx.Rebind(
+		`SELECT COUNT(*) FROM member WHERE organization_id = ? AND role = 'owner' AND benutzer_id <> ?`), orgID, userID); err != nil {
+		return err
+	}
+	if err := fn(tx, role, others > 0); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *memberRepo) Remove(ctx context.Context, orgID, userID string) error {
+	return r.changeMember(ctx, orgID, userID, func(tx *sqlx.Tx, role string, otherOwner bool) error {
+		if role == "owner" && !otherOwner {
+			return storage.ErrLastOwner
+		}
+		for _, q := range []string{
+			`DELETE FROM api_key WHERE organization_id = ? AND user_id = ?`,
+			`DELETE FROM member WHERE organization_id = ? AND benutzer_id = ?`,
+		} {
+			if _, err := tx.ExecContext(ctx, tx.Rebind(q), orgID, userID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *memberRepo) SetRole(ctx context.Context, orgID, userID, role string) error {
+	return r.changeMember(ctx, orgID, userID, func(tx *sqlx.Tx, current string, otherOwner bool) error {
+		if current == "owner" && role != "owner" && !otherOwner {
+			return storage.ErrLastOwner
+		}
+		_, err := tx.ExecContext(ctx, tx.Rebind(
+			`UPDATE member SET role = ? WHERE organization_id = ? AND benutzer_id = ?`), role, orgID, userID)
+		return err
+	})
 }
 
 // --- Invites ---

@@ -177,8 +177,14 @@ func (s *Store) Close() error                 { return s.db.Close() }
 // DB exposes the sqlx handle (used by the sync service).
 func (s *Store) DB() *sqlx.DB { return s.db }
 
-// Migrate runs all embedded .sql files exactly once.
-func (s *Store) Migrate(ctx context.Context) error { return s.migrateUpTo(ctx, "") }
+// Migrate runs all embedded .sql files exactly once, then gives accounts from
+// earlier releases their unique email key (see claimEmailKeys).
+func (s *Store) Migrate(ctx context.Context) error {
+	if err := s.migrateUpTo(ctx, ""); err != nil {
+		return err
+	}
+	return s.reportEmailConflicts(ctx)
+}
 
 // migrateUpTo applies the pending migrations in order and stops after the
 // file named last ("" applies all of them).

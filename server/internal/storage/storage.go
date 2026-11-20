@@ -6,10 +6,21 @@ package storage
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
 var ErrNotFound = errors.New("not found")
+
+// ErrLastOwner is returned when a change would leave a workspace that has
+// members without an owner.
+var ErrLastOwner = errors.New("a workspace needs at least one owner")
+
+// NormalizeEmail returns the form in which email addresses are stored and
+// compared: trimmed and lower case.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
 
 // --- Domain models (DB view, decoupled from protobuf) ---
 
@@ -80,6 +91,15 @@ type TenantMembership struct {
 	Role  string `db:"role"`
 }
 
+// Member is one member of a tenant with the account details the member list
+// shows.
+type Member struct {
+	UserID string `db:"user_id"`
+	Name   string `db:"name"`
+	Email  string `db:"email"`
+	Role   string `db:"role"`
+}
+
 // Invite lets a tenant admin invite someone to their tenant by email.
 type Invite struct {
 	ID        string    `db:"id"`
@@ -123,6 +143,8 @@ type UserRepo interface {
 	// SetSessionsValidAfter revokes every session token of the account that
 	// was issued before the given instant (Unix milliseconds).
 	SetSessionsValidAfter(ctx context.Context, id string, unixMilli int64) error
+	// SetPassword replaces the password hash of the account.
+	SetPassword(ctx context.Context, id, passwordHash string) error
 }
 
 type OrgRepo interface {
@@ -141,6 +163,14 @@ type MemberRepo interface {
 	Add(ctx context.Context, m *Membership) error
 	Get(ctx context.Context, orgID, userID string) (*Membership, error)
 	ListByUser(ctx context.Context, userID string) ([]TenantMembership, error)
+	// ListByOrg returns the tenant's members, owners first.
+	ListByOrg(ctx context.Context, orgID string) ([]Member, error)
+	// Remove ends a membership and deletes the member's API keys for the
+	// tenant. ErrLastOwner when the member is the tenant's only owner.
+	Remove(ctx context.Context, orgID, userID string) error
+	// SetRole changes a member's role (owner | member). ErrLastOwner when it
+	// would demote the tenant's only owner.
+	SetRole(ctx context.Context, orgID, userID, role string) error
 }
 
 type InviteRepo interface {

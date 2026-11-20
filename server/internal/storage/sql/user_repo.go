@@ -37,7 +37,7 @@ func (r userRow) model() *storage.User {
 }
 
 func (r *userRepo) GetByEmail(ctx context.Context, email string) (*storage.User, error) {
-	return r.getBy(ctx, `LOWER(email) = LOWER(?)`, email)
+	return r.getBy(ctx, `email_key = ?`, storage.NormalizeEmail(email))
 }
 
 func (r *userRepo) GetByID(ctx context.Context, id string) (*storage.User, error) {
@@ -76,11 +76,14 @@ func (r *userRepo) getBy(ctx context.Context, where, arg string) (*storage.User,
 	return row.model(), nil
 }
 
+// Create stores the account with its email address in normal form; the
+// unique email_key refuses a second account for the same address.
 func (r *userRepo) Create(ctx context.Context, u *storage.User) error {
+	u.Email = storage.NormalizeEmail(u.Email)
 	return r.s.exec(ctx, `
-		INSERT INTO users (id, email, name, oidc_subject, password_hash, role, email_verified, verification_token, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		u.ID, u.Email, u.Name, u.OIDCSubject, u.PasswordHash, u.Role, u.EmailVerified, u.VerifyToken, u.CreatedAt)
+		INSERT INTO users (id, email, email_key, name, oidc_subject, password_hash, role, email_verified, verification_token, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		u.ID, u.Email, u.Email, u.Name, u.OIDCSubject, u.PasswordHash, u.Role, u.EmailVerified, u.VerifyToken, u.CreatedAt)
 }
 
 func (r *userRepo) MarkVerified(ctx context.Context, id string) error {
@@ -95,4 +98,8 @@ func (r *userRepo) SetCredentials(ctx context.Context, id, passwordHash, role st
 
 func (r *userRepo) SetSessionsValidAfter(ctx context.Context, id string, unixMilli int64) error {
 	return r.s.exec(ctx, `UPDATE users SET sessions_valid_after = ? WHERE id = ?`, unixMilli, id)
+}
+
+func (r *userRepo) SetPassword(ctx context.Context, id, passwordHash string) error {
+	return r.s.exec(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, id)
 }

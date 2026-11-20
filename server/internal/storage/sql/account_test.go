@@ -1,0 +1,225 @@
+package sqlstore
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"errors"
+	"log"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
+)
+
+// Accounts stored before the email key existed: the upgrade gives each
+// address one holder, keeps accounts that differ only by case apart, and
+// tells the operator about them.
+func TestEmailKeysForExistingAccounts(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		s := b.blank(t)
+		// Everything before the account-lifecycle migration.
+		if err := s.migrateUpTo(ctx, "0021"); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		now := time.Now().UTC().Truncate(time.Second)
+		for i, u := range []struct{ id, email string }{
+			{"plain", "plain@example.org"},
+			{"mixed", "Mixed@Example.org"},
+			{"dup-upper", "Twin@Example.org"}, // older, but not in normal form
+			{"dup-lower", "twin@example.org"},
+			{"dup-third", "TWIN@example.org"},
+		} {
+			if _, err := s.db.Exec(s.db.Rebind(`INSERT INTO users (id, email, oidc_subject, created_at) VALUES (?, ?, '', ?)`),
+				u.id, u.email, now.Add(time.Duration(i)*time.Minute)); err != nil {
+				t.Fatalf("insert %s: %v", u.id, err)
+			}
+		}
+
+		var logged bytes.Buffer
+		prev := log.Writer()
+		log.SetOutput(&logged)
+		err := s.Migrate(ctx)
+		log.SetOutput(prev)
+		if err != nil {
+			t.Fatalf("upgrade: %v", err)
+		}
+
+		keys := map[string]sql.NullString{}
+		emails := map[string]string{}
+		var rows []struct {
+			ID    string         `db:"id"`
+			Email string         `db:"email"`
+			Key   sql.NullString `db:"email_key"`
+		}
+		if err := s.db.Select(&rows, `SELECT id, email, email_key FROM users`); err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range rows {
+			keys[r.ID], emails[r.ID] = r.Key, r.Email
+		}
+		if len(rows) != 5 {
+			t.Fatalf("no account may be merged or deleted, got %d rows", len(rows))
+		}
+		for id, want := range map[string]string{"plain": "plain@example.org", "mixed": "mixed@example.org", "dup-lower": "twin@example.org"} {
+			if !keys[id].Valid || keys[id].String != want {
+				t.Errorf("%s: email_key = %v, want %q", id, keys[id], want)
+			}
+		}
+		for _, id := range []string{"dup-upper", "dup-third"} {
+			if keys[id].Valid {
+				t.Errorf("%s shares its address with another account and must not hold the key, got %q", id, keys[id].String)
+			}
+		}
+		// Addresses are left as their owners entered them.
+		if emails["mixed"] != "Mixed@Example.org" || emails["dup-upper"] != "Twin@Example.org" {
+			t.Errorf("stored addresses changed: %v", emails)
+		}
+
+		// Sign-in by email reaches one account, whatever the capitalisation.
+		for _, address := range []string{"twin@example.org", "Twin@Example.org", "TWIN@EXAMPLE.ORG"} {
+			if u, err := s.Users().GetByEmail(ctx, address); err != nil || u.ID != "dup-lower" {
+				t.Errorf("GetByEmail(%q) = %+v, %v; want dup-lower", address, u, err)
+			}
+		}
+		if u, err := s.Users().GetByEmail(ctx, "MIXED@example.org"); err != nil || u.ID != "mixed" {
+			t.Errorf("GetByEmail for an upgraded account: %+v %v", u, err)
+		}
+
+		// The operator is told, with both accounts named, at every start.
+		for _, want := range []string{"dup-upper", "dup-third", "dup-lower", "Twin@Example.org"} {
+			if !strings.Contains(logged.String(), want) {
+				t.Errorf("the log must name %s:\n%s", want, logged.String())
+			}
+		}
+		if conflicts, err := s.claimEmailKeys(ctx); err != nil || len(conflicts) != 2 {
+			t.Fatalf("unresolved conflicts are reported again: %v %+v", err, conflicts)
+		}
+
+		// The guard holds for new accounts, also against the duplicates.
+		for i, address := range []string{"Twin@Example.org", "twin@example.org", "PLAIN@example.org"} {
+			u := &storage.User{ID: "new-" + string(rune('a'+i)), Email: address, Role: "user", CreatedAt: now}
+			if err := s.Users().Create(ctx, u); err == nil {
+				t.Errorf("a new account for %q must be refused", address)
+			}
+		}
+
+		// The operator's decision: one twin gets another address, one is removed.
+		if _, err := s.db.Exec(`UPDATE users SET email = 'Other@Example.org' WHERE id = 'dup-upper'`); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.DeleteAccount(ctx, "dup-third"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if conflicts, err := s.claimEmailKeys(ctx); err != nil || len(conflicts) != 0 {
+			t.Fatalf("conflicts after the operator's fix: %v %+v", err, conflicts)
+		}
+		if u, err := s.Users().GetByEmail(ctx, "other@example.org"); err != nil || u.ID != "dup-upper" {
+			t.Fatalf("the renamed account is reachable by its new address: %+v %v", u, err)
+		}
+	})
+}
+
+func TestPasswordResetTokens(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		s := b.blank(t)
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		create := func(user, hash string, expires time.Time) {
+			t.Helper()
+			if err := s.CreatePasswordReset(ctx, user, hash, expires); err != nil {
+				t.Fatal(err)
+			}
+		}
+		create("u1", "hash-a", now.Add(time.Hour))
+		create("u1", "hash-b", now.Add(time.Hour))
+		create("u2", "hash-c", now.Add(time.Hour))
+
+		if _, err := s.ConsumePasswordReset(ctx, "unknown", now); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("unknown token: %v", err)
+		}
+		if user, err := s.ConsumePasswordReset(ctx, "hash-a", now); err != nil || user != "u1" {
+			t.Fatalf("consume: %q %v", user, err)
+		}
+		// Used once, and the account's other links go with it.
+		for _, hash := range []string{"hash-a", "hash-b"} {
+			if _, err := s.ConsumePasswordReset(ctx, hash, now); !errors.Is(err, storage.ErrNotFound) {
+				t.Fatalf("%s after use: %v", hash, err)
+			}
+		}
+		// Another account's link is untouched, until it expires.
+		if _, err := s.ConsumePasswordReset(ctx, "hash-c", now.Add(2*time.Hour)); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expired token: %v", err)
+		}
+		if _, err := s.ConsumePasswordReset(ctx, "hash-c", now); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("an expired link is gone for good: %v", err)
+		}
+
+		// Creating a link sweeps expired ones.
+		if _, err := s.db.Exec(s.db.Rebind(`INSERT INTO password_reset (id, user_id, token_hash, created_at, expires_at) VALUES ('old', 'u3', 'hash-old', ?, ?)`),
+			now.Add(-2*time.Hour), now.Add(-time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		create("u3", "hash-new", now.Add(time.Hour))
+		var left []string
+		if err := s.db.Select(&left, `SELECT token_hash FROM password_reset`); err != nil || len(left) != 1 || left[0] != "hash-new" {
+			t.Fatalf("stored links: %v %v", left, err)
+		}
+	})
+}
+
+func TestMembershipChangesKeepAnOwner(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		s := b.blank(t)
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		if err := s.Orgs().Create(ctx, &storage.Organization{ID: "o1", Name: "Club", CreatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+		for id, role := range map[string]string{"owner": "owner", "member": "member"} {
+			if err := s.Users().Create(ctx, &storage.User{ID: id, Email: id + "@example.org", Name: strings.ToUpper(id), Role: "user", CreatedAt: now}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Members().Add(ctx, &storage.Membership{OrgID: "o1", UserID: id, Role: role}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		members, err := s.Members().ListByOrg(ctx, "o1")
+		if err != nil || len(members) != 2 || members[0].UserID != "owner" || members[0].Email != "owner@example.org" || members[1].Name != "MEMBER" {
+			t.Fatalf("list, owners first: %v %+v", err, members)
+		}
+
+		if err := s.Members().Remove(ctx, "o1", "owner"); !errors.Is(err, storage.ErrLastOwner) {
+			t.Fatalf("removing the last owner: %v", err)
+		}
+		if err := s.Members().SetRole(ctx, "o1", "owner", "member"); !errors.Is(err, storage.ErrLastOwner) {
+			t.Fatalf("demoting the last owner: %v", err)
+		}
+		if err := s.Members().SetRole(ctx, "o1", "nobody", "owner"); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("unknown member: %v", err)
+		}
+		if err := s.Members().SetRole(ctx, "o1", "member", "owner"); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Members().Remove(ctx, "o1", "owner"); err != nil {
+			t.Fatalf("with a second owner the first may go: %v", err)
+		}
+		if err := s.Members().Remove(ctx, "o1", "owner"); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("removing twice: %v", err)
+		}
+		if n, err := s.PasskeyCount(ctx, "owner"); err != nil || n != 0 {
+			t.Fatalf("passkey count: %d %v", n, err)
+		}
+	})
+}

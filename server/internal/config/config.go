@@ -493,7 +493,7 @@ func loadAuth(c *Config) error {
 	c.Demo = DemoConfig{
 		Enabled:   envBool("DEMO", false),
 		AutoLogin: envBool("DEMO_AUTOLOGIN", false),
-		Email:     env("DEMO_EMAIL", "demo@app.openbeehive.org"),
+		Email:     strings.TrimSpace(strings.ToLower(env("DEMO_EMAIL", "demo@app.openbeehive.org"))),
 		Password:  env("DEMO_PASSWORD", "demo"),
 	}
 	if c.Demo.Enabled {

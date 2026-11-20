@@ -85,8 +85,8 @@ func (s *Seeder) ensureAccount(ctx context.Context) error {
 		args []any
 	}{
 		{`DELETE FROM users WHERE id = ?`, []any{UserID}},
-		{`INSERT INTO users (id, email, name, oidc_subject, password_hash, role, email_verified, verification_token, created_at)
-		  VALUES (?, ?, ?, '', ?, 'user', TRUE, '', ?)`, []any{UserID, s.cfg.Demo.Email, "Demo Beekeeper", string(hash), now}},
+		{`INSERT INTO users (id, email, email_key, name, oidc_subject, password_hash, role, email_verified, verification_token, created_at)
+		  VALUES (?, ?, ?, ?, '', ?, 'user', TRUE, '', ?)`, []any{UserID, s.cfg.Demo.Email, s.cfg.Demo.Email, "Demo Beekeeper", string(hash), now}},
 		{`DELETE FROM organization WHERE id = ?`, []any{OrgID}},
 		{`INSERT INTO organization (id, name, created_at) VALUES (?, 'Demo apiaries', ?)`, []any{OrgID, now}},
 		{`DELETE FROM member WHERE organization_id = ?`, []any{OrgID}},
