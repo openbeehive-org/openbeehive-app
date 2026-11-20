@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log"
 	"time"
 
@@ -23,10 +25,10 @@ import (
 //   - Every tidyInterval: delete the photos of records that were deleted a
 //     while ago (a deleted inspection can be restored for a moment, so its
 //     photos are not deleted along with it).
-//   - Every sweepInterval: remove blobs no live photo points to (uploads
-//     whose record never arrived, conversions that were rolled back, deleted
-//     workspaces), and the inline data of logged removes that are past their
-//     retention.
+//   - At start and every sweepInterval: remove blobs no live photo points
+//     to (uploads whose record never arrived, conversions that were rolled
+//     back, deleted workspaces), and the inline data of logged removes that
+//     are past their retention.
 
 const (
 	tidyInterval  = 15 * time.Minute
@@ -58,6 +60,7 @@ func (p *Photos) Run(ctx context.Context) {
 	sweep := time.NewTicker(sweepInterval)
 	defer sweep.Stop()
 	p.Tidy(ctx)
+	p.Sweep(ctx)
 	for {
 		select {
 		case <-ctx.Done():
@@ -195,9 +198,23 @@ func ownerScope(ctx context.Context, q queryer, row *photoRow) (string, error) {
 
 // sweepBlobs removes every blob that no live photo names and that is older
 // than blobGrace, and returns how many it removed.
+//
+// A blob that sits where a live photo without an image would store its own
+// is not removed but given to that photo. That is what a database restored
+// from a backup older than the blob store looks like once devices have sent
+// their records again, and what an upload leaves whose last step failed.
 func (p *Photos) sweepBlobs(ctx context.Context) (int, error) {
+	waiting, err := p.photosWithoutBlob(ctx)
+	if err != nil {
+		return 0, err
+	}
 	var stale []string
-	err := p.blobs.List(ctx, "", func(o blob.Object) error {
+	err = p.blobs.List(ctx, "", func(o blob.Object) error {
+		if photo, ok := waiting[o.Key]; ok {
+			if adopted, err := p.adoptBlob(ctx, photo, o.Key); adopted || err != nil {
+				return err
+			}
+		}
 		if p.now().Sub(o.ModTime) < blobGrace {
 			return nil
 		}
@@ -216,6 +233,47 @@ func (p *Photos) sweepBlobs(ctx context.Context) (int, error) {
 		}
 	}
 	return len(stale), nil
+}
+
+// photosWithoutBlob returns the live photos that name no blob, by the key
+// their image would be stored under.
+func (p *Photos) photosWithoutBlob(ctx context.Context) (map[string]photoRow, error) {
+	rows, err := queryMaps(ctx, p.db, `SELECT id, organization_id FROM photo WHERE deleted = FALSE AND blob_key = ''`)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]photoRow, len(rows))
+	for _, r := range rows {
+		row := photoRow{ID: rs(r["id"]), OrgID: rs(r["organization_id"])}
+		out[blob.PhotoKey(row.OrgID, row.ID)] = row
+	}
+	return out, nil
+}
+
+// adoptBlob records an existing blob as the image of the photo, if it is an
+// image, and reports whether it did.
+func (p *Photos) adoptBlob(ctx context.Context, photo photoRow, key string) (bool, error) {
+	body, size, err := p.blobs.Get(ctx, key)
+	if errors.Is(err, blob.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	head := make([]byte, 512)
+	n, err := io.ReadFull(body, head)
+	_ = body.Close()
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	typ := sniffPhotoType(head[:n])
+	if typ == "" {
+		return false, nil
+	}
+	_, err = p.db.ExecContext(ctx, p.db.Rebind(`UPDATE photo SET blob_key = ?, blob_type = ?, blob_size = ?
+		WHERE id = ? AND organization_id = ? AND deleted = FALSE AND blob_key = ''`),
+		key, typ, size, photo.ID, photo.OrgID)
+	return err == nil, err
 }
 
 // eraseOldLegacyRemoves ends the retention of logged removes (see

@@ -57,6 +57,42 @@ func TestSweepRemovesBlobsWithoutAPhoto(t *testing.T) {
 	}
 }
 
+// A database restored from an older backup has lost which blob belongs to a
+// photo, while the blob is still there. Once devices have sent the record
+// again, the sweep must reunite the two instead of removing the image.
+func TestSweepGivesABlobBackToItsPhoto(t *testing.T) {
+	f := newPhotoFixture(t)
+	ctx := context.Background()
+	f.newPhoto(t, "photo-1")
+	full := pngBytes(t, 48, 48, 4)
+	f.upload(t, "photo-1", full)
+	key := f.photo(t, "photo-1").BlobKey
+	if _, err := f.db.Exec(`UPDATE photo SET blob_key = '', blob_type = '', blob_size = 0`); err != nil {
+		t.Fatal(err)
+	}
+	// Something that is not an image at the place of another photo's blob.
+	f.newPhoto(t, "photo-2")
+	if err := f.blobs.Put(ctx, blob.PhotoKey("org-a", "photo-2"), bytes.NewReader([]byte("<html>")), 6, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	f.photos.now = func() time.Time { return time.Now().Add(blobGrace + time.Minute) }
+	n, err := f.photos.sweepBlobs(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("sweep removed %d (%v), want only the blob that is no image", n, err)
+	}
+	row := f.photo(t, "photo-1")
+	if row.BlobKey != key || row.BlobType != "image/png" || row.BlobSize != int64(len(full)) {
+		t.Fatalf("photo after the sweep: %+v", row)
+	}
+	if res := f.transfer(t, "GET", "/photos/photo-1", userA, nil); res.status != 200 || !bytes.Equal(res.body, full) {
+		t.Fatalf("download after the sweep: %d", res.status)
+	}
+	if row := f.photo(t, "photo-2"); row.BlobKey != "" {
+		t.Fatalf("a blob that is no image was adopted: %+v", row)
+	}
+}
+
 // Photos of a deleted inspection or hive are deleted once the record has
 // been gone for a while; until then a restore brings everything back.
 func TestPhotosOfDeletedRecordsAreDeletedAfterAGrace(t *testing.T) {
