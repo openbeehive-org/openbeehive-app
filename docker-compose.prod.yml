@@ -1,0 +1,94 @@
+# Production: Postgres + MinIO + the released server image, for an instance
+# with several users. Login is always on (email + password; the instance
+# admin below invites people or you open registration). No demo.
+#
+# Every secret must come from the environment / an .env file next to this
+# file; nothing has a default:
+#
+#   BEEHIVE_PUBLIC_BASE_URL  https://bees.example.org  (the address people open)
+#   BEEHIVE_SESSION_SECRET   openssl rand -base64 32
+#   POSTGRES_PASSWORD        openssl rand -hex 24
+#   MINIO_ROOT_PASSWORD      openssl rand -hex 24
+#   BEEHIVE_ADMIN_EMAIL      the instance admin
+#   BEEHIVE_ADMIN_PASSWORD   8+ characters; authoritative on every start (= recovery)
+#
+# Run:  docker compose -f docker-compose.prod.yml up -d
+#
+# TLS terminates at your reverse proxy, which forwards to 127.0.0.1:8080. The
+# server trusts that proxy's X-Forwarded-For for sign-in throttling, so the
+# port is published on localhost only; set BEEHIVE_BIND=0.0.0.0 if the proxy
+# runs on another machine, and make sure nothing else can reach the port.
+# Postgres and MinIO are not published at all. Run exactly one server
+# instance. Back up the pg and minio volumes.
+services:
+  postgres:
+    # Postgres does not upgrade data directories across major versions:
+    # dump/restore or pg_upgrade before changing the major in this tag.
+    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: openbeehive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (openssl rand -hex 24)}
+      POSTGRES_DB: openbeehive
+    volumes: [pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openbeehive -d openbeehive"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: openbeehive
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env (openssl rand -hex 24)}
+    volumes: [minio:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  server:
+    # Published by .github/workflows/release.yml on each v* tag; Renovate
+    # keeps tag and digest current.
+    image: ghcr.io/openbeehive-org/openbeehive-app:0.4.0@sha256:281bed902f1285dfac1bff24257ec3a653e1bb744ce6f98f8a1d851e7bdb18b4
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports: ["${BEEHIVE_BIND:-127.0.0.1}:8080:8080"]
+    environment:
+      BEEHIVE_DEPLOYMENT_PROFILE: cloud
+      BEEHIVE_PUBLIC_BASE_URL: ${BEEHIVE_PUBLIC_BASE_URL:?set BEEHIVE_PUBLIC_BASE_URL in .env (e.g. https://bees.example.org)}
+      BEEHIVE_DATABASE_DSN: postgres://openbeehive:${POSTGRES_PASSWORD}@postgres:5432/openbeehive?sslmode=disable
+      BEEHIVE_MINIO_ENDPOINT: minio:9000
+      BEEHIVE_MINIO_ACCESS_KEY: openbeehive
+      BEEHIVE_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      BEEHIVE_SESSION_SECRET: ${BEEHIVE_SESSION_SECRET:?set BEEHIVE_SESSION_SECRET in .env (openssl rand -base64 32)}
+      # Client addresses come from the reverse proxy's X-Forwarded-For.
+      BEEHIVE_TRUST_PROXY_HEADERS: "true"
+      # Dedicated instance admin, ensured on every start.
+      BEEHIVE_ADMIN_EMAIL: ${BEEHIVE_ADMIN_EMAIL:?set BEEHIVE_ADMIN_EMAIL in .env}
+      BEEHIVE_ADMIN_PASSWORD: ${BEEHIVE_ADMIN_PASSWORD:?set BEEHIVE_ADMIN_PASSWORD in .env}
+      # Invite-only unless you open registration.
+      BEEHIVE_REGISTRATION: ${BEEHIVE_REGISTRATION:-false}
+      # Optional: mail for invites (and verification, if you turn it on).
+      BEEHIVE_SMTP_HOST: ${BEEHIVE_SMTP_HOST:-}
+      BEEHIVE_SMTP_PORT: ${BEEHIVE_SMTP_PORT:-587}
+      BEEHIVE_SMTP_USER: ${BEEHIVE_SMTP_USER:-}
+      BEEHIVE_SMTP_PASS: ${BEEHIVE_SMTP_PASS:-}
+      BEEHIVE_SMTP_FROM: ${BEEHIVE_SMTP_FROM:-Openbeehive <no-reply@example.org>}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pg:
+  minio:

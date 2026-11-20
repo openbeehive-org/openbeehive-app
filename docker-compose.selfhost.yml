@@ -1,0 +1,52 @@
+# Self-hosting on one machine: one container, SQLite and uploaded files in a
+# named volume. Nothing else to run.
+#
+#   docker compose -f docker-compose.selfhost.yml up -d
+#   open http://localhost:8080
+#
+# Out of the box there is NO LOGIN: whoever can reach the port has full
+# access. That is fine on your own computer, which is why the port is
+# published on 127.0.0.1 only and the server answers only to localhost, IP
+# addresses and the host of BEEHIVE_PUBLIC_BASE_URL.
+#
+# To use it from other devices or share it, put these in an .env file next
+# to this file (then run the command above again):
+#
+#   BEEHIVE_BIND=0.0.0.0                              # publish on the network
+#   BEEHIVE_PUBLIC_BASE_URL=https://bees.example.org  # the address people open
+#   BEEHIVE_PASSWORD_AUTH=true                        # require sign-in
+#   BEEHIVE_ADMIN_EMAIL=you@example.org
+#   BEEHIVE_ADMIN_PASSWORD=...                        # 8+ characters
+#   BEEHIVE_SESSION_SECRET=...                        # openssl rand -base64 32
+#   BEEHIVE_TRUST_PROXY_HEADERS=true                  # only behind a reverse proxy
+#
+# Records made before login was switched on move into the admin's workspace
+# at the next start. Back up the volume (openbeehive-data) regularly.
+services:
+  openbeehive:
+    # Published by .github/workflows/release.yml on each v* tag; Renovate
+    # keeps tag and digest current.
+    image: ghcr.io/openbeehive-org/openbeehive-app:0.4.0@sha256:281bed902f1285dfac1bff24257ec3a653e1bb744ce6f98f8a1d851e7bdb18b4
+    restart: unless-stopped
+    ports: ["${BEEHIVE_BIND:-127.0.0.1}:8080:8080"]
+    environment:
+      BEEHIVE_DEPLOYMENT_PROFILE: selfhost
+      BEEHIVE_PUBLIC_BASE_URL: ${BEEHIVE_PUBLIC_BASE_URL:-http://localhost:8080}
+      # Extra host names to answer to while there is no login (comma-separated).
+      BEEHIVE_ALLOWED_HOSTS: ${BEEHIVE_ALLOWED_HOSTS:-}
+      BEEHIVE_PASSWORD_AUTH: ${BEEHIVE_PASSWORD_AUTH:-false}
+      BEEHIVE_ADMIN_EMAIL: ${BEEHIVE_ADMIN_EMAIL:-}
+      BEEHIVE_ADMIN_PASSWORD: ${BEEHIVE_ADMIN_PASSWORD:-}
+      BEEHIVE_SESSION_SECRET: ${BEEHIVE_SESSION_SECRET:-}
+      BEEHIVE_REGISTRATION: ${BEEHIVE_REGISTRATION:-false}
+      BEEHIVE_TRUST_PROXY_HEADERS: ${BEEHIVE_TRUST_PROXY_HEADERS:-false}
+    # The database (openbeehive.db) and uploaded files live in /data.
+    volumes: [openbeehive-data:/data]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  openbeehive-data:

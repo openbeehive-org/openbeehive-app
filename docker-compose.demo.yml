@@ -1,9 +1,9 @@
 # Hosted demo deployment (app.openbeehive.org): invite-only registration plus
 # a public read-only demo tenant that reseeds hourly.
 #
-# Unlike docker-compose.yml (local development), this file is production-
-# shaped: no database/MinIO ports on the host, restart policies, healthchecks,
-# and every secret must come from the environment / an .env file next to it:
+# Like docker-compose.prod.yml, plus the demo. No database/MinIO ports on the
+# host, restart policies, healthchecks, and every secret must come from the
+# environment / an .env file next to it:
 #
 #   BEEHIVE_SESSION_SECRET   openssl rand -base64 32   (sessions survive restarts)
 #   POSTGRES_PASSWORD        openssl rand -base64 24
@@ -13,7 +13,10 @@
 #   BEEHIVE_ADMIN_PASSWORD   8+ chars; authoritative on every boot (= recovery)
 #
 # Run:  docker compose -f docker-compose.demo.yml up -d
-# TLS terminates at your reverse proxy, which forwards to :8080.
+# TLS terminates at your reverse proxy, which forwards to 127.0.0.1:8080. The
+# server trusts that proxy's X-Forwarded-For for sign-in throttling, so the
+# port is published on localhost only; set BEEHIVE_BIND=0.0.0.0 if the proxy
+# runs on another machine, and make sure nothing else can reach the port.
 services:
   postgres:
     image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
@@ -53,11 +56,12 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    ports: ["8080:8080"]
+    ports: ["${BEEHIVE_BIND:-127.0.0.1}:8080:8080"]
     environment:
       BEEHIVE_DEPLOYMENT_PROFILE: cloud
       BEEHIVE_PUBLIC_BASE_URL: ${BEEHIVE_PUBLIC_BASE_URL:-https://app.openbeehive.org}
-      BEEHIVE_CORS_ALLOWED_ORIGINS: ${BEEHIVE_PUBLIC_BASE_URL:-https://app.openbeehive.org}
+      # Client addresses come from the reverse proxy's X-Forwarded-For.
+      BEEHIVE_TRUST_PROXY_HEADERS: "true"
       BEEHIVE_DATABASE_DSN: postgres://openbeehive:${POSTGRES_PASSWORD}@postgres:5432/openbeehive?sslmode=disable
       BEEHIVE_MINIO_ENDPOINT: minio:9000
       BEEHIVE_MINIO_ACCESS_KEY: openbeehive

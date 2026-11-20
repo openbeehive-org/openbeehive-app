@@ -1,5 +1,17 @@
-# Cloud profile: Postgres + MinIO + the server (which embeds and serves the SPA).
-# For self-hosting, the single binary alone is enough (SQLite + filesystem).
+# Development stack for the cloud profile: Postgres + MinIO + the server built
+# from this checkout (which embeds and serves the SPA).
+#
+# Not a production template. To run Openbeehive, use
+#   docker-compose.selfhost.yml   one container, SQLite, a named volume
+#   docker-compose.prod.yml       Postgres + MinIO + the released image
+#
+# Secrets come from the environment or an .env file next to this file:
+#   BEEHIVE_SESSION_SECRET   openssl rand -base64 32
+#   MINIO_ROOT_PASSWORD      openssl rand -base64 24
+#   BEEHIVE_ADMIN_EMAIL      the instance admin
+#   BEEHIVE_ADMIN_PASSWORD   8+ characters
+#
+# Postgres and MinIO are published on 127.0.0.1 only, for local tools.
 services:
   postgres:
     # Note: Postgres does not auto-upgrade data directories. If you have an
@@ -11,16 +23,16 @@ services:
       POSTGRES_PASSWORD: openbeehive
       POSTGRES_DB: openbeehive
     volumes: [pg:/var/lib/postgresql/data]
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
 
   minio:
     image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-openbeehive}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env (openssl rand -base64 24)}
     volumes: [minio:/data]
-    ports: ["9000:9000", "9001:9001"]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
 
   # Multi-stage build (Dockerfile at repo root): builds the SPA, embeds it, and
   # compiles the single binary that serves the app + API at :8080.
@@ -36,16 +48,20 @@ services:
       BEEHIVE_PUBLIC_BASE_URL: ${BEEHIVE_PUBLIC_BASE_URL:-http://localhost:8080}
       BEEHIVE_DATABASE_DSN: postgres://openbeehive:openbeehive@postgres:5432/openbeehive?sslmode=disable
       BEEHIVE_MINIO_ENDPOINT: minio:9000
-      BEEHIVE_MINIO_ACCESS_KEY: minioadmin
-      BEEHIVE_MINIO_SECRET_KEY: minioadmin
-      BEEHIVE_SESSION_SECRET: ${BEEHIVE_SESSION_SECRET}
+      BEEHIVE_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-openbeehive}
+      BEEHIVE_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      # Signs the sessions; the server refuses to start without 32+ bytes.
+      BEEHIVE_SESSION_SECRET: ${BEEHIVE_SESSION_SECRET:?set BEEHIVE_SESSION_SECRET in .env (openssl rand -base64 32)}
       # Cloud profile enables password auth, which requires the instance admin.
       BEEHIVE_ADMIN_EMAIL: ${BEEHIVE_ADMIN_EMAIL:?set BEEHIVE_ADMIN_EMAIL in .env}
       BEEHIVE_ADMIN_PASSWORD: ${BEEHIVE_ADMIN_PASSWORD:?set BEEHIVE_ADMIN_PASSWORD in .env}
-      BEEHIVE_OIDC_PROVIDERS: "google"
+      # OIDC is opt-in: set BEEHIVE_OIDC_PROVIDERS=google in .env together
+      # with the client id and secret. Enabled without them, the server
+      # refuses to start.
+      BEEHIVE_OIDC_PROVIDERS: ${BEEHIVE_OIDC_PROVIDERS:-}
       BEEHIVE_OIDC_GOOGLE_ISSUER: https://accounts.google.com
-      BEEHIVE_OIDC_GOOGLE_CLIENT_ID: ${BEEHIVE_OIDC_GOOGLE_CLIENT_ID}
-      BEEHIVE_OIDC_GOOGLE_CLIENT_SECRET: ${BEEHIVE_OIDC_GOOGLE_CLIENT_SECRET}
+      BEEHIVE_OIDC_GOOGLE_CLIENT_ID: ${BEEHIVE_OIDC_GOOGLE_CLIENT_ID:-}
+      BEEHIVE_OIDC_GOOGLE_CLIENT_SECRET: ${BEEHIVE_OIDC_GOOGLE_CLIENT_SECRET:-}
     ports: ["8080:8080"]
 
 volumes:
