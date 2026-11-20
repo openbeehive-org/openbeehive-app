@@ -527,16 +527,28 @@ async function requeueLocal(db: LocalDB, staleCursor: string) {
       (h) => [h.id, h.apiary_id ?? '']
     )
   );
-  const anyApiary =
-    (await db.get<{ id: string }>(`SELECT id FROM apiary ORDER BY deleted, id LIMIT 1`))?.id ?? '';
-  // The scope a row is uploaded in. The server only checks that it is one
-  // the user may write to, and keeps personal tasks to their owner.
-  const scopeOf = (entity: string, row: Record<string, unknown>) => {
+  // When each apiary was first written, and the oldest of them.
+  const born = new Map<string, string>();
+  let oldest = '';
+  for (const a of await db.all<{ id: string; field_hlc: string | null }>(
+    `SELECT id, field_hlc FROM apiary`
+  )) {
+    const first = Object.values(parseFieldClock(a.field_hlc)).filter(isHLC).sort()[0] ?? '';
+    born.set(a.id, first);
+    if (!oldest || first < born.get(oldest)!) oldest = a.id;
+  }
+  // The scope a change is uploaded in. The server only checks that it is
+  // one the user may write to (an apiary it knows, or the user's own), and
+  // keeps personal tasks to their owner. Changes go up oldest first, so a
+  // change older than the apiary its row is in now (a hive moved there
+  // later) names the oldest apiary instead: the server may have lost the
+  // newer one and would refuse the scope until that apiary arrives.
+  const scopeOf = (entity: string, row: Record<string, unknown>, stamp: string) => {
     if (entity === 'apiary') return text(row.id);
-    if (entity === 'task') return text(row.apiary_id) || `user:${userId()}`;
-    return (
-      text(row.scope_id) || text(row.apiary_id) || hiveApiary.get(text(row.hive_id)) || anyApiary
-    );
+    if (entity === 'task' && !text(row.apiary_id)) return `user:${userId()}`;
+    const scope =
+      text(row.scope_id) || text(row.apiary_id) || hiveApiary.get(text(row.hive_id)) || oldest;
+    return (born.get(scope) ?? '') > stamp ? oldest : scope;
   };
 
   const PAGE = 200;
@@ -553,10 +565,10 @@ async function requeueLocal(db: LocalDB, staleCursor: string) {
       const stmts: Statement[] = [];
       for (const row of rows) {
         const id = text(row.id);
-        const scope = scopeOf(entity, row);
-        if (!scope) continue; // no apiary at all: nowhere to upload it to
         for (const [stamp, payload] of rowChanges(row, cols, setCols)) {
-          if (queued.has(key(entity, id, stamp))) continue;
+          const scope = scopeOf(entity, row, stamp);
+          // Without any apiary there is nowhere to upload a shared row to.
+          if (!scope || queued.has(key(entity, id, stamp))) continue;
           stmts.push({
             sql: `INSERT INTO outbox (id, entity, entity_id, scope_id, op, payload, hlc, author_id)
                   VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,

@@ -1037,6 +1037,46 @@ describe('reset: the server is not the database this device synced with', () => 
     expect(await meta('resynced')).toBe('');
   });
 
+  // The server may have lost a newer apiary. Changes go up oldest first, so
+  // an old change of a hive that was moved there later must not wait for it.
+  it('uploads a change that is older than the apiary of its row in the oldest scope', async () => {
+    const db = getCurrentDB();
+    await db.exec(
+      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:150:aa'), ('sync_epoch', '2')`
+    );
+    for (const [id, at] of [
+      ['a-new', t(250, 'devA')],
+      ['a-old', t(50, 'devA')]
+    ]) {
+      await db.exec(`INSERT INTO apiary (id, name, deleted, field_hlc) VALUES (?, 'A', 0, ?)`, [
+        id,
+        JSON.stringify({ name: at })
+      ]);
+    }
+    await db.exec(
+      `INSERT INTO hive (id, apiary_id, name, deleted, field_hlc) VALUES ('h1', 'a-new', 'H1', 0, ?)`,
+      [JSON.stringify({ name: t(100, 'devA'), apiary_id: t(300, 'devA') })]
+    );
+    await db.exec(
+      `INSERT INTO task (id, apiary_id, title, deleted, field_hlc) VALUES ('t1', 'a-new', 'shared', 0, ?)`,
+      [JSON.stringify({ title: t(400, 'devA') })]
+    );
+    pullMock
+      .mockResolvedValueOnce({ changes: [], nextCursor: '9:150:aa', hasMore: false, status: RESET })
+      .mockResolvedValueOnce({ changes: [], nextCursor: '', hasMore: false });
+
+    await pull();
+
+    const scopes = Object.fromEntries((await queued()).map((o) => [`${o.id}@${o.hlc}`, o.scope]));
+    expect(scopes).toEqual({
+      [`a-old@${t(50, 'devA')}`]: 'a-old',
+      [`a-new@${t(250, 'devA')}`]: 'a-new',
+      [`h1@${t(100, 'devA')}`]: 'a-old', // written before a-new existed
+      [`h1@${t(300, 'devA')}`]: 'a-new',
+      [`t1@${t(400, 'devA')}`]: 'a-new' // a task with an apiary is shared
+    });
+  });
+
   it('does not queue everything twice when the snapshot fails after the reset', async () => {
     await seedSyncedDevice();
     pullMock.mockResolvedValue({
