@@ -161,6 +161,45 @@ func (t *txWriter) taskScope(id string) (string, error) {
 	return taskScope(t.id.UserID, rs(rows[0]["apiary_id"])), nil
 }
 
+// delOpenTasks tombstones the open tasks of a hive, each in the scope it
+// lives in: the apiary's for shared tasks, its owner's personal scope (as
+// the change log recorded it) otherwise.
+func (t *txWriter) delOpenTasks(hiveID string) error {
+	tasks, err := queryMaps(t.ctx, t.tx, `SELECT id, apiary_id FROM task
+		WHERE organization_id = ? AND hive_id = ? AND deleted = FALSE AND done = FALSE`,
+		t.id.OrgID, hiveID)
+	if err != nil {
+		return err
+	}
+	for _, r := range tasks {
+		id, scope := rs(r["id"]), rs(r["apiary_id"])
+		if scope == "" {
+			if scope, err = t.loggedScope("task", id); err != nil {
+				return err
+			}
+		}
+		if err := t.del("task", id, scope); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loggedScope returns the scope of a row's latest change-log entry, or the
+// caller's personal scope when the log holds none.
+func (t *txWriter) loggedScope(entity, id string) (string, error) {
+	rows, err := queryMaps(t.ctx, t.tx, `SELECT scope_id FROM change_log
+		WHERE org_id = ? AND entity = ? AND entity_id = ? ORDER BY seq DESC LIMIT 1`,
+		t.id.OrgID, entity, id)
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return personalScope(t.id.UserID), nil
+	}
+	return rs(rows[0]["scope_id"]), nil
+}
+
 // resolveApiary returns the apiary a task belongs to: the hive's when a hive
 // is given and no apiary, else the given one, which must exist.
 func (t *txWriter) resolveApiary(hiveID, apiaryID string) (string, error) {

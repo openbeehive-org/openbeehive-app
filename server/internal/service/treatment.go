@@ -69,7 +69,7 @@ func (s *TreatmentService) ListTreatments(ctx context.Context, req *wv1.ListTrea
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY date DESC LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)
@@ -81,6 +81,7 @@ func (s *TreatmentService) ListTreatments(ctx context.Context, req *wv1.ListTrea
 	return &wv1.ListTreatmentsResponse{Treatments: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
+// DeleteTreatment soft-deletes the treatment and its timeline event.
 func (s *TreatmentService) DeleteTreatment(ctx context.Context, req *wv1.DeleteTreatmentRequest) (*wv1.DeleteTreatmentResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
@@ -88,7 +89,11 @@ func (s *TreatmentService) DeleteTreatment(ctx context.Context, req *wv1.DeleteT
 		if err != nil {
 			return err
 		}
-		return t.del("treatment", req.Id, rs(cur["apiary_id"]))
+		scope, err := t.recordScope("treatment", cur)
+		if err != nil {
+			return err
+		}
+		return t.delRecord("treatment", req.Id, scope)
 	})
 	if err != nil {
 		return nil, writeErr(err)

@@ -87,9 +87,21 @@ func dashboardTasks(ctx context.Context, q dashboardQuery, res *wv1.DashboardRes
 	return nil
 }
 
+// countedHarvests selects the HARVEST fact rows that count in the honey
+// figures (alias e; arguments: tenant, event type). An event is left out
+// when it is deleted, when its hive is deleted, or when the harvest record
+// it points at is deleted: app versions that delete a harvest without its
+// event must not leave the honey counted.
+const countedHarvests = ` FROM event e
+	WHERE e.organization_id = ? AND e.deleted = FALSE AND e.type = ?
+	  AND NOT EXISTS (SELECT 1 FROM hive h WHERE h.id = e.hive_id
+	    AND h.organization_id = e.organization_id AND h.deleted = TRUE)
+	  AND NOT EXISTS (SELECT 1 FROM harvest v WHERE v.id = e.ref_id
+	    AND v.organization_id = e.organization_id AND v.deleted = TRUE)`
+
 // dashboardHoney: this year's total and per-month history from the HARVEST fact rows.
 func dashboardHoney(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
-	harvests, err := queryMaps(ctx, q.db, `SELECT date, amount_kg FROM event WHERE organization_id = ? AND deleted = FALSE AND type = ?`, q.org, evHarvest)
+	harvests, err := queryMaps(ctx, q.db, `SELECT e.date, e.amount_kg`+countedHarvests, q.org, evHarvest)
 	if err != nil {
 		return err
 	}
@@ -173,8 +185,8 @@ func dashboardRecent(ctx context.Context, q dashboardQuery, res *wv1.DashboardRe
 func (s *StatsService) GetHoneyStats(ctx context.Context, req *wv1.HoneyStatsRequest) (*wv1.HoneyStatsResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	db := s.w.db
-	rows, err := queryMaps(ctx, db, `SELECT date, amount_kg, queen_id, apiary_id FROM event
-		WHERE organization_id = ? AND deleted = FALSE AND type = ?`, id.OrgID, evHarvest)
+	rows, err := queryMaps(ctx, db, `SELECT e.date, e.amount_kg, e.queen_id, e.apiary_id`+countedHarvests,
+		id.OrgID, evHarvest)
 	if err != nil {
 		return nil, writeErr(err)
 	}

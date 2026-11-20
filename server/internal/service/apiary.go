@@ -56,7 +56,7 @@ func (s *ApiaryService) CreateApiary(
 	}
 	m, err := s.repo.Get(ctx, id.OrgID, aid)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	return &wv1.CreateApiaryResponse{Apiary: toProto(m, 0)}, nil
 }
@@ -67,7 +67,7 @@ func (s *ApiaryService) GetApiary(
 	id, _ := auth.FromContext(ctx)
 	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	cnt, _ := s.repo.HiveCount(ctx, id.OrgID, m.ID)
 	return &wv1.GetApiaryResponse{Apiary: toProto(m, cnt)}, nil
@@ -80,7 +80,7 @@ func (s *ApiaryService) ListApiaries(
 	limit, offset := pageParams(req.Page)
 	rows, total, err := s.repo.List(ctx, id.OrgID, limit, offset)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+		return nil, writeErr(err)
 	}
 	out := make([]*wv1.Apiary, 0, len(rows))
 	for i := range rows {
@@ -98,7 +98,7 @@ func (s *ApiaryService) UpdateApiary(
 ) (*wv1.UpdateApiaryResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	if _, err := s.repo.Get(ctx, id.OrgID, req.Id); err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
 		return t.upsert("apiary", req.Id, req.Id, map[string]any{
@@ -111,22 +111,31 @@ func (s *ApiaryService) UpdateApiary(
 	}
 	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	cnt, _ := s.repo.HiveCount(ctx, id.OrgID, m.ID)
 	return &wv1.UpdateApiaryResponse{Apiary: toProto(m, cnt)}, nil
 }
 
-// DeleteApiary soft-deletes the apiary (like the app). Its hives keep their
-// rows and stay reachable through the API and sync.
+// DeleteApiary soft-deletes an apiary (like the app). An apiary that still
+// has hives is not deleted: its hives would be left without a location.
 func (s *ApiaryService) DeleteApiary(
 	ctx context.Context, req *wv1.DeleteApiaryRequest,
 ) (*wv1.DeleteApiaryResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	if _, err := s.repo.Get(ctx, id.OrgID, req.Id); err != nil {
-		return nil, mapErr(err)
-	}
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
+		if _, err := t.row("apiary", req.Id); err != nil {
+			return err
+		}
+		hives, err := countRows(ctx, t.tx, `SELECT COUNT(*) FROM hive
+			WHERE organization_id = ? AND apiary_id = ? AND deleted = FALSE`, id.OrgID, req.Id)
+		if err != nil {
+			return err
+		}
+		if hives > 0 {
+			return precondition("the apiary still has " + strconv.Itoa(hives) +
+				" hive(s); move or delete them before deleting the apiary")
+		}
 		return t.del("apiary", req.Id, req.Id)
 	})
 	if err != nil {
@@ -182,12 +191,5 @@ func pageResponse(total, offset, got, limit int) *wv1.PageResponse {
 }
 
 func jsTimeNow() string { return jsTime(time.Now()) }
-
-func mapErr(err error) error {
-	if errors.Is(err, storage.ErrNotFound) {
-		return connect.NewError(connect.CodeNotFound, err.Error()).WithCause(err)
-	}
-	return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
-}
 
 var errEmptyName = errors.New("name must not be empty")

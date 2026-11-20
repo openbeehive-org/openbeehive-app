@@ -73,7 +73,7 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListIn
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY date DESC LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)
@@ -85,6 +85,7 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListIn
 	return &wv1.ListInspectionsResponse{Inspections: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
+// DeleteInspection soft-deletes the inspection and its timeline event.
 func (s *InspectionService) DeleteInspection(ctx context.Context, req *wv1.DeleteInspectionRequest) (*wv1.DeleteInspectionResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
@@ -92,11 +93,11 @@ func (s *InspectionService) DeleteInspection(ctx context.Context, req *wv1.Delet
 		if err != nil {
 			return err
 		}
-		scope, _, err := t.resolveContext(rs(cur["hive_id"]), rs(cur["date"]))
+		scope, err := t.recordScope("inspection", cur)
 		if err != nil {
 			return err
 		}
-		return t.del("inspection", req.Id, scope)
+		return t.delRecord("inspection", req.Id, scope)
 	})
 	if err != nil {
 		return nil, writeErr(err)

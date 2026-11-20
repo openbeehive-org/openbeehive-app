@@ -72,7 +72,7 @@ func (s *HiveService) CreateHive(ctx context.Context, req *wv1.CreateHiveRequest
 	}
 	m, err := s.repo.Get(ctx, id.OrgID, hid)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	return &wv1.CreateHiveResponse{Hive: hiveToProto(m)}, nil
 }
@@ -81,7 +81,7 @@ func (s *HiveService) GetHive(ctx context.Context, req *wv1.GetHiveRequest) (*wv
 	id, _ := auth.FromContext(ctx)
 	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	return &wv1.GetHiveResponse{Hive: hiveToProto(m)}, nil
 }
@@ -91,7 +91,7 @@ func (s *HiveService) ListHives(ctx context.Context, req *wv1.ListHivesRequest) 
 	limit, offset := pageParams(req.Page)
 	rows, total, err := s.repo.List(ctx, id.OrgID, req.ApiaryId, limit, offset)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+		return nil, writeErr(err)
 	}
 	out := make([]*wv1.Hive, 0, len(rows))
 	for i := range rows {
@@ -111,7 +111,7 @@ func (s *HiveService) UpdateHive(ctx context.Context, req *wv1.UpdateHiveRequest
 	}
 	m, err := s.repo.Get(ctx, id.OrgID, p.Id)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	err = s.w.Run(ctx, id, func(t *txWriter) error {
 		return t.upsert("hive", p.Id, m.ApiaryID, map[string]any{
@@ -124,19 +124,24 @@ func (s *HiveService) UpdateHive(ctx context.Context, req *wv1.UpdateHiveRequest
 	}
 	m, err = s.repo.Get(ctx, id.OrgID, p.Id)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	return &wv1.UpdateHiveResponse{Hive: hiveToProto(m)}, nil
 }
 
+// DeleteHive soft-deletes the hive and its open tasks: a task for a hive that
+// no longer exists can never be done. The hive's records keep their rows.
 func (s *HiveService) DeleteHive(ctx context.Context, req *wv1.DeleteHiveRequest) (*wv1.DeleteHiveResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	err = s.w.Run(ctx, id, func(t *txWriter) error {
-		return t.del("hive", req.Id, m.ApiaryID)
+	err := s.w.Run(ctx, id, func(t *txWriter) error {
+		h, err := t.hive(req.Id)
+		if err != nil {
+			return err
+		}
+		if err := t.delOpenTasks(req.Id); err != nil {
+			return err
+		}
+		return t.del("hive", req.Id, rs(h["apiary_id"]))
 	})
 	if err != nil {
 		return nil, writeErr(err)

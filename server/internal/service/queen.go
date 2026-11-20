@@ -123,6 +123,8 @@ func (s *QueenService) UpdateQueen(ctx context.Context, req *wv1.UpdateQueenRequ
 	return &wv1.UpdateQueenResponse{Queen: queenFromRow(out)}, nil
 }
 
+// DeleteQueen soft-deletes the queen and the timeline events of her reign
+// (introduced, replaced). Records made during her reign keep her id.
 func (s *QueenService) DeleteQueen(ctx context.Context, req *wv1.DeleteQueenRequest) (*wv1.DeleteQueenResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
@@ -134,7 +136,17 @@ func (s *QueenService) DeleteQueen(ctx context.Context, req *wv1.DeleteQueenRequ
 		if err != nil {
 			return err
 		}
-		return t.del("queen", req.Id, rs(h["apiary_id"]))
+		scope := rs(h["apiary_id"])
+		evs, err := queryMaps(ctx, t.tx, `SELECT id, scope_id FROM event
+			WHERE organization_id = ? AND queen_id = ? AND type IN (?, ?) AND deleted = FALSE`,
+			id.OrgID, req.Id, evQueenIntroduced, evQueenReplaced)
+		if err != nil {
+			return err
+		}
+		if err := t.del("queen", req.Id, scope); err != nil {
+			return err
+		}
+		return t.delEvents(evs, scope)
 	})
 	if err != nil {
 		return nil, writeErr(err)

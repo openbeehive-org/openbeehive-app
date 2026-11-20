@@ -265,6 +265,25 @@ func (t *txWriter) activeQueens(hiveID string) ([]string, error) {
 	return ids, nil
 }
 
+// refEvents returns the live timeline events that point at a record.
+func (t *txWriter) refEvents(entity, id string) ([]map[string]any, error) {
+	return queryMaps(t.ctx, t.tx, `SELECT id, scope_id FROM event
+		WHERE organization_id = ? AND ref_entity = ? AND ref_id = ? AND deleted = FALSE`,
+		t.id.OrgID, entity, id)
+}
+
+// recordScope is the sync scope a dated record lives in: its frozen apiary,
+// or for inspections (which carry none) the hive's apiary at the visit date.
+func (t *txWriter) recordScope(entity string, cur map[string]any) (string, error) {
+	if entity != "inspection" {
+		if a := rs(cur["apiary_id"]); a != "" {
+			return a, nil
+		}
+	}
+	scope, _, err := t.resolveContext(rs(cur["hive_id"]), rs(cur["date"]))
+	return scope, err
+}
+
 // --- write flows (ports of history.ts) ---
 
 // createApiary: a new apiary opens its own sync scope (scope id = apiary id),
@@ -456,6 +475,34 @@ func (t *txWriter) recordTreatment(id, hiveID, date string, fields map[string]an
 	return id, err
 }
 
+// delRecord tombstones a record together with the timeline events that
+// point at it, so it also leaves the history and the honey statistics.
+func (t *txWriter) delRecord(entity, id, scope string) error {
+	evs, err := t.refEvents(entity, id)
+	if err != nil {
+		return err
+	}
+	if err := t.del(entity, id, scope); err != nil {
+		return err
+	}
+	return t.delEvents(evs, scope)
+}
+
+// delEvents tombstones events in their own scope (fallback for rows that
+// carry none).
+func (t *txWriter) delEvents(evs []map[string]any, fallback string) error {
+	for _, e := range evs {
+		scope := rs(e["scope_id"])
+		if scope == "" {
+			scope = fallback
+		}
+		if err := t.del("event", rs(e["id"]), scope); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // markingForYear: international queen colour by the year's last digit
 // (1/6 white, 2/7 yellow, 3/8 red, 4/9 green, 5/0 blue); mirrors repo.ts.
 func markingForYear(year int32) int32 {
@@ -513,4 +560,10 @@ func writeErr(err error) error {
 
 func invalid(msg string) error {
 	return connect.NewError(connect.CodeInvalidArgument, msg)
+}
+
+// precondition reports a request that is valid but cannot be carried out in
+// the current state of the data.
+func precondition(msg string) error {
+	return connect.NewError(connect.CodeFailedPrecondition, msg)
 }

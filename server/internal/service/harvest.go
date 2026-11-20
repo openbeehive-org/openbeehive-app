@@ -68,7 +68,7 @@ func (s *HarvestService) ListHarvests(ctx context.Context, req *wv1.ListHarvests
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY date DESC LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)
@@ -80,6 +80,8 @@ func (s *HarvestService) ListHarvests(ctx context.Context, req *wv1.ListHarvests
 	return &wv1.ListHarvestsResponse{Harvests: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
+// DeleteHarvest soft-deletes the harvest and its HARVEST fact event, so the
+// honey statistics stop counting it.
 func (s *HarvestService) DeleteHarvest(ctx context.Context, req *wv1.DeleteHarvestRequest) (*wv1.DeleteHarvestResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
@@ -87,7 +89,11 @@ func (s *HarvestService) DeleteHarvest(ctx context.Context, req *wv1.DeleteHarve
 		if err != nil {
 			return err
 		}
-		return t.del("harvest", req.Id, rs(cur["apiary_id"]))
+		scope, err := t.recordScope("harvest", cur)
+		if err != nil {
+			return err
+		}
+		return t.delRecord("harvest", req.Id, scope)
 	})
 	if err != nil {
 		return nil, writeErr(err)
