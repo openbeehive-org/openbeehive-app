@@ -21,14 +21,28 @@ export interface LocalDB {
 // This module proxies exec/all/get/batch to that worker over postMessage. ---
 import DbWorker from './db.worker?worker';
 import { migrateLocal } from './schema';
+import { get } from 'svelte/store';
 import { storageState } from './live';
 import { claimTab, takeoverRequested } from './tablock';
 
 // Worker reply: a query result, or an unsolicited volatile-store notice.
 type Reply = { id?: number; ok?: boolean; rows?: unknown; error?: string; volatile?: boolean };
-type Method = 'open' | 'exec' | 'all' | 'batch';
+type Method = 'open' | 'exec' | 'all' | 'batch' | 'wipe';
 
 let dbPromise: Promise<LocalDB> | null = null;
+// Set once the database is open; see wipeLocalDB.
+let wipe: (() => Promise<unknown>) | null = null;
+
+/**
+ * Deletes the open workspace's database from this device, including changes
+ * that were never uploaded. The connection is closed by it: leave or reload
+ * the page afterwards. Does nothing while another tab owns the database.
+ */
+export async function wipeLocalDB(): Promise<void> {
+  if (get(storageState) === 'elsewhere') return;
+  await getDB();
+  await wipe?.();
+}
 
 export function getDB(): Promise<LocalDB> {
   if (!dbPromise) dbPromise = init();
@@ -108,6 +122,7 @@ async function init(): Promise<LocalDB> {
   // After a takeover the previous tab's worker may still be letting go of
   // its file handles; give the open a little longer before giving up.
   await call('open', { name: dbFile, attempts: stolen ? 12 : 3 });
+  wipe = () => call('wipe');
 
   const impl: LocalDB = {
     async exec(sql, params = []) {

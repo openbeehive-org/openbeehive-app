@@ -15,7 +15,7 @@ import sqlite3InitModule, {
 type Stmt = { sql: string; params?: BindableValue[] };
 type Req = {
   id: number;
-  method: 'open' | 'exec' | 'all' | 'batch';
+  method: 'open' | 'exec' | 'all' | 'batch' | 'wipe';
   sql?: string;
   params?: BindableValue[];
   stmts?: Stmt[];
@@ -118,6 +118,17 @@ self.onmessage = async (e: MessageEvent<Req>) => {
       return;
     }
     const db = await getDb();
+    if (method === 'wipe') {
+      // Close the database and delete its file, with the journal beside it,
+      // from this device. The connection is gone afterwards.
+      db.close();
+      dbPromise = null;
+      for (const name of pool?.getFileNames() ?? []) {
+        if (name.startsWith('/' + dbName)) pool?.unlink(name);
+      }
+      (self as unknown as Worker).postMessage({ id, ok: true });
+      return;
+    }
     let rows: unknown;
     try {
       rows = run(db, req);
