@@ -34,7 +34,8 @@ test('a deleted harvest no longer counts towards the honey totals', async ({ api
   const apiary = await as.createApiary('Orchard Meadow');
   const hive = await as.createHive(apiary, 'Hive 7');
 
-  const { page } = await device({ session: account });
+  // A British browser: the account has chosen no units, so they are metric.
+  const { page } = await device({ session: account, context: { locale: 'en-GB' } });
   const asked = acceptDialogs(page);
   await page.goto(`/hives/${hive}`);
   await expect(page.getByRole('heading', { name: 'Hive 7' })).toBeVisible();
