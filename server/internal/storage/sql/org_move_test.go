@@ -125,8 +125,8 @@ func seedOrg(t *testing.T, s *Store, org, user string, logEntries int, seq *int6
 			[]any{p + "q", org, p + "h", 2026, now, now}},
 		{`INSERT INTO inspection (id, organization_id, hive_id, date, created_at) VALUES (?, ?, ?, ?, ?)`,
 			[]any{p + "i", org, p + "h", now, now}},
-		{`INSERT INTO task (id, organization_id, title, assigned_to, created_at) VALUES (?, ?, ?, ?, ?)`,
-			[]any{p + "t", org, "Task", user, now}},
+		{`INSERT INTO task (id, organization_id, title, assigned_to, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			[]any{p + "t", org, "Task", user, user, now}},
 		{`INSERT INTO treatment (id, organization_id, hive_id, date) VALUES (?, ?, ?, ?)`,
 			[]any{p + "tr", org, p + "h", now}},
 		{`INSERT INTO harvest (id, organization_id, apiary_id, date) VALUES (?, ?, ?, ?)`,
@@ -220,6 +220,9 @@ func testOrgMove(t *testing.T, s *Store) {
 	}
 	if n := countOrg(t, s, "task", "assigned_to", "someone"); n != 1 {
 		t.Errorf("another workspace's task was reassigned")
+	}
+	if admin, other := countOrg(t, s, "task", "owner_id", "admin-id"), countOrg(t, s, "task", "owner_id", "someone"); admin != 1 || other != 1 {
+		t.Errorf("personal task ownership: %d handed over, %d left with another workspace's user; want 1 and 1", admin, other)
 	}
 
 	// The change log: every entry moved, order kept, payloads rewritten.

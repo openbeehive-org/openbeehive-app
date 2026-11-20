@@ -68,6 +68,7 @@ func (s *Store) MoveOrgData(ctx context.Context, m OrgMove) (int64, error) {
 		{`UPDATE event SET author_id = ? WHERE organization_id = ? AND author_id = ?`, m.ToUser, m.FromUser},
 		{`UPDATE event SET scope_id = ? WHERE organization_id = ? AND scope_id = ?`, toScope, fromScope},
 		{`UPDATE task SET assigned_to = ? WHERE organization_id = ? AND assigned_to = ?`, m.ToUser, m.FromUser},
+		{`UPDATE task SET owner_id = ? WHERE organization_id = ? AND owner_id = ?`, m.ToUser, m.FromUser},
 	} {
 		if _, err := tx.ExecContext(ctx, tx.Rebind(q.sql), q.to, m.FromOrg, q.from); err != nil {
 			return 0, err
