@@ -53,6 +53,13 @@
     "privacy": "Privacy",
     "legal": "Informazioni e note legali"
   },
+  "theme": {
+    "title": "Aspetto",
+    "help": "Segui l'impostazione del dispositivo oppure scegli chiaro o scuro. La tua scelta viene salvata su questo dispositivo.",
+    "system": "Sistema",
+    "light": "Chiaro",
+    "dark": "Scuro"
+  },
   "settings": {
     "title": "Impostazioni",
     "language": "Lingua",

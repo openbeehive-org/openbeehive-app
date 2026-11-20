@@ -53,6 +53,13 @@
     "privacy": "Confidentialité",
     "legal": "À propos & mentions légales"
   },
+  "theme": {
+    "title": "Apparence",
+    "help": "Suivez le réglage de votre appareil ou choisissez clair ou sombre. Votre choix est enregistré sur cet appareil.",
+    "system": "Système",
+    "light": "Clair",
+    "dark": "Sombre"
+  },
   "settings": {
     "title": "Paramètres",
     "language": "Langue",

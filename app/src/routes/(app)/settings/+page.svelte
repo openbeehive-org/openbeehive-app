@@ -3,6 +3,7 @@
   import { _, locale } from 'svelte-i18n';
   import { Check, KeyRound, Printer, Settings } from '@lucide/svelte';
   import { changeLanguage, SUPPORTED, LANG_LABELS, type Lang } from '#lib/i18n/index.js';
+  import ThemeSwitch from '#lib/components/ThemeSwitch.svelte';
   import {
     exportJSON,
     exportXLSX,
@@ -346,6 +347,12 @@
         </button>
       {/each}
     </div>
+  </section>
+
+  <section class="card">
+    <h2>{$_('theme.title')}</h2>
+    <p class="help">{$_('theme.help')}</p>
+    <ThemeSwitch />
   </section>
 
   {#if tenants.length}

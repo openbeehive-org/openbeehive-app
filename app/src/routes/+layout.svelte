@@ -1,11 +1,15 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { _, locale } from 'svelte-i18n';
   import { page } from '$app/state';
+  import { initTheme } from '#lib/theme.js';
   import { pageTitle } from '#lib/titles.js';
   import { setupI18n } from '#lib/i18n/index.js';
   import { isLoading } from 'svelte-i18n';
   setupI18n();
   let { children } = $props();
+
+  onMount(() => initTheme());
 
   // Screen readers, hyphenation and spell checking follow the UI language.
   $effect(() => {
@@ -76,47 +80,113 @@
     src: url('/fonts/hanken-grotesk-v12-latin_latin-ext-700.woff2') format('woff2');
   }
 
+  /* Semantic tokens: components use these, never raw colours, so a theme
+     only has to redefine this block. Contrast is checked by
+     lib/theme-tokens.test.ts (WCAG AA for text, 3:1 for control borders). */
   :global(:root) {
-    --cream: #fbf6ea;
-    --cream2: #fffdf7;
-    --ink: #2c2316;
-    --ink-soft: #6b5e48;
-    --honey: #c77f22;
-    --honey-d: #a4641a;
-    --honey-l: #e9a744;
-    --moss: #5c6b4a;
-    --line: #e5dcc6;
-
-    /* Semantic tokens: components use these, never raw colours, so a theme
-       only has to redefine this block. */
-    --bg: var(--cream);
-    --surface: var(--cream2);
-    --text: var(--ink);
-    --text-soft: var(--ink-soft);
-    --border: var(--line);
-    --border-strong: #8f8270; /* form controls: 3:1 against --surface */
-    --accent: var(--honey-d); /* button backgrounds: 4.5:1 with --on-accent */
+    color-scheme: light;
+    --bg: #fbf6ea;
+    --surface: #fffdf7;
+    --text: #2c2316;
+    --text-soft: #6b5e48;
+    --border: #e5dcc6;
+    --border-strong: #8f8270; /* form controls */
+    --accent: #a4641a; /* button backgrounds, focus rings, active markers */
     --on-accent: #ffffff;
     --accent-text: #8a5210; /* accent-coloured text on --bg / --surface */
     --danger: #b3261e;
     --on-danger: #ffffff;
-    --ok: var(--moss);
+    --ok: #5c6b4a;
     --warn-bg: #f6e3b4;
     --warn-text: #5a3d00;
+    --shadow: rgb(44 35 22 / 0.25);
+
+    /* Brand palette names from before the tokens existed. They follow the
+       theme so styles that still use them stay readable in dark mode. */
+    --cream: var(--bg);
+    --cream2: var(--surface);
+    --ink: var(--text);
+    --ink-soft: var(--text-soft);
+    --line: var(--border);
+    --moss: var(--ok);
+    --honey: #c77f22;
+    --honey-d: #a4641a;
+    --honey-l: #e9a744;
+  }
+  /* data-theme is set by static/theme-init.js before the first paint and
+     kept up to date by lib/theme.ts. */
+  :global(:root[data-theme='dark']) {
+    color-scheme: dark;
+    --bg: #1a1510;
+    --surface: #251e16;
+    --text: #f3eadb;
+    --text-soft: #b9ab95;
+    --border: #3f3528;
+    --border-strong: #8c7d68;
+    --accent: #e9a744;
+    --on-accent: #2c2316;
+    --accent-text: #edb45c;
+    --danger: #f28b82;
+    --on-danger: #3b0b07;
+    --ok: #a9bd8f;
+    --warn-bg: #4a3a12;
+    --warn-text: #f6e3b4;
+    --shadow: rgb(0 0 0 / 0.5);
+
+    --honey-d: var(--accent-text); /* used as a text colour */
   }
   :global(*) {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
   }
+  :global(.app-root) {
+    display: contents;
+  }
+  /* SvelteKit hides its route announcer with an inline style attribute, which
+     a strict Content-Security-Policy blocks; these rules hide it regardless. */
+  :global(#svelte-announcer) {
+    position: absolute;
+    left: 0;
+    top: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+    width: 1px;
+    height: 1px;
+  }
   :global(body) {
     font-family: 'Hanken Grotesk', system-ui, sans-serif;
-    color: var(--ink);
-    background: var(--cream);
+    color: var(--text);
+    background: var(--bg);
     background-image:
-      radial-gradient(circle at 100% 0%, rgba(233, 167, 68, 0.12), transparent 45%),
-      radial-gradient(circle at 0% 100%, rgba(92, 107, 74, 0.08), transparent 40%);
+      radial-gradient(
+        circle at 100% 0%,
+        color-mix(in srgb, var(--accent) 10%, transparent),
+        transparent 45%
+      ),
+      radial-gradient(
+        circle at 0% 100%,
+        color-mix(in srgb, var(--ok) 8%, transparent),
+        transparent 40%
+      );
     min-height: 100vh;
+  }
+  :global(:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  /* People who ask for less motion get no looping or sliding animation. */
+  @media (prefers-reduced-motion: reduce) {
+    :global(*),
+    :global(*::before),
+    :global(*::after) {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
   :global(h1),
   :global(h2),

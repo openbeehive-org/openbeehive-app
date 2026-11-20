@@ -53,6 +53,13 @@
     "privacy": "Datenschutz",
     "legal": "Über & Rechtliches"
   },
+  "theme": {
+    "title": "Darstellung",
+    "help": "Folge der Einstellung deines Geräts oder wähle hell oder dunkel. Deine Auswahl wird auf diesem Gerät gespeichert.",
+    "system": "System",
+    "light": "Hell",
+    "dark": "Dunkel"
+  },
   "settings": {
     "title": "Einstellungen",
     "language": "Sprache",

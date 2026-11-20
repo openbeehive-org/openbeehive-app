@@ -53,6 +53,13 @@
     "privacy": "Privacidad",
     "legal": "Acerca de y aviso legal"
   },
+  "theme": {
+    "title": "Apariencia",
+    "help": "Sigue el ajuste de tu dispositivo o elige claro u oscuro. Tu elección se guarda en este dispositivo.",
+    "system": "Sistema",
+    "light": "Claro",
+    "dark": "Oscuro"
+  },
   "settings": {
     "title": "Ajustes",
     "language": "Idioma",

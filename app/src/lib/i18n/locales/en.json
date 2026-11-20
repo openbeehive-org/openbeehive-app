@@ -53,6 +53,13 @@
     "privacy": "Privacy",
     "legal": "About & legal"
   },
+  "theme": {
+    "title": "Appearance",
+    "help": "Follow your device's setting or choose light or dark. Your choice is saved on this device.",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
   "settings": {
     "title": "Settings",
     "language": "Language",
