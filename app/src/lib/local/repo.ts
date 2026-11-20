@@ -116,6 +116,14 @@ export async function setRemove(
 
 // --- Public, typed API for the UI ---
 
+// Thrown by apiaries.remove while the apiary still has hives.
+export class ApiaryHasHivesError extends Error {
+  constructor(readonly hives: number) {
+    super('apiary still has hives');
+    this.name = 'ApiaryHasHivesError';
+  }
+}
+
 export const apiaries = {
   async list() {
     const db = await getDB();
@@ -154,7 +162,13 @@ export const apiaries = {
   // edit = only the changed scalar fields (per-field LWW); scope = own id.
   update: (id: string, fields: Record<string, unknown>) =>
     patch('apiary', id, id, { ...fields, updated_at: new Date().toISOString() }),
-  remove: (id: string) => remove('apiary', id, id)
+  // Deleting an apiary that still has hives would leave them without a place,
+  // so they have to be moved or deleted first.
+  async remove(id: string) {
+    const n = await hives.count(id);
+    if (n > 0) throw new ApiaryHasHivesError(n);
+    await remove('apiary', id, id);
+  }
 };
 
 // Inspection fields as entered by the UI (hive_id and date may be filled by the caller).

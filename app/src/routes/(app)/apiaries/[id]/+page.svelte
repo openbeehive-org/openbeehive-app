@@ -1,26 +1,23 @@
 <script lang="ts">
+  import { mount, onDestroy, unmount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
   import { MapPin, Pencil, Trash2, Tag } from '@lucide/svelte';
-  import {
-    apiaries,
-    hives,
-    queens,
-    inspections,
-    MARKING_COLORS,
-    MARKING_NAMES
-  } from '#lib/local/repo.js';
+  import { apiaries, hives, ApiaryHasHivesError } from '#lib/local/repo.js';
   import { createHive } from '#lib/local/history.js';
-  import type { ApiaryRow, HiveRow, QueenRow } from '../../rows.js';
+  import type { ApiaryRow } from '../../rows.js';
   import { dataVersion } from '#lib/local/live.js';
   import { qrSvg, hiveUrl, shortCode } from '#lib/qr.js';
+  import type { HiveOverview } from '#lib/hivelist.js';
+  import HiveCard from '#lib/components/HiveCard.svelte';
   import LocationPicker from '#lib/components/LocationPicker.svelte';
+  import QrSheet from '#lib/components/QrSheet.svelte';
+  import Skeleton from '#lib/components/Skeleton.svelte';
 
-  const id = page.params.id ?? '';
-  type HiveCard = HiveRow & { queen: QueenRow | undefined; lastInspection: string | undefined };
+  const id = $derived(page.params.id ?? '');
   let apiary = $state<ApiaryRow | null>(null);
-  let hiveRows = $state<HiveCard[]>([]);
+  let hiveRows = $state<HiveOverview[]>([]);
   let loaded = $state(false);
 
   let editing = $state(false);
@@ -30,27 +27,21 @@
   let eLat = $state(0);
   let eLng = $state(0);
   let locating = $state(false);
+  let locationFailed = $state(false);
 
   let addingHive = $state(false);
   let hiveName = $state('');
+  // Set when a delete was refused because hives still stand here.
+  let deleteBlocked = $state(false);
+  // The label sheet while it is being printed.
+  let sheet: ReturnType<typeof mount> | null = null;
 
-  function daysAgo(iso?: string) {
-    if (!iso) return -1;
-    return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  }
-
+  // One query for the apiary's hives, also when the apiary itself is deleted:
+  // its hives are then still listed so they can be moved elsewhere.
   async function load() {
-    apiary = await apiaries.get(id);
-    if (apiary) {
-      const list = (await hives.list(id)) as HiveRow[];
-      hiveRows = await Promise.all(
-        list.map(async (h) => {
-          const q = await queens.current(h.id);
-          const insp = await inspections.listByHive(h.id);
-          return { ...h, queen: q, lastInspection: insp[0]?.date };
-        })
-      );
-    }
+    apiary = (await apiaries.get(id)) ?? null;
+    hiveRows = await hives.overview(id);
+    if (hiveRows.length === 0) deleteBlocked = false;
     loaded = true;
   }
 
@@ -61,9 +52,15 @@
     eNote = apiary.note ?? '';
     eLat = apiary.lat ?? 0;
     eLng = apiary.lng ?? 0;
+    locationFailed = false;
     editing = true;
   }
   function useMyLocation() {
+    locationFailed = false;
+    if (!navigator.geolocation) {
+      locationFailed = true;
+      return;
+    }
     locating = true;
     navigator.geolocation.getCurrentPosition(
       (p) => {
@@ -72,7 +69,9 @@
         locating = false;
       },
       () => {
+        // Permission denied, no fix, or timed out: say so instead of doing nothing.
         locating = false;
+        locationFailed = true;
       },
       { enableHighAccuracy: true, timeout: 10_000 }
     );
@@ -90,8 +89,21 @@
     await load();
   }
   async function del() {
-    if (!confirm($_('common.confirm_delete'))) return;
-    await apiaries.remove(id);
+    if (!apiary) return;
+    if (hiveRows.length > 0) {
+      deleteBlocked = true;
+      return;
+    }
+    if (!confirm($_('apiaries.confirm_delete', { values: { name: apiary.name } }))) return;
+    try {
+      await apiaries.remove(id);
+    } catch (e) {
+      // A hive arrived through sync between the check above and the delete.
+      if (!(e instanceof ApiaryHasHivesError)) throw e;
+      await load();
+      deleteBlocked = true;
+      return;
+    }
     await goto('/apiaries', { replaceState: true });
   }
   async function addHive() {
@@ -102,33 +114,30 @@
     await load();
   }
 
-  // Printable A4 sheet of QR labels for every hive at this apiary.
+  // Printable sheet of QR labels for every hive at this apiary. It is mounted
+  // on <body> for the duration of the print and removed afterwards.
   async function printQrSheet() {
-    if (!apiary || !hiveRows.length) return;
-    const cells = await Promise.all(
-      hiveRows.map(async (h) => {
-        const svg = await qrSvg(hiveUrl(h.id), 220);
-        return `<div class="cell"><div class="qr">${svg}</div>
-        <div class="n">${h.name}</div><div class="c">${shortCode(h.id)}</div></div>`;
-      })
+    if (!apiary || !hiveRows.length || sheet) return;
+    const title = apiary.name;
+    const labels = await Promise.all(
+      hiveRows.map(async (h) => ({
+        id: h.id,
+        name: h.name,
+        code: shortCode(h.id),
+        svg: await qrSvg(hiveUrl(h.id), 220)
+      }))
     );
-    const w = window.open('', '_blank', 'width=820,height=1000');
-    if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>${apiary.name} - QR</title><style>
-      @page { size: A4; margin: 12mm; }
-      body { font-family: system-ui, sans-serif; margin: 0; }
-      h1 { font-size: 16px; margin: 0 0 10px; }
-      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-      .cell { border: 1px solid #ddd; border-radius: 10px; padding: 10px; text-align: center;
-        break-inside: avoid; }
-      .qr svg { width: 100%; height: auto; max-width: 150px; }
-      .n { font-weight: 700; font-size: 13px; margin-top: 6px; }
-      .c { color: #777; letter-spacing: .15em; font-size: 11px; }
-    </style></head><body><h1>${apiary.name}</h1><div class="grid">${cells.join('')}</div></body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 200);
+    closeSheet();
+    sheet = mount(QrSheet, {
+      target: document.body,
+      props: { title, labels, onclose: closeSheet }
+    });
   }
+  function closeSheet() {
+    if (sheet) void unmount(sheet);
+    sheet = null;
+  }
+  onDestroy(closeSheet);
 
   $effect(() => {
     $dataVersion;
@@ -136,13 +145,29 @@
   });
 </script>
 
+<svelte:head><title>{apiary?.name ?? $_('apiaries.title')}</title></svelte:head>
+
+{#snippet hiveList()}
+  <ul class="hives">
+    {#each hiveRows as h (h.id)}
+      <li><HiveCard hive={h} /></li>
+    {/each}
+  </ul>
+{/snippet}
+
 <div class="page">
-  <a class="back" href="/apiaries">‹ {$_('apiaries.title')}</a>
+  <a class="back" href="/apiaries"><span aria-hidden="true">‹</span> {$_('apiaries.title')}</a>
 
   {#if !loaded}
-    <p class="muted">...</p>
+    <Skeleton n={3} height={80} />
+  {:else if !apiary && hiveRows.length > 0}
+    <div class="notice" role="status">
+      <h1>{$_('apiaries.deleted_title')}</h1>
+      <p>{$_('apiaries.deleted_text', { values: { n: hiveRows.length } })}</p>
+    </div>
+    {@render hiveList()}
   {:else if !apiary}
-    <p class="muted">{$_('apiaries.not_found')}</p>
+    <p class="muted empty">{$_('apiaries.not_found')}</p>
   {:else}
     <header>
       <div class="title">
@@ -153,14 +178,26 @@
         </div>
       </div>
       <div class="acts">
-        <button class="icon" onclick={startEdit} title={$_('apiaries.edit')}
-          ><Pencil size={18} aria-hidden="true" /></button
+        <button
+          class="icon"
+          onclick={startEdit}
+          title={$_('apiaries.edit')}
+          aria-label={$_('apiaries.edit')}><Pencil size={18} aria-hidden="true" /></button
         >
-        <button class="icon danger" onclick={del} title={$_('common.delete')}
-          ><Trash2 size={18} aria-hidden="true" /></button
+        <button
+          class="icon danger"
+          onclick={del}
+          title={$_('apiaries.delete')}
+          aria-label={$_('apiaries.delete')}><Trash2 size={18} aria-hidden="true" /></button
         >
       </div>
     </header>
+
+    {#if deleteBlocked}
+      <p class="notice" role="alert">
+        {$_('apiaries.delete_blocked', { values: { name: apiary.name, n: hiveRows.length } })}
+      </p>
+    {/if}
 
     {#if editing}
       <form
@@ -170,9 +207,18 @@
           saveEdit();
         }}
       >
-        <input bind:value={eName} placeholder={$_('apiaries.name')} />
-        <input bind:value={eAddress} placeholder={$_('apiaries.address')} />
-        <textarea bind:value={eNote} placeholder={$_('apiaries.note')} rows="2"></textarea>
+        <label class="field">
+          <span>{$_('apiaries.name')}</span>
+          <input bind:value={eName} />
+        </label>
+        <label class="field">
+          <span>{$_('apiaries.address')}</span>
+          <input bind:value={eAddress} autocomplete="street-address" />
+        </label>
+        <label class="field">
+          <span>{$_('apiaries.note')}</span>
+          <textarea bind:value={eNote} rows="2"></textarea>
+        </label>
         <div class="coords">
           <label class="field"
             ><span>{$_('apiaries.lat')}</span>
@@ -184,9 +230,12 @@
           >
           <button type="button" class="ghost loc" onclick={useMyLocation} disabled={locating}>
             <MapPin size={16} aria-hidden="true" />
-            {locating ? '...' : $_('apiaries.use_location')}
+            {locating ? $_('apiaries.locating') : $_('apiaries.use_location')}
           </button>
         </div>
+        {#if locationFailed}
+          <p class="error" role="alert">{$_('apiaries.location_unavailable')}</p>
+        {/if}
         <LocationPicker bind:lat={eLat} bind:lng={eLng} bind:address={eAddress} />
         <div class="actions">
           <button type="button" class="ghost" onclick={() => (editing = false)}
@@ -205,13 +254,15 @@
       <h2>{$_('hives.title')}</h2>
       <div class="hactions">
         {#if hiveRows.length}
-          <button class="ghost sm" onclick={printQrSheet}
+          <button class="ghost" onclick={printQrSheet}
             ><Tag size={16} aria-hidden="true" /> {$_('apiaries.qr_sheet')}</button
           >
         {/if}
 
-        <button class="primary sm" onclick={() => (addingHive = !addingHive)}
-          >+ {$_('apiaries.add_hive')}</button
+        <button
+          class="primary"
+          aria-expanded={addingHive}
+          onclick={() => (addingHive = !addingHive)}>+ {$_('apiaries.add_hive')}</button
         >
       </div>
     </div>
@@ -224,7 +275,10 @@
           addHive();
         }}
       >
-        <input bind:value={hiveName} placeholder={$_('hives.name_ph')} />
+        <label class="field">
+          <span>{$_('hives.name')}</span>
+          <input bind:value={hiveName} placeholder={$_('hives.name_ph')} />
+        </label>
         <div class="actions">
           <button type="button" class="ghost" onclick={() => (addingHive = false)}
             >{$_('common.cancel')}</button
@@ -240,45 +294,7 @@
     {#if hiveRows.length === 0}
       <p class="muted empty">{$_('apiaries.no_hives')}</p>
     {:else}
-      <ul class="hives">
-        {#each hiveRows as h}
-          <li class="card">
-            <a href={`/hives/${h.id}`}>
-              <span class="thumb">
-                {#if h.photo}<img src={h.photo} alt={h.name} />{:else}<img
-                    class="ph"
-                    src="/favicon.svg"
-                    alt=""
-                  />{/if}
-              </span>
-              <div class="body">
-                <strong>{h.name}</strong>
-                <div class="meta">
-                  <span class="badge status-{h.status}">{$_('hivestatus.' + (h.status ?? 0))}</span>
-                  {#if h.queen}
-                    <span class="queen">
-                      <span
-                        class="dot"
-                        style={`background:${MARKING_COLORS[h.queen.marking] ?? '#ccc'}`}
-                        title={MARKING_NAMES[h.queen.marking] ?? ''}
-                      ></span>
-                      {$_('queens.title')}
-                      {h.queen.year}
-                    </span>
-                  {/if}
-                  <span class="insp">
-                    {$_('hives.last_inspection')}:
-                    {daysAgo(h.lastInspection) < 0
-                      ? $_('hives.never')
-                      : $_('dashboard.days_ago', { values: { days: daysAgo(h.lastInspection) } })}
-                  </span>
-                </div>
-              </div>
-              <span class="chev">›</span>
-            </a>
-          </li>
-        {/each}
-      </ul>
+      {@render hiveList()}
     {/if}
   {/if}
 </div>
@@ -290,13 +306,17 @@
     padding: 22px 18px 96px;
   }
   .back {
-    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 44px;
+    color: var(--text-soft);
     text-decoration: none;
     font-weight: 600;
     font-size: 0.9rem;
   }
   .muted {
-    color: var(--ink-soft);
+    color: var(--text-soft);
   }
   .empty {
     text-align: center;
@@ -308,22 +328,24 @@
     justify-content: space-between;
     align-items: flex-start;
     gap: 12px;
-    margin: 14px 0 18px;
+    margin: 6px 0 18px;
   }
   .title {
     display: flex;
     gap: 12px;
     align-items: flex-start;
+    min-width: 0;
   }
   .title .pin {
     display: flex;
     align-items: center;
     height: 1.9rem;
-    color: var(--honey-d);
+    color: var(--accent-text);
   }
   h1 {
     font-family: 'Fraunces', serif;
     font-size: 1.9rem;
+    overflow-wrap: anywhere;
   }
   h2 {
     font-family: 'Fraunces', serif;
@@ -335,51 +357,83 @@
     flex-shrink: 0;
   }
   .icon {
-    width: 38px;
-    height: 38px;
-    border: 1px solid var(--line);
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--border-strong);
     border-radius: 10px;
-    background: var(--cream2);
+    background: var(--surface);
     cursor: pointer;
-    font-size: 1rem;
-    color: var(--ink);
+    color: var(--text);
   }
   .icon.danger:hover {
-    border-color: #d9a59b;
-    color: #b5402f;
+    border-color: var(--danger);
+    color: var(--danger);
   }
 
   .card {
-    background: var(--cream2);
-    border: 1px solid var(--line);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 16px;
   }
   .note {
     padding: 14px 16px;
     margin-bottom: 18px;
-    color: var(--ink-soft);
+    color: var(--text-soft);
     white-space: pre-wrap;
+  }
+  .notice {
+    background: var(--warn-bg);
+    color: var(--warn-text);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 18px;
+  }
+  .notice h1 {
+    font-size: 1.3rem;
+    margin-bottom: 4px;
   }
   .form {
     padding: 16px;
     display: grid;
-    gap: 10px;
+    gap: 12px;
     margin-bottom: 18px;
   }
-  .form input,
-  .form textarea {
+  .field {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+  .field span {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-soft);
+  }
+  .field input,
+  .field textarea {
     font: inherit;
-    padding: 11px 13px;
-    border: 1px solid var(--line);
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
     border-radius: 10px;
-    background: #fff;
-    color: var(--ink);
+    background: var(--surface);
+    color: var(--text);
     resize: vertical;
   }
   .form .actions {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+  }
+  .form .error {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 0.85rem;
   }
   .coords {
     display: flex;
@@ -388,51 +442,38 @@
     align-items: flex-end;
   }
   .coords .field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.8rem;
-    color: var(--ink-soft);
-    font-weight: 600;
     flex: 1;
     min-width: 120px;
-  }
-  .coords .field input {
-    width: 100%;
   }
   .coords .loc {
     white-space: nowrap;
   }
-  .primary {
-    background: var(--honey);
-    color: #fff;
-    border: none;
+  .primary,
+  .ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
     border-radius: 11px;
     padding: 10px 16px;
+    font: inherit;
     font-weight: 700;
-    font-family: inherit;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(199, 127, 34, 0.28);
   }
-  .primary.sm {
-    padding: 8px 13px;
-    font-size: 0.85rem;
-    box-shadow: none;
+  .primary {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
   }
-  .primary:disabled {
+  .primary:disabled,
+  .ghost:disabled {
     opacity: 0.5;
     cursor: default;
-    box-shadow: none;
   }
   .ghost {
     background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    padding: 10px 16px;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    color: var(--ink);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
   }
 
   .sec-head {
@@ -448,88 +489,9 @@
     flex-wrap: wrap;
     justify-content: flex-end;
   }
-  .ghost.sm {
-    padding: 8px 12px;
-    font-size: 0.85rem;
-    border-radius: 10px;
-  }
   .hives {
     list-style: none;
     display: grid;
     gap: 12px;
-  }
-  .hives li a {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 12px 14px;
-    text-decoration: none;
-    color: var(--ink);
-  }
-  .thumb {
-    width: 52px;
-    height: 52px;
-    border-radius: 12px;
-    overflow: hidden;
-    flex-shrink: 0;
-    background: linear-gradient(150deg, #fff5e3, #ffe9c6);
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--line);
-  }
-  .thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-  .thumb .ph {
-    width: 24px;
-    height: 24px;
-  }
-  .body {
-    flex: 1;
-    min-width: 0;
-  }
-  .body strong {
-    display: block;
-    font-weight: 700;
-    margin-bottom: 5px;
-  }
-  .meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    font-size: 0.8rem;
-    color: var(--ink-soft);
-  }
-  .badge {
-    font-weight: 700;
-    font-size: 0.72rem;
-    padding: 3px 9px;
-    border-radius: 999px;
-    background: rgba(92, 107, 74, 0.15);
-    color: #41502f;
-  }
-  .badge.status-3,
-  .badge.status-4 {
-    background: rgba(181, 64, 47, 0.13);
-    color: #b5402f;
-  }
-  .queen {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-weight: 600;
-  }
-  .queen .dot {
-    width: 11px;
-    height: 11px;
-    border-radius: 50%;
-    border: 1px solid rgba(0, 0, 0, 0.18);
-  }
-  .chev {
-    color: var(--ink-soft);
-    font-size: 1.4rem;
   }
 </style>

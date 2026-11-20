@@ -131,7 +131,7 @@
     "name": "Nom",
     "address": "Adresse",
     "note": "Note",
-    "hives_count": "{n} ruches",
+    "hives_count": "{n, plural, one {# ruche} other {# ruches}}",
     "name_ph": "ex. Pré du verger",
     "edit": "Modifier le rucher",
     "add_hive": "Ajouter une ruche",
@@ -141,7 +141,14 @@
     "lng": "Longitude",
     "use_location": "Utiliser ma position",
     "qr_sheet": "Étiquettes QR",
-    "map_hint": "Saisissez une adresse ou déplacez le repère — position et adresse restent synchronisées."
+    "map_hint": "Saisissez une adresse ou déplacez le repère — position et adresse restent synchronisées.",
+    "delete": "Supprimer le rucher",
+    "confirm_delete": "Supprimer le rucher « {name} » ? Cette action est irréversible.",
+    "delete_blocked": "« {name} » contient encore {n, plural, one {# ruche. Déplacez-la ou supprimez-la} other {# ruches. Déplacez-les ou supprimez-les}} d'abord, puis supprimez le rucher.",
+    "deleted_title": "Ce rucher a été supprimé",
+    "deleted_text": "{n, plural, one {# ruche y est encore rattachée} other {# ruches y sont encore rattachées}}. Ouvrez {n, plural, one {la ruche} other {chaque ruche}} et déplacez-la vers un autre rucher.",
+    "locating": "Localisation…",
+    "location_unavailable": "Position indisponible — vérifiez l'autorisation."
   },
   "hivelist": {
     "apiary": "Rucher",

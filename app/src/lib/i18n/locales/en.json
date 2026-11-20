@@ -131,7 +131,7 @@
     "name": "Name",
     "address": "Address",
     "note": "Note",
-    "hives_count": "{n} hives",
+    "hives_count": "{n, plural, one {# hive} other {# hives}}",
     "name_ph": "e.g. Orchard Meadow",
     "edit": "Edit apiary",
     "add_hive": "Add hive",
@@ -141,7 +141,14 @@
     "lng": "Longitude",
     "use_location": "Use my location",
     "qr_sheet": "QR labels",
-    "map_hint": "Type an address or drag the pin — position and address stay in sync."
+    "map_hint": "Type an address or drag the pin — position and address stay in sync.",
+    "delete": "Delete apiary",
+    "confirm_delete": "Delete apiary “{name}”? This cannot be undone.",
+    "delete_blocked": "“{name}” still has {n, plural, one {# hive} other {# hives}}. Move or delete {n, plural, one {it} other {them}} first, then delete the apiary.",
+    "deleted_title": "This apiary was deleted",
+    "deleted_text": "{n, plural, one {# hive still belongs} other {# hives still belong}} to it. Open {n, plural, one {the hive} other {each hive}} and move it to another apiary.",
+    "locating": "Locating…",
+    "location_unavailable": "Location unavailable — check the permission."
   },
   "hivelist": {
     "apiary": "Apiary",

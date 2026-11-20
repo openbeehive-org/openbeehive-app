@@ -131,7 +131,7 @@
     "name": "Nome",
     "address": "Indirizzo",
     "note": "Nota",
-    "hives_count": "{n} arnie",
+    "hives_count": "{n, plural, one {# arnia} other {# arnie}}",
     "name_ph": "es. Prato del frutteto",
     "edit": "Modifica apiario",
     "add_hive": "Aggiungi arnia",
@@ -141,7 +141,14 @@
     "lng": "Longitudine",
     "use_location": "Usa la mia posizione",
     "qr_sheet": "Etichette QR",
-    "map_hint": "Digita un indirizzo o trascina il segnaposto: posizione e indirizzo restano sincronizzati."
+    "map_hint": "Digita un indirizzo o trascina il segnaposto: posizione e indirizzo restano sincronizzati.",
+    "delete": "Elimina apiario",
+    "confirm_delete": "Eliminare l'apiario «{name}»? L'operazione non può essere annullata.",
+    "delete_blocked": "«{name}» contiene ancora {n, plural, one {# arnia. Spostala o eliminala} other {# arnie. Spostale o eliminale}} prima, poi elimina l'apiario.",
+    "deleted_title": "Questo apiario è stato eliminato",
+    "deleted_text": "{n, plural, one {Vi appartiene ancora # arnia} other {Vi appartengono ancora # arnie}}. Apri {n, plural, one {quell'arnia} other {ogni arnia}} e spostala in un altro apiario.",
+    "locating": "Localizzazione…",
+    "location_unavailable": "Posizione non disponibile: controlla l'autorizzazione."
   },
   "hivelist": {
     "apiary": "Apiario",

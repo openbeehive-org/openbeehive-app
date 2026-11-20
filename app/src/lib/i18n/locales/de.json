@@ -131,7 +131,7 @@
     "name": "Name",
     "address": "Adresse",
     "note": "Notiz",
-    "hives_count": "{n} Beuten",
+    "hives_count": "{n, plural, one {# Beute} other {# Beuten}}",
     "name_ph": "z. B. Obstwiese",
     "edit": "Standort bearbeiten",
     "add_hive": "Beute hinzufügen",
@@ -141,7 +141,14 @@
     "lng": "Längengrad",
     "use_location": "Mein Standort",
     "qr_sheet": "QR-Etiketten",
-    "map_hint": "Adresse eingeben oder Pin verschieben — Position und Adresse bleiben synchron."
+    "map_hint": "Adresse eingeben oder Pin verschieben — Position und Adresse bleiben synchron.",
+    "delete": "Standort löschen",
+    "confirm_delete": "Standort „{name}“ löschen? Das lässt sich nicht rückgängig machen.",
+    "delete_blocked": "„{name}“ hat noch {n, plural, one {# Beute} other {# Beuten}}. Verschiebe oder lösche sie zuerst, dann kannst du den Standort löschen.",
+    "deleted_title": "Dieser Standort wurde gelöscht",
+    "deleted_text": "{n, plural, one {# Beute gehört} other {# Beuten gehören}} noch dazu. Öffne {n, plural, one {die Beute} other {jede Beute}} und verschiebe sie an einen anderen Standort.",
+    "locating": "Standort wird ermittelt …",
+    "location_unavailable": "Standort nicht verfügbar – prüfe die Berechtigung."
   },
   "hivelist": {
     "apiary": "Standort",

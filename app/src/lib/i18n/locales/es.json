@@ -131,7 +131,7 @@
     "name": "Nombre",
     "address": "Dirección",
     "note": "Nota",
-    "hives_count": "{n} colmenas",
+    "hives_count": "{n, plural, one {# colmena} other {# colmenas}}",
     "name_ph": "p. ej. Pradera del huerto",
     "edit": "Editar colmenar",
     "add_hive": "Añadir colmena",
@@ -141,7 +141,14 @@
     "lng": "Longitud",
     "use_location": "Usar mi ubicación",
     "qr_sheet": "Etiquetas QR",
-    "map_hint": "Escribe una dirección o arrastra el pin: posición y dirección se mantienen sincronizadas."
+    "map_hint": "Escribe una dirección o arrastra el pin: posición y dirección se mantienen sincronizadas.",
+    "delete": "Eliminar colmenar",
+    "confirm_delete": "¿Eliminar el colmenar «{name}»? Esta acción no se puede deshacer.",
+    "delete_blocked": "«{name}» todavía tiene {n, plural, one {# colmena. Muévela o elimínala} other {# colmenas. Muévelas o elimínalas}} primero y después elimina el colmenar.",
+    "deleted_title": "Este colmenar se ha eliminado",
+    "deleted_text": "{n, plural, one {Todavía le pertenece # colmena} other {Todavía le pertenecen # colmenas}}. Abre {n, plural, one {la colmena} other {cada colmena}} y muévela a otro colmenar.",
+    "locating": "Localizando…",
+    "location_unavailable": "Ubicación no disponible: comprueba el permiso."
   },
   "hivelist": {
     "apiary": "Colmenar",

@@ -8,7 +8,7 @@ vi.mock('./db', async () => {
 // repo fires a background sync after every write; irrelevant here.
 vi.mock('./sync', () => ({ syncOnce: vi.fn(async () => {}) }));
 
-import { apiaries, hives, tasks, patch, remove } from './repo';
+import { apiaries, hives, tasks, patch, remove, ApiaryHasHivesError } from './repo';
 
 beforeEach(async () => {
   setCurrentDB(await makeLocalDB());
@@ -150,6 +150,34 @@ describe('natural name order in the repo lists', () => {
       await apiaries.create({ organization_id: 'org1', name });
     }
     expect((await apiaries.list()).map((a) => a.name)).toEqual(['Site 1', 'site 3', 'Site 12']);
+  });
+});
+
+describe('apiaries.remove', () => {
+  it('refuses to delete an apiary that still has hives', async () => {
+    const id = await apiaries.create({ organization_id: 'org1', name: 'Orchard' });
+    await hive('h1', id, 'Hive 1');
+    await hive('h2', id, 'Hive 2');
+
+    const err = await apiaries.remove(id).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiaryHasHivesError);
+    expect((err as ApiaryHasHivesError).hives).toBe(2);
+    expect(await apiaries.get(id)).toBeTruthy();
+    const ops = await getCurrentDB().all<any>(`SELECT op FROM outbox WHERE entity = 'apiary'`);
+    expect(ops.map((o) => o.op)).toEqual([1]); // only the create, no delete queued
+  });
+
+  it('deletes it once the hives are moved away or deleted', async () => {
+    const id = await apiaries.create({ organization_id: 'org1', name: 'Orchard' });
+    const other = await apiaries.create({ organization_id: 'org1', name: 'Meadow' });
+    await hive('h1', id, 'Hive 1');
+    await hive('h2', id, 'Hive 2');
+    await hives.update('h1', id, { apiary_id: other });
+    await hives.remove('h2', id);
+
+    await apiaries.remove(id);
+    expect(await apiaries.get(id)).toBeUndefined();
+    expect(await hives.countByApiary()).toEqual({ [other]: 1 });
   });
 });
 

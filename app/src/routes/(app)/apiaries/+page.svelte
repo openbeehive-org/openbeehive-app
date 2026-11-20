@@ -1,5 +1,6 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
+  import { page } from '$app/state';
   import { MapPin } from '@lucide/svelte';
   import { apiaries, hives } from '#lib/local/repo.js';
   import type { ApiaryRow } from '../rows.js';
@@ -12,7 +13,8 @@
   let rows = $state<ApiaryRow[]>([]);
   let counts = $state<Record<string, number>>({});
   let loaded = $state(false);
-  let showForm = $state(false);
+  // "/apiaries?new=1" (dashboard, first-run checklist) opens the form directly.
+  let showForm = $state(page.url.searchParams.has('new'));
   let name = $state('');
   let address = $state('');
   let note = $state('');
@@ -23,9 +25,7 @@
 
   async function load() {
     rows = (await apiaries.list()) as ApiaryRow[];
-    const c: Record<string, number> = {};
-    for (const a of rows) c[a.id] = await hives.count(a.id);
-    counts = c;
+    counts = await hives.countByApiary();
     loaded = true;
   }
 
@@ -60,10 +60,14 @@
   });
 </script>
 
+<svelte:head><title>{$_('apiaries.title')}</title></svelte:head>
+
 <div class="page">
   <header>
     <h1>{$_('apiaries.title')}</h1>
-    <button class="primary" onclick={() => (showForm = !showForm)}>+ {$_('common.new')}</button>
+    <button class="primary" aria-expanded={showForm} onclick={() => (showForm = !showForm)}
+      >+ {$_('common.new')}</button
+    >
   </header>
 
   {#if showForm}
@@ -74,9 +78,18 @@
         create();
       }}
     >
-      <input bind:value={name} placeholder={$_('apiaries.name_ph')} />
-      <input bind:value={address} placeholder={$_('apiaries.address')} />
-      <input bind:value={note} placeholder={$_('apiaries.note')} />
+      <label class="field">
+        <span>{$_('apiaries.name')}</span>
+        <input bind:value={name} placeholder={$_('apiaries.name_ph')} />
+      </label>
+      <label class="field">
+        <span>{$_('apiaries.address')}</span>
+        <input bind:value={address} autocomplete="street-address" />
+      </label>
+      <label class="field">
+        <span>{$_('apiaries.note')}</span>
+        <input bind:value={note} />
+      </label>
       <LocationPicker bind:lat bind:lng bind:address />
       {#if saveError}
         <p class="error" role="alert">{$_('common.save_failed', { values: { msg: saveError } })}</p>
@@ -115,7 +128,7 @@
             <span class="badge"
               >{$_('apiaries.hives_count', { values: { n: counts[a.id] ?? 0 } })}</span
             >
-            <span class="chev">›</span>
+            <span class="chev" aria-hidden="true">›</span>
           </a>
         </li>
       {/each}
@@ -140,7 +153,7 @@
     font-size: 1.9rem;
   }
   .muted {
-    color: var(--ink-soft);
+    color: var(--text-soft);
   }
   .empty {
     text-align: center;
@@ -149,50 +162,57 @@
   .mapwrap {
     margin-bottom: 18px;
   }
-  .primary {
-    background: var(--honey);
-    color: #fff;
-    border: none;
+  .primary,
+  .ghost {
+    min-height: 44px;
     border-radius: 11px;
     padding: 10px 16px;
+    font: inherit;
     font-weight: 700;
-    font-family: inherit;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(199, 127, 34, 0.28);
+  }
+  .primary {
+    background: var(--accent);
+    color: var(--on-accent);
+    border: none;
   }
   .primary:disabled {
     opacity: 0.5;
     cursor: default;
-    box-shadow: none;
   }
   .ghost {
     background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    padding: 10px 16px;
-    font-weight: 600;
-    font-family: inherit;
-    cursor: pointer;
-    color: var(--ink);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
   }
   .card {
-    background: var(--cream2);
-    border: 1px solid var(--line);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 16px;
   }
   .form {
     padding: 16px;
     display: grid;
-    gap: 10px;
+    gap: 12px;
     margin-bottom: 18px;
   }
-  .form input {
+  .field {
+    display: grid;
+    gap: 4px;
+  }
+  .field span {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-soft);
+  }
+  .field input {
     font: inherit;
-    padding: 11px 13px;
-    border: 1px solid var(--line);
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
     border-radius: 10px;
-    background: #fff;
-    color: var(--ink);
+    background: var(--surface);
+    color: var(--text);
   }
   .form .actions {
     display: flex;
@@ -201,9 +221,9 @@
     margin-top: 4px;
   }
   .form .error {
-    color: #a03d2a;
-    background: rgba(160, 61, 42, 0.08);
-    border: 1px solid rgba(160, 61, 42, 0.25);
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
     border-radius: 10px;
     padding: 9px 12px;
     font-size: 0.85rem;
@@ -218,11 +238,13 @@
     align-items: center;
     gap: 14px;
     padding: 14px 16px;
+    min-height: 44px;
     text-decoration: none;
-    color: var(--ink);
+    color: var(--text);
   }
   .lead .pin {
-    font-size: 1.4rem;
+    display: flex;
+    color: var(--accent-text);
   }
   .body {
     flex: 1;
@@ -231,14 +253,15 @@
   .body strong {
     display: block;
     font-weight: 700;
+    overflow-wrap: anywhere;
   }
   .body small {
-    color: var(--ink-soft);
+    color: var(--text-soft);
     font-size: 0.85rem;
   }
   .badge {
-    background: rgba(92, 107, 74, 0.15);
-    color: #41502f;
+    background: color-mix(in srgb, var(--ok) 16%, transparent);
+    color: var(--text);
     font-weight: 700;
     font-size: 0.78rem;
     padding: 5px 11px;
@@ -246,7 +269,7 @@
     white-space: nowrap;
   }
   .chev {
-    color: var(--ink-soft);
+    color: var(--text-soft);
     font-size: 1.4rem;
   }
 </style>
