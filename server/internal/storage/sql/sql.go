@@ -38,6 +38,9 @@ var migrationsFS embed.FS
 // mysqlTextDefault matches literal defaults on TEXT columns (see translate).
 var mysqlTextDefault = regexp.MustCompile(`TEXT NOT NULL DEFAULT ('[^']*')`)
 
+// postgresReal matches the REAL column type (see translate).
+var postgresReal = regexp.MustCompile(`\bREAL\b`)
+
 type Store struct {
 	db     *sqlx.DB
 	driver config.DBDriver
@@ -90,19 +93,19 @@ func (s *Store) Close() error                 { return s.db.Close() }
 func (s *Store) DB() *sqlx.DB { return s.db }
 
 // Migrate runs all embedded .sql files exactly once.
-func (s *Store) Migrate(ctx context.Context) error {
+func (s *Store) Migrate(ctx context.Context) error { return s.migrateUpTo(ctx, "") }
+
+// migrateUpTo applies the pending migrations in order and stops after the
+// file named last ("" applies all of them).
+func (s *Store) migrateUpTo(ctx context.Context, last string) error {
 	if _, err := s.db.ExecContext(ctx, s.translate(
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMP)`)); err != nil {
 		return err
 	}
-	entries, _ := migrationsFS.ReadDir("migrations")
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
-
-	for _, name := range names {
+	for _, name := range migrationNames() {
+		if last != "" && name > last {
+			break
+		}
 		var dummy string
 		err := s.db.GetContext(ctx, &dummy,
 			s.db.Rebind(`SELECT version FROM schema_migrations WHERE version = ?`), name)
@@ -119,12 +122,38 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return nil
 }
 
+// migrationNames lists the embedded migration files in the order they apply.
+func migrationNames() []string {
+	entries, _ := migrationsFS.ReadDir("migrations")
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	return names
+}
+
+// migrationDriver returns the one dialect a migration is written for, taken
+// from its file name (NNNN_name.<driver>.sql), or "" for a portable file.
+func migrationDriver(name string) config.DBDriver {
+	parts := strings.Split(name, ".")
+	if len(parts) == 3 {
+		return config.DBDriver(parts[1])
+	}
+	return ""
+}
+
 // runMigration executes one .sql file and records its version, both in a
 // single transaction: a mid-file failure rolls back cleanly on Postgres and
 // SQLite (transactional DDL) instead of leaving half-applied ALTERs behind.
 // MySQL auto-commits DDL, so there this degrades to statement granularity.
+// A file written for another dialect is recorded without being run, so the
+// version list reads the same on every backend.
 func (s *Store) runMigration(ctx context.Context, name string) error {
-	raw, _ := migrationsFS.ReadFile("migrations/" + name)
+	var raw []byte
+	if only := migrationDriver(name); only == "" || only == s.driver {
+		raw, _ = migrationsFS.ReadFile("migrations/" + name)
+	}
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
@@ -166,8 +195,9 @@ func isMySQLDuplicate(err error) bool {
 func (s *Store) translate(stmt string) string {
 	switch s.driver {
 	case config.DriverPostgres:
-		// BOOLEAN/TIMESTAMP are native; nothing to do
-		return stmt
+		// BOOLEAN/TIMESTAMP are native. REAL is a 4-byte float in Postgres
+		// but an 8-byte double in SQLite and MariaDB.
+		return postgresReal.ReplaceAllString(stmt, "DOUBLE PRECISION")
 	case config.DriverMySQL:
 		r := strings.NewReplacer(
 			// MySQL cannot index TEXT without a prefix length; PK ids are
