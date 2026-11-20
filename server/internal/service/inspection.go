@@ -252,7 +252,7 @@ func (s *InspectionService) RemoveInspectionPhoto(ctx context.Context, req *wv1.
 			return err
 		}
 		for i := range matches {
-			if err := t.del("photo", matches[i].ID, scope); err != nil {
+			if err := t.delPhoto(&matches[i], scope); err != nil {
 				return err
 			}
 		}
@@ -268,6 +268,22 @@ func (s *InspectionService) RemoveInspectionPhoto(ctx context.Context, req *wv1.
 		return nil, writeErr(err)
 	}
 	return &wv1.RemoveInspectionPhotoResponse{Inspection: out}, nil
+}
+
+// delPhoto deletes a photo on behalf of the caller.
+//
+// The delete is merged per field like any other change, so it only takes
+// effect when its stamp is greater than the stamp of the photo's "deleted"
+// field. A fresh stamp from the server clock is not enough for that: the
+// clock does not survive a restart, and the photo may have been written with
+// a stamp ahead of it (a device clock up to sync.MaxDrift fast, or another
+// clock of the same millisecond whose node id sorts higher). The delete
+// would then lose the merge while the call reports success and the photo
+// stays. Folding the photo's stamp into the clock first makes the delete
+// win, the way the server's own photo deletes do (Photos.stampAfter).
+func (t *txWriter) delPhoto(row *photoRow, scope string) error {
+	_ = t.w.hlc.Recv(row.Clock["deleted"])
+	return t.del("photo", row.ID, scope)
 }
 
 // removeInlineElement removes an element of photo_keys that has no photo

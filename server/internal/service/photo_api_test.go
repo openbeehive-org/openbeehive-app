@@ -174,6 +174,25 @@ func TestPhotosOfTheSameMillisecondKeepTheirOrder(t *testing.T) {
 	}
 }
 
+// A photo stamped ahead of the server clock (a device clock that is fast,
+// within the allowed drift, while the server restarted) is still removed:
+// the remove must not lose the merge and leave the photo in place.
+func TestRemovePhotoWinsOverAStampAheadOfTheServerClock(t *testing.T) {
+	f := newPhotoFixture(t)
+	visit := f.newVisit(t)
+	ahead := time.Now().Add(2 * time.Minute)
+	if err := push(f.sync, ctxA, photoAt(t, "photo-1", ownerInspection, visit, ahead, 0)); err != nil {
+		t.Fatalf("push photo: %v", err)
+	}
+	rm, err := f.insp.RemoveInspectionPhoto(ctxA, &wv1.RemoveInspectionPhotoRequest{InspectionId: visit, Photo: "photo-1"})
+	if err != nil || len(rm.Inspection.Photos) != 0 {
+		t.Fatalf("remove: %v, photos %v", err, photoIDs(rm.GetInspection().GetPhotos()))
+	}
+	if row := f.photo(t, "photo-1"); row == nil || !row.Deleted || row.Thumb != "" {
+		t.Fatalf("stored photo after remove: %+v", row)
+	}
+}
+
 func TestInspectionPhotoRPCsRefuseBadInput(t *testing.T) {
 	f := newPhotoFixture(t)
 	visit := f.newVisit(t)
