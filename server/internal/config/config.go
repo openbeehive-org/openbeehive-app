@@ -128,9 +128,7 @@ type CORSConfig struct {
 }
 
 type SyncConfig struct {
-	NodeID       string // HLC node id stamped on server-side changes
-	DefaultLimit int    // pull page size default
-	MaxLimit     int    // pull page size cap
+	NodeID string // HLC node id stamped on server-side changes
 }
 
 type WebConfig struct {
@@ -297,9 +295,7 @@ func Load() (*Config, error) {
 	c.Sync = SyncConfig{
 		// A fresh random id per boot keeps server-side change stamps distinct
 		// from every other writer without any configuration.
-		NodeID:       env("NODE_ID", randomNodeID()),
-		DefaultLimit: 200,
-		MaxLimit:     500,
+		NodeID: env("NODE_ID", randomNodeID()),
 	}
 
 	// --- Embedded web (single-binary production) ---
