@@ -3,8 +3,6 @@ package sqlstore
 import (
 	"context"
 	"testing"
-
-	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
 
 // runMigrationsBefore applies the chain up to, but excluding, the given file.
@@ -63,12 +61,6 @@ func testChangeLogKeepsTenants(t *testing.T, s *Store) {
 	}
 }
 
-func TestMigration0015SQLite(t *testing.T) { testChangeLogKeepsTenants(t, openSQLite(t)) }
-
-func TestMigration0015Postgres(t *testing.T) {
-	testChangeLogKeepsTenants(t, openLive(t, config.DriverPostgres, "BEEHIVE_TEST_PG_DSN"))
-}
-
-func TestMigration0015MySQL(t *testing.T) {
-	testChangeLogKeepsTenants(t, openLive(t, config.DriverMySQL, "BEEHIVE_TEST_MYSQL_DSN"))
+func TestMigration0015(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) { testChangeLogKeepsTenants(t, b.blank(t)) })
 }

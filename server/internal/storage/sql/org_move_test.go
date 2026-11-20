@@ -12,17 +12,11 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
-// The auth storage tests run on every backend: SQLite always, Postgres and
-// MySQL/MariaDB when their DSN is set (see live_test.go).
+// The auth storage tests run on every backend the live tests run on (see
+// live_test.go).
 
-func TestAuthStorageSQLite(t *testing.T) { testAuthStorage(t, openSQLite(t)) }
-
-func TestAuthStoragePostgres(t *testing.T) {
-	testAuthStorage(t, openLive(t, config.DriverPostgres, "BEEHIVE_TEST_PG_DSN"))
-}
-
-func TestAuthStorageMySQL(t *testing.T) {
-	testAuthStorage(t, openLive(t, config.DriverMySQL, "BEEHIVE_TEST_MYSQL_DSN"))
+func TestAuthStorage(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) { testAuthStorage(t, b.blank(t)) })
 }
 
 func testAuthStorage(t *testing.T, s *Store) {
@@ -327,27 +321,36 @@ func TestRewritePayload(t *testing.T) {
 // workspace or be known not to hold records. A new synced table that is in
 // neither list would silently stay behind when single-user data is adopted.
 func TestOrgScopedTablesAreComplete(t *testing.T) {
-	s := openSQLite(t)
-	if err := s.Migrate(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	notRecords := map[string]bool{"member": true, "invite": true, "api_key": true}
-	var got []string
-	if err := s.db.Select(&got, `
-		SELECT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) c
-		WHERE m.type = 'table' AND c.name = 'organization_id'`); err != nil {
-		t.Fatal(err)
-	}
-	var records []string
-	for _, name := range got {
-		if !notRecords[name] {
-			records = append(records, name)
+	onEachBackend(t, func(t *testing.T, b backend) {
+		s := b.blank(t)
+		if err := s.Migrate(context.Background()); err != nil {
+			t.Fatal(err)
 		}
-	}
-	want := append([]string(nil), orgScopedTables...)
-	sort.Strings(records)
-	sort.Strings(want)
-	if fmt.Sprint(records) != fmt.Sprint(want) {
-		t.Fatalf("tables with organization_id: %v\norgScopedTables:               %v\nadd the new table to orgScopedTables (or to notRecords if it holds no records)", records, want)
-	}
+		notRecords := map[string]bool{"member": true, "invite": true, "api_key": true}
+		// Each dialect has its own catalogue.
+		query := map[config.DBDriver]string{
+			config.DriverSQLite: `SELECT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) c
+				WHERE m.type = 'table' AND c.name = 'organization_id'`,
+			config.DriverPostgres: `SELECT table_name FROM information_schema.columns
+				WHERE column_name = 'organization_id' AND table_schema = current_schema()`,
+			config.DriverMySQL: `SELECT TABLE_NAME FROM information_schema.COLUMNS
+				WHERE COLUMN_NAME = 'organization_id' AND TABLE_SCHEMA = DATABASE()`,
+		}[s.driver]
+		var got []string
+		if err := s.db.Select(&got, query); err != nil {
+			t.Fatal(err)
+		}
+		var records []string
+		for _, name := range got {
+			if !notRecords[name] {
+				records = append(records, name)
+			}
+		}
+		want := append([]string(nil), orgScopedTables...)
+		sort.Strings(records)
+		sort.Strings(want)
+		if fmt.Sprint(records) != fmt.Sprint(want) {
+			t.Fatalf("tables with organization_id: %v\norgScopedTables:               %v\nadd the new table to orgScopedTables (or to notRecords if it holds no records)", records, want)
+		}
+	})
 }

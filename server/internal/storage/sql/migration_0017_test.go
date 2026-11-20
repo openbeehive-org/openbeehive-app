@@ -5,23 +5,13 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
 
 // 0017 makes the optional numbers of an inspection nullable by rebuilding
 // the table. The copy must keep every stored value, the result must accept
 // NULL, and the new columns must exist, on every dialect.
-func TestInspectionNumbersBecomeNullableSQLite(t *testing.T) {
-	testInspectionNumbersNullable(t, openSQLite(t))
-}
-
-func TestInspectionNumbersBecomeNullablePostgres(t *testing.T) {
-	testInspectionNumbersNullable(t, openLive(t, config.DriverPostgres, "BEEHIVE_TEST_PG_DSN"))
-}
-
-func TestInspectionNumbersBecomeNullableMySQL(t *testing.T) {
-	testInspectionNumbersNullable(t, openLive(t, config.DriverMySQL, "BEEHIVE_TEST_MYSQL_DSN"))
+func TestInspectionNumbersBecomeNullable(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) { testInspectionNumbersNullable(t, b.blank(t)) })
 }
 
 func testInspectionNumbersNullable(t *testing.T, s *Store) {
