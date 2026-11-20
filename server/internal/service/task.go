@@ -9,6 +9,7 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 type TaskService struct {
@@ -23,8 +24,23 @@ func taskScope(userID, apiaryID string) string {
 	if apiaryID != "" {
 		return apiaryID
 	}
-	return "user:" + userID
+	return personalScope(userID)
 }
+
+// personalScope is the sync scope only one user's devices pull.
+func personalScope(userID string) string { return "user:" + userID }
+
+// visibleTasks restricts a task query to what one member may see: the tasks
+// shared with the workspace (tied to an apiary) and the member's own personal
+// ones. A personal task has no owner column; it is the task whose changes
+// were written to that member's personal scope, which the change log records.
+// The query takes the member's personal scope as its argument.
+const visibleTasks = ` AND (COALESCE(apiary_id, '') <> '' OR id IN
+	(SELECT entity_id FROM change_log WHERE scope_id = ? AND entity = 'task'))`
+
+// tasksInOrder: open tasks first, then by due date with undated tasks last.
+// The dialects disagree on where NULL sorts, so the order spells it out.
+const tasksInOrder = ` ORDER BY done ASC, CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at ASC, id ASC`
 
 func (s *TaskService) CreateTask(ctx context.Context, req *wv1.CreateTaskRequest) (*wv1.CreateTaskResponse, error) {
 	id, ok := auth.FromContext(ctx)
@@ -61,8 +77,8 @@ func (s *TaskService) CreateTask(ctx context.Context, req *wv1.CreateTaskRequest
 func (s *TaskService) ListTasks(ctx context.Context, req *wv1.ListTasksRequest) (*wv1.ListTasksResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	limit, offset := pageParams(req.Page)
-	where := ` FROM task WHERE organization_id = ? AND deleted = FALSE`
-	args := []any{id.OrgID}
+	where := ` FROM task WHERE organization_id = ? AND deleted = FALSE` + visibleTasks
+	args := []any{id.OrgID, personalScope(id.UserID)}
 	if req.HiveId != "" {
 		where += ` AND hive_id = ?`
 		args = append(args, req.HiveId)
@@ -74,7 +90,7 @@ func (s *TaskService) ListTasks(ctx context.Context, req *wv1.ListTasksRequest) 
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY done ASC, due_at ASC LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+tasksInOrder+` LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)
@@ -88,38 +104,61 @@ func (s *TaskService) ListTasks(ctx context.Context, req *wv1.ListTasksRequest) 
 
 func (s *TaskService) SetTaskDone(ctx context.Context, req *wv1.SetTaskDoneRequest) (*wv1.SetTaskDoneResponse, error) {
 	id, _ := auth.FromContext(ctx)
+	out, err := s.write(ctx, id, req.Id, map[string]any{"done": b2i(req.Done)})
+	if err != nil {
+		return nil, err
+	}
+	return &wv1.SetTaskDoneResponse{Task: out}, nil
+}
+
+// write applies fields to a task the caller may see and returns the result.
+func (s *TaskService) write(ctx context.Context, id auth.Identity, taskID string, fields map[string]any) (*wv1.Task, error) {
 	var out map[string]any
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("task", req.Id)
+		scope, err := t.taskScope(taskID)
 		if err != nil {
 			return err
 		}
-		if err := t.upsert("task", req.Id, taskScope(id.UserID, rs(cur["apiary_id"])),
-			map[string]any{"done": b2i(req.Done)}); err != nil {
+		if err := t.upsert("task", taskID, scope, fields); err != nil {
 			return err
 		}
-		out, err = t.row("task", req.Id)
+		out, err = t.row("task", taskID)
 		return err
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return &wv1.SetTaskDoneResponse{Task: taskFromRow(out)}, nil
+	return taskFromRow(out), nil
 }
 
 func (s *TaskService) DeleteTask(ctx context.Context, req *wv1.DeleteTaskRequest) (*wv1.DeleteTaskResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("task", req.Id)
+		scope, err := t.taskScope(req.Id)
 		if err != nil {
 			return err
 		}
-		return t.del("task", req.Id, taskScope(id.UserID, rs(cur["apiary_id"])))
+		return t.del("task", req.Id, scope)
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
 	return &wv1.DeleteTaskResponse{}, nil
+}
+
+// taskScope returns the sync scope of a task the caller may see, or
+// storage.ErrNotFound (also for another member's personal task).
+func (t *txWriter) taskScope(id string) (string, error) {
+	rows, err := queryMaps(t.ctx, t.tx, `SELECT apiary_id FROM task
+		WHERE id = ? AND organization_id = ? AND deleted = FALSE`+visibleTasks,
+		id, t.id.OrgID, personalScope(t.id.UserID))
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 {
+		return "", storage.ErrNotFound
+	}
+	return taskScope(t.id.UserID, rs(rows[0]["apiary_id"])), nil
 }
 
 // resolveApiary returns the apiary a task belongs to: the hive's when a hive

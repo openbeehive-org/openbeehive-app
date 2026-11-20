@@ -23,50 +23,61 @@ func NewStatsService(w *Writer) *StatsService { return &StatsService{w: w} }
 
 const defaultDueDays = 21 // the app highlights hives unvisited for 21+ days
 
+// dashboardQuery is what every dashboard figure is computed for: one
+// member of one tenant at one point in time.
+type dashboardQuery struct {
+	db        queryer
+	org, user string
+	now       time.Time
+	threshold int
+}
+
 func (s *StatsService) GetDashboard(ctx context.Context, req *wv1.DashboardRequest) (*wv1.DashboardResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	db := s.w.db
-	org := id.OrgID
-	threshold := int(req.ThresholdDays)
-	if threshold <= 0 {
-		threshold = defaultDueDays
+	q := dashboardQuery{db: s.w.db, org: id.OrgID, user: id.UserID, now: time.Now().UTC(), threshold: int(req.ThresholdDays)}
+	if q.threshold <= 0 {
+		q.threshold = defaultDueDays
 	}
-	now := time.Now().UTC()
 	res := &wv1.DashboardResponse{}
-
-	var err error
-	if res.Apiaries, err = count32(ctx, db, `SELECT COUNT(*) FROM apiary WHERE organization_id = ? AND deleted = FALSE`, org); err != nil {
-		return nil, writeErr(err)
-	}
-	if res.Hives, err = count32(ctx, db, `SELECT COUNT(*) FROM hive WHERE organization_id = ? AND deleted = FALSE`, org); err != nil {
-		return nil, writeErr(err)
-	}
-	// A hive has one current queen however many rows are flagged active (two
-	// devices that requeened offline leave two), and a deleted hive has none.
-	if res.ActiveQueens, err = count32(ctx, db, `SELECT COUNT(DISTINCT hive_id) FROM queen
-		WHERE organization_id = ? AND deleted = FALSE AND active = TRUE
-		  AND hive_id IN (SELECT id FROM hive WHERE organization_id = ? AND deleted = FALSE)`, org, org); err != nil {
-		return nil, writeErr(err)
-	}
-	for _, fill := range []func(context.Context, queryer, string, time.Time, int, *wv1.DashboardResponse) error{
-		dashboardTasks, dashboardHoney, dashboardDue, dashboardRecent,
+	for _, fill := range []func(context.Context, dashboardQuery, *wv1.DashboardResponse) error{
+		dashboardCounts, dashboardTasks, dashboardHoney, dashboardDue, dashboardRecent,
 	} {
-		if err := fill(ctx, db, org, now, threshold, res); err != nil {
+		if err := fill(ctx, q, res); err != nil {
 			return nil, writeErr(err)
 		}
 	}
 	return res, nil
 }
 
-// dashboardTasks: open, overdue, and the next five by due date.
-func dashboardTasks(ctx context.Context, db queryer, org string, now time.Time, _ int, res *wv1.DashboardResponse) error {
-	tasks, err := queryMaps(ctx, db, `SELECT * FROM task WHERE organization_id = ? AND deleted = FALSE AND done = FALSE ORDER BY due_at ASC`, org)
+// dashboardCounts: apiaries, hives and queens in office. A hive has one
+// current queen however many rows are flagged active (two devices that
+// requeened offline leave two), and a deleted hive has none.
+func dashboardCounts(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
+	var err error
+	if res.Apiaries, err = count32(ctx, q.db, `SELECT COUNT(*) FROM apiary WHERE organization_id = ? AND deleted = FALSE`, q.org); err != nil {
+		return err
+	}
+	if res.Hives, err = count32(ctx, q.db, `SELECT COUNT(*) FROM hive WHERE organization_id = ? AND deleted = FALSE`, q.org); err != nil {
+		return err
+	}
+	res.ActiveQueens, err = count32(ctx, q.db, `SELECT COUNT(DISTINCT hive_id) FROM queen
+		WHERE organization_id = ? AND deleted = FALSE AND active = TRUE
+		  AND hive_id IN (SELECT id FROM hive WHERE organization_id = ? AND deleted = FALSE)`, q.org, q.org)
+	return err
+}
+
+// dashboardTasks: open, overdue, and the next five by due date, among the
+// tasks this member may see.
+func dashboardTasks(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
+	tasks, err := queryMaps(ctx, q.db, `SELECT * FROM task
+		WHERE organization_id = ? AND deleted = FALSE AND done = FALSE`+visibleTasks+tasksInOrder,
+		q.org, personalScope(q.user))
 	if err != nil {
 		return err
 	}
 	res.OpenTasks = i32(int64(len(tasks)))
 	for _, r := range tasks {
-		if due, ok := rtime(r["due_at"]); ok && due.Before(now) {
+		if due, ok := rtime(r["due_at"]); ok && due.Before(q.now) {
 			res.OverdueTasks++
 		}
 		if len(res.NextTasks) < 5 {
@@ -77,8 +88,8 @@ func dashboardTasks(ctx context.Context, db queryer, org string, now time.Time, 
 }
 
 // dashboardHoney: this year's total and per-month history from the HARVEST fact rows.
-func dashboardHoney(ctx context.Context, db queryer, org string, now time.Time, _ int, res *wv1.DashboardResponse) error {
-	harvests, err := queryMaps(ctx, db, `SELECT date, amount_kg FROM event WHERE organization_id = ? AND deleted = FALSE AND type = ?`, org, evHarvest)
+func dashboardHoney(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
+	harvests, err := queryMaps(ctx, q.db, `SELECT date, amount_kg FROM event WHERE organization_id = ? AND deleted = FALSE AND type = ?`, q.org, evHarvest)
 	if err != nil {
 		return err
 	}
@@ -89,7 +100,7 @@ func dashboardHoney(ctx context.Context, db queryer, org string, now time.Time, 
 			continue
 		}
 		kg := rf(r["amount_kg"])
-		if d.Year() == now.Year() {
+		if d.Year() == q.now.Year() {
 			res.HoneyKgSeason += kg
 		}
 		months[[2]int{d.Year(), int(d.Month())}] += kg
@@ -105,15 +116,15 @@ func dashboardHoney(ctx context.Context, db queryer, org string, now time.Time, 
 }
 
 // dashboardDue: days since the last visit per hive (never = -1), hives at or past the threshold.
-func dashboardDue(ctx context.Context, db queryer, org string, now time.Time, threshold int, res *wv1.DashboardResponse) error {
-	hives, err := queryMaps(ctx, db, `SELECT h.id, h.name, a.name AS apiary_name
+func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
+	hives, err := queryMaps(ctx, q.db, `SELECT h.id, h.name, a.name AS apiary_name
 		FROM hive h LEFT JOIN apiary a ON a.id = h.apiary_id AND a.organization_id = h.organization_id
-		WHERE h.organization_id = ? AND h.deleted = FALSE ORDER BY h.name`, org)
+		WHERE h.organization_id = ? AND h.deleted = FALSE ORDER BY h.name, h.id`, q.org)
 	if err != nil {
 		return err
 	}
-	last, err := queryMaps(ctx, db, `SELECT hive_id, MAX(date) AS last_date FROM inspection
-		WHERE organization_id = ? AND deleted = FALSE GROUP BY hive_id`, org)
+	last, err := queryMaps(ctx, q.db, `SELECT hive_id, MAX(date) AS last_date FROM inspection
+		WHERE organization_id = ? AND deleted = FALSE GROUP BY hive_id`, q.org)
 	if err != nil {
 		return err
 	}
@@ -126,8 +137,8 @@ func dashboardDue(ctx context.Context, db queryer, org string, now time.Time, th
 	for _, h := range hives {
 		days := int32(-1)
 		if d, ok := lastByHive[rs(h["id"])]; ok {
-			days = i32(int64(now.Sub(d).Hours() / 24))
-			if days < i32(int64(threshold)) {
+			days = i32(int64(q.now.Sub(d).Hours() / 24))
+			if days < i32(int64(q.threshold)) {
 				continue
 			}
 		}
@@ -146,8 +157,10 @@ func dashboardDue(ctx context.Context, db queryer, org string, now time.Time, th
 }
 
 // dashboardRecent: the ten latest inspections.
-func dashboardRecent(ctx context.Context, db queryer, org string, _ time.Time, _ int, res *wv1.DashboardResponse) error {
-	recent, err := queryMaps(ctx, db, `SELECT * FROM inspection WHERE organization_id = ? AND deleted = FALSE ORDER BY date DESC LIMIT 10`, org)
+func dashboardRecent(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
+	recent, err := queryMaps(ctx, q.db, `SELECT * FROM inspection
+		WHERE organization_id = ? AND deleted = FALSE
+		ORDER BY date DESC, id DESC LIMIT 10`, q.org)
 	if err != nil {
 		return err
 	}
