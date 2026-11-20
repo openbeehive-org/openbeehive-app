@@ -7,6 +7,7 @@
   import NavIcon from '#lib/components/NavIcon.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
   import { toast } from '#lib/toast.js';
+  import { fetchInstance } from '#lib/instance.js';
   import { get } from 'svelte/store';
 
   const api = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
@@ -53,7 +54,7 @@
       // with it the first data on a fresh device) starts a round-trip earlier.
       const tok = localStorage.getItem('session');
       const [instRes, me] = await Promise.all([
-        fetchJSON('/auth/instance'),
+        fetchInstance(),
         fetchJSON('/auth/me', { headers: tok ? { Authorization: `Bearer ${tok}` } : {} })
       ]);
       const inst = instRes ?? {};

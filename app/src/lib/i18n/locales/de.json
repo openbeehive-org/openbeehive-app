@@ -474,6 +474,12 @@
     "delete_theirs_confirm": "Den Schlüssel dieses Mitglieds entfernen? Dessen Skripte funktionieren damit sofort nicht mehr."
   },
   "geo": {
+    "no_coordinates": "Noch kein Standort hat Koordinaten. Lege in den Einstellungen eines Standorts eine Position fest, um ihn auf der Karte zu sehen.",
+    "map_offline": "Die Karte ist offline nicht verfügbar.",
+    "zoom_in": "Vergrößern",
+    "zoom_out": "Verkleinern",
+    "pin": "Position des Standorts",
+    "pin_hint": "Tippe auf die Karte oder ziehe den Pin, um die Position festzulegen.",
     "searching": "Adresse wird gesucht…",
     "not_found": "Keine Übereinstimmung für diese Adresse — setze stattdessen den Pin auf der Karte.",
     "unreachable": "Die Adresssuche ist gerade nicht erreichbar — prüfe die Verbindung oder setze den Pin auf der Karte.",

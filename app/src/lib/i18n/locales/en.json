@@ -474,6 +474,12 @@
     "delete_theirs_confirm": "Remove this member's key? Their scripts using it stop working immediately."
   },
   "geo": {
+    "no_coordinates": "No apiary has coordinates yet. Set a location in an apiary's settings to see it on the map.",
+    "map_offline": "The map is not available offline.",
+    "zoom_in": "Zoom in",
+    "zoom_out": "Zoom out",
+    "pin": "Apiary position",
+    "pin_hint": "Tap the map or drag the pin to set the position.",
     "searching": "Looking up the address…",
     "not_found": "No match for this address — drop the pin on the map instead.",
     "unreachable": "Address search is unavailable right now — check your connection or drop the pin on the map.",

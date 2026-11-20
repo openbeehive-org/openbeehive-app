@@ -1,0 +1,11 @@
+/* The map pin: a teardrop drawn with CSS, used by lib/map.ts (pinIcon). */
+.obh-pin span {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50% 50% 50% 0;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 5px var(--shadow);
+}

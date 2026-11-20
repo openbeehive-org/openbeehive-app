@@ -1,30 +1,30 @@
 <script lang="ts">
   import 'leaflet/dist/leaflet.css';
-  import { onMount, onDestroy } from 'svelte';
+  import '#lib/map.css';
+  import { _ } from 'svelte-i18n';
+  import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import type * as Leaflet from 'leaflet';
-  import { popupHtml } from '#lib/map.js';
+  import { getMapConfig, type MapConfig } from '#lib/instance.js';
+  import { createMap, pinIcon, popupHtml, type LeafletLib } from '#lib/map.js';
+  import { online } from '#lib/online.js';
 
-  type LeafletLib = typeof import('leaflet');
   type ApiaryPin = { id: string; name: string; lat: number; lng: number };
 
   let { apiaries = [] }: { apiaries: ApiaryPin[] } = $props();
-  let el: HTMLDivElement;
+  // Unknown until the server's map settings (or the remembered ones) are in.
+  let config = $state<MapConfig | null>(null);
   let map: Leaflet.Map | null = null;
   let L: LeafletLib | null = null;
   let layer: Leaflet.LayerGroup | null = null;
 
   const located = $derived(apiaries.filter((a) => a.lat || a.lng));
 
-  // Honey-coloured teardrop pin as an HTML marker (avoids bundler image issues).
-  function pin(Lib: LeafletLib) {
-    return Lib.divIcon({
-      className: 'obh-pin',
-      html: '<span></span>',
-      iconSize: [26, 26],
-      iconAnchor: [13, 26]
-    });
-  }
+  // Asked again when the connection returns, in case the first try failed.
+  $effect(() => {
+    $online;
+    void getMapConfig().then((c) => (config = c));
+  });
 
   function render() {
     if (!map || !L) return;
@@ -32,7 +32,7 @@
     layer = L.layerGroup().addTo(map);
     const pts: Leaflet.LatLngTuple[] = [];
     for (const a of located) {
-      const m = L.marker([a.lat, a.lng], { icon: pin(L) }).addTo(layer);
+      const m = L.marker([a.lat, a.lng], { icon: pinIcon(L), title: a.name }).addTo(layer);
       m.bindPopup(popupHtml(a.name));
       m.on('click', () => goto(`/apiaries/${a.id}`));
       pts.push([a.lat, a.lng]);
@@ -42,34 +42,49 @@
     else if (pts.length > 1) map.fitBounds(pts, { padding: [40, 40], maxZoom: 14 });
   }
 
-  onMount(async () => {
-    L = (await import('leaflet')).default;
-    map = L.map(el, { zoomControl: true, attributionControl: true }).setView([50.5, 9.5], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
-    render();
-    setTimeout(() => map?.invalidateSize(), 60);
-  });
+  // Builds the map when its container is shown and removes it when the
+  // container goes away (offline), so Leaflet and the tiles load only then.
+  function mount(el: HTMLDivElement) {
+    let gone = false;
+    const t = get(_);
+    if (config) {
+      void createMap(el, config, {
+        center: [50.5, 9.5],
+        zoom: 5,
+        zoomIn: t('geo.zoom_in'),
+        zoomOut: t('geo.zoom_out')
+      }).then((created) => {
+        if (gone) return created.map.remove();
+        ({ L, map } = created);
+        render();
+      });
+    }
+    return {
+      destroy() {
+        gone = true;
+        map?.remove();
+        map = null;
+        layer = null;
+      }
+    };
+  }
 
   // Re-render markers when the apiary set changes.
   $effect(() => {
     located;
     render();
   });
-
-  onDestroy(() => {
-    map?.remove();
-    map = null;
-  });
 </script>
 
-<div class="map" bind:this={el}></div>
-{#if located.length === 0}
-  <p class="hint">
-    No apiary has coordinates yet: set a location in an apiary's settings to place it on the map.
-  </p>
+<!-- Maps switched off by the operator: nothing is shown and nothing is requested. -->
+{#if config?.enabled}
+  {#if located.length === 0}
+    <p class="hint">{$_('geo.no_coordinates')}</p>
+  {:else if !$online}
+    <p class="placeholder">{$_('geo.map_offline')}</p>
+  {:else}
+    <div class="map" use:mount></div>
+  {/if}
 {/if}
 
 <style>
@@ -78,23 +93,18 @@
     width: 100%;
     border-radius: 16px;
     overflow: hidden;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border);
     z-index: 0;
   }
-  .hint {
-    color: var(--ink-soft);
+  .hint,
+  .placeholder {
+    color: var(--text-soft);
     font-size: 0.85rem;
-    margin-top: 10px;
     text-align: center;
   }
-  :global(.obh-pin span) {
-    display: block;
-    width: 20px;
-    height: 20px;
-    border-radius: 50% 50% 50% 0;
-    background: var(--honey, #c77f22);
-    border: 2px solid #fffdf7;
-    transform: rotate(-45deg);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  .placeholder {
+    border: 1px dashed var(--border-strong);
+    border-radius: 16px;
+    padding: 28px 16px;
   }
 </style>

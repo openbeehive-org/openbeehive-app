@@ -474,6 +474,12 @@
     "delete_theirs_confirm": "Supprimer la clé de ce membre ? Ses scripts qui l'utilisent cessent de fonctionner immédiatement."
   },
   "geo": {
+    "no_coordinates": "Aucun rucher n'a encore de coordonnées. Définissez un emplacement dans les paramètres d'un rucher pour le voir sur la carte.",
+    "map_offline": "La carte n'est pas disponible hors ligne.",
+    "zoom_in": "Zoom avant",
+    "zoom_out": "Zoom arrière",
+    "pin": "Position du rucher",
+    "pin_hint": "Touchez la carte ou faites glisser le repère pour définir la position.",
     "searching": "Recherche de l’adresse…",
     "not_found": "Aucun résultat pour cette adresse — placez plutôt le repère sur la carte.",
     "unreachable": "La recherche d’adresse est indisponible pour le moment — vérifiez la connexion ou placez le repère sur la carte.",

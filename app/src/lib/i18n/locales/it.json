@@ -474,6 +474,12 @@
     "delete_theirs_confirm": "Rimuovere la chiave di questo membro? I suoi script che la usano smettono subito di funzionare."
   },
   "geo": {
+    "no_coordinates": "Nessun apiario ha ancora le coordinate. Imposta una posizione nelle impostazioni di un apiario per vederlo sulla mappa.",
+    "map_offline": "La mappa non è disponibile offline.",
+    "zoom_in": "Ingrandisci",
+    "zoom_out": "Riduci",
+    "pin": "Posizione dell'apiario",
+    "pin_hint": "Tocca la mappa o trascina il segnaposto per impostare la posizione.",
     "searching": "Ricerca dell’indirizzo…",
     "not_found": "Nessuna corrispondenza per questo indirizzo: posiziona il segnaposto sulla mappa.",
     "unreachable": "La ricerca dell’indirizzo non è al momento disponibile: controlla la connessione o posiziona il segnaposto sulla mappa.",

@@ -1,24 +1,33 @@
 <script lang="ts">
   import 'leaflet/dist/leaflet.css';
-  import { onMount, onDestroy } from 'svelte';
+  import '#lib/map.css';
+  import { onDestroy } from 'svelte';
   import { _ } from 'svelte-i18n';
+  import { get } from 'svelte/store';
   import { geocode, reverseGeocode, fmtCoords } from '#lib/geocode.js';
+  import { getMapConfig, type MapConfig } from '#lib/instance.js';
+  import { createMap, pinIcon, type LeafletLib } from '#lib/map.js';
+  import { online } from '#lib/online.js';
   import { Check } from '@lucide/svelte';
   import type * as Leaflet from 'leaflet';
-
-  type LeafletLib = typeof import('leaflet');
 
   // Two-way bound: the parent's address input and the pin stay in sync.
   // Typing an address geocodes it and moves the pin; moving the pin (drag or
   // map click) reverse-geocodes and rewrites the address, or falls back to
   // plain GPS coordinates when no address is known for the spot.
+  //
+  // Without a map (switched off by the operator, or offline) the position is
+  // typed as latitude / longitude instead. A parent that has its own
+  // coordinate fields passes coordInputs={false}.
   let {
     lat = $bindable(0),
     lng = $bindable(0),
-    address = $bindable('')
-  }: { lat?: number; lng?: number; address?: string } = $props();
+    address = $bindable(''),
+    coordInputs = true
+  }: { lat?: number; lng?: number; address?: string; coordInputs?: boolean } = $props();
 
-  let el: HTMLDivElement;
+  // Unknown until the server's map settings (or the remembered ones) are in.
+  let config = $state<MapConfig | null>(null);
   let map: Leaflet.Map | null = null;
   let L: LeafletLib | null = null;
   let marker: Leaflet.Marker | null = null;
@@ -31,19 +40,23 @@
   let selfWritten = '';
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function pin(Lib: LeafletLib) {
-    return Lib.divIcon({
-      className: 'obh-pin',
-      html: '<span></span>',
-      iconSize: [26, 26],
-      iconAnchor: [13, 26]
-    });
-  }
+  const showMap = $derived(!!config?.enabled && $online);
+  const geocoder = $derived(config?.enabled ? config.geocoderUrl : '');
+
+  // Asked again when the connection returns, in case the first try failed.
+  $effect(() => {
+    $online;
+    void getMapConfig().then((c) => (config = c));
+  });
 
   function placeMarker(a: number, b: number, pan = true) {
     if (!map || !L) return;
     if (!marker) {
-      const m = L.marker([a, b], { icon: pin(L), draggable: true }).addTo(map);
+      const m = L.marker([a, b], {
+        icon: pinIcon(L),
+        draggable: true,
+        title: get(_)('geo.pin')
+      }).addTo(map);
       m.on('dragend', () => {
         const p = m.getLatLng();
         pinMoved(p.lat, p.lng);
@@ -58,8 +71,12 @@
   async function pinMoved(a: number, b: number) {
     lat = +a.toFixed(6);
     lng = +b.toFixed(6);
+    if (!geocoder) {
+      lookup = 'found'; // no address lookup configured: the position is all there is
+      return;
+    }
     lookup = 'searching';
-    const res = await reverseGeocode(lat, lng);
+    const res = await reverseGeocode(lat, lng, geocoder);
     // No address for the spot (or no network): fall back to raw coordinates;
     // the position itself is already set either way.
     const label = res.status === 'found' ? res.value : fmtCoords(lat, lng);
@@ -83,11 +100,12 @@
   // Address typed by the user -> geocode (debounced) -> move the pin.
   $effect(() => {
     const a = address;
-    if (!map || a === selfWritten || a.trim().length < 3) return;
+    const service = geocoder;
+    if (!map || !service || a === selfWritten || a.trim().length < 3) return;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(async () => {
       lookup = 'searching';
-      const res = await geocode(a);
+      const res = await geocode(a, service);
       if (res.status !== 'found') {
         lookup = res.status; // 'none' | 'unreachable': tell the user, keep the pin
         return;
@@ -99,47 +117,89 @@
     }, 700);
   });
 
-  onMount(async () => {
-    L = (await import('leaflet')).default;
+  // Builds the map when its container is shown and removes it when the
+  // container goes away (offline), so Leaflet and the tiles load only then.
+  function mount(el: HTMLDivElement) {
+    let gone = false;
+    const t = get(_);
     const hasPos = !!(lat || lng);
-    map = L.map(el, { zoomControl: true, attributionControl: true }).setView(
-      hasPos ? [lat, lng] : [50.5, 9.5],
-      hasPos ? 14 : 5
-    );
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
-    if (hasPos) placeMarker(lat, lng, false);
-    map.on('click', (e: Leaflet.LeafletMouseEvent) => {
-      placeMarker(e.latlng.lat, e.latlng.lng, false);
-      pinMoved(e.latlng.lat, e.latlng.lng);
-    });
-    setTimeout(() => map?.invalidateSize(), 60);
-  });
+    if (config) {
+      void createMap(el, config, {
+        center: hasPos ? [lat, lng] : [50.5, 9.5],
+        zoom: hasPos ? 14 : 5,
+        zoomIn: t('geo.zoom_in'),
+        zoomOut: t('geo.zoom_out')
+      }).then((created) => {
+        if (gone) return created.map.remove();
+        L = created.L;
+        map = created.map;
+        if (lat || lng) placeMarker(lat, lng, false);
+        created.map.on('click', (e: Leaflet.LeafletMouseEvent) => {
+          placeMarker(e.latlng.lat, e.latlng.lng, false);
+          pinMoved(e.latlng.lat, e.latlng.lng);
+        });
+      });
+    }
+    return {
+      destroy() {
+        gone = true;
+        map?.remove();
+        map = null;
+        marker = null;
+      }
+    };
+  }
 
-  onDestroy(() => {
-    clearTimeout(debounceTimer);
-    map?.remove();
-    map = null;
-  });
+  onDestroy(() => clearTimeout(debounceTimer));
 </script>
 
 <div class="picker">
-  <div class="map" bind:this={el}></div>
-  {#if lookup === 'searching'}
-    <p class="hint busy"><span class="spin"></span> {$_('geo.searching')}</p>
-  {:else if lookup === 'none'}
-    <p class="hint warn">{$_('geo.not_found')}</p>
-  {:else if lookup === 'unreachable'}
-    <p class="hint warn">{$_('geo.unreachable')}</p>
-  {:else if lookup === 'found' && (lat || lng)}
-    <p class="hint ok">
-      <Check size={13} aria-hidden="true" />
-      {$_('geo.found', { values: { pos: fmtCoords(lat, lng) } })}
-    </p>
-  {:else}
-    <p class="hint">{$_('apiaries.map_hint')}</p>
+  {#if showMap}
+    <div class="map" use:mount></div>
+    {#if lookup === 'searching'}
+      <p class="hint busy"><span class="spin" aria-hidden="true"></span> {$_('geo.searching')}</p>
+    {:else if lookup === 'none'}
+      <p class="hint warn">{$_('geo.not_found')}</p>
+    {:else if lookup === 'unreachable'}
+      <p class="hint warn">{$_('geo.unreachable')}</p>
+    {:else if lookup === 'found' && (lat || lng)}
+      <p class="hint ok">
+        <Check size={13} aria-hidden="true" />
+        {$_('geo.found', { values: { pos: fmtCoords(lat, lng) } })}
+      </p>
+    {:else}
+      <p class="hint">{$_(geocoder ? 'apiaries.map_hint' : 'geo.pin_hint')}</p>
+    {/if}
+  {:else if config}
+    {#if config.enabled}
+      <p class="placeholder">{$_('geo.map_offline')}</p>
+    {/if}
+    {#if coordInputs}
+      <div class="coords">
+        <label>
+          <span>{$_('apiaries.lat')}</span>
+          <input
+            type="number"
+            inputmode="decimal"
+            step="0.000001"
+            min="-90"
+            max="90"
+            bind:value={lat}
+          />
+        </label>
+        <label>
+          <span>{$_('apiaries.lng')}</span>
+          <input
+            type="number"
+            inputmode="decimal"
+            step="0.000001"
+            min="-180"
+            max="180"
+            bind:value={lng}
+          />
+        </label>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -149,19 +209,19 @@
     width: 100%;
     border-radius: 12px;
     overflow: hidden;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border);
     z-index: 0;
   }
   .hint {
-    color: var(--ink-soft);
+    color: var(--text-soft);
     font-size: 0.8rem;
     margin: 6px 2px 0;
   }
   .hint.warn {
-    color: #a8562e;
+    color: var(--danger);
   }
   .hint.ok {
-    color: #41502f;
+    color: var(--ok);
   }
   .hint.busy,
   .hint.ok {
@@ -169,13 +229,48 @@
     align-items: center;
     gap: 6px;
   }
+  .placeholder {
+    color: var(--text-soft);
+    font-size: 0.85rem;
+    text-align: center;
+    border: 1px dashed var(--border-strong);
+    border-radius: 12px;
+    padding: 18px 14px;
+  }
+  .coords {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .coords label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .coords span {
+    color: var(--text-soft);
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+  .coords input {
+    font: inherit;
+    font-size: 1rem;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--bg);
+    color: var(--text);
+  }
   .spin {
     width: 11px;
     height: 11px;
     border-radius: 50%;
     flex: none;
-    border: 2px solid var(--line);
-    border-top-color: var(--honey, #c77f22);
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
     animation: obh-spin 0.7s linear infinite;
   }
   @keyframes obh-spin {
@@ -183,14 +278,9 @@
       transform: rotate(360deg);
     }
   }
-  :global(.obh-pin span) {
-    display: block;
-    width: 20px;
-    height: 20px;
-    border-radius: 50% 50% 50% 0;
-    background: var(--honey, #c77f22);
-    border: 2px solid #fffdf7;
-    transform: rotate(-45deg);
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+  @media (prefers-reduced-motion: reduce) {
+    .spin {
+      animation: none;
+    }
   }
 </style>

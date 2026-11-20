@@ -474,6 +474,12 @@
     "delete_theirs_confirm": "¿Eliminar la clave de este miembro? Sus scripts que la usan dejan de funcionar de inmediato."
   },
   "geo": {
+    "no_coordinates": "Ningún colmenar tiene coordenadas todavía. Define una ubicación en los ajustes de un colmenar para verlo en el mapa.",
+    "map_offline": "El mapa no está disponible sin conexión.",
+    "zoom_in": "Acercar",
+    "zoom_out": "Alejar",
+    "pin": "Posición del colmenar",
+    "pin_hint": "Toca el mapa o arrastra el pin para fijar la posición.",
     "searching": "Buscando la dirección…",
     "not_found": "Sin coincidencias para esta dirección; coloca el pin en el mapa.",
     "unreachable": "La búsqueda de direcciones no está disponible ahora; comprueba la conexión o coloca el pin en el mapa.",
