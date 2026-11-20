@@ -87,9 +87,9 @@ you open a pull request. Rules for portable SQL:
 
 `make e2e` builds the single binary and runs the Playwright suite in `app/e2e/` against it, in
 Chromium at phone size: opening offline, two devices converging, recording and correcting records, the
-second tab, the update prompt, sign-in, accounts and passkeys, names that look like markup, a policy
-and accessibility check of every main route, and the demo. CI runs it as a job of its own; it is not
-part of `make check`.
+second tab, the update prompt, a new device starting from a snapshot, sign-in, accounts and passkeys,
+names that look like markup, a policy and accessibility check of every main route, and the demo. CI
+runs it as a job of its own; it is not part of `make check`.
 
 ```bash
 cd app && npx playwright install chromium     # once; on Linux add --with-deps for the system libraries
