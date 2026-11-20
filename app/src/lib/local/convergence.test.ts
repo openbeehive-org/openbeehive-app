@@ -6,6 +6,7 @@
 // changes through the real pull path (sync.ts applyRemote), in OPPOSITE
 // orders, and must end up with identical rows.
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { get } from 'svelte/store';
 import { makeLocalDB, setCurrentDB } from '../../tests/localdb';
 import type { LocalDB } from './db';
 
@@ -21,15 +22,26 @@ vi.mock('./sync', async (importOriginal) => {
 
 const pullMock = vi.fn();
 const pushMock = vi.fn();
+const snapshotMock = vi.fn();
 vi.mock('#lib/client.js', () => ({
   syncClient: {
     push: (...a: unknown[]) => pushMock(...a),
-    pull: (...a: unknown[]) => pullMock(...a)
+    pull: (...a: unknown[]) => pullMock(...a),
+    snapshot: (...a: unknown[]) => snapshotMock(...a)
   }
 }));
 
-import { apiaries, setAdd, patch } from './repo';
+import { apiaries, setAdd, setRemove, patch } from './repo';
 import { pull, push } from './sync';
+import { resyncNotice } from './live';
+import {
+  mergeFields,
+  parseSetDelta,
+  parseORSet,
+  orValues,
+  tombstone,
+  type RowState
+} from './merge';
 
 type Change = { entity: string; entityId: string; op: number; payloadJson: string; hlc: string };
 
@@ -66,6 +78,9 @@ beforeEach(async () => {
   localStorage.setItem('obh.userId', 'userA');
   pullMock.mockReset();
   pushMock.mockReset();
+  snapshotMock.mockReset();
+  snapshotMock.mockResolvedValue({ rows: [], nextPageToken: '', cursor: '' });
+  resyncNotice.set(false);
   vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());
@@ -142,7 +157,6 @@ describe('two offline devices converge', () => {
     // Concurrently: A removes p1 (having seen it), B adds p1 again + adds p2.
     vi.setSystemTime(22_000_000);
     setCurrentDB(A);
-    const { setRemove } = await import('./repo');
     await setRemove('inspection', 'i1', 'a1', 'photo_keys', 'p1');
     const fromA = await drainOutbox(A);
 
@@ -160,7 +174,6 @@ describe('two offline devices converge', () => {
     await applyOn(A, fromB);
     await applyOn(B, fromA);
 
-    const { parseORSet, orValues } = await import('./merge');
     const a = await A.get<any>(`SELECT photo_keys FROM inspection WHERE id = 'i1'`);
     const b = await B.get<any>(`SELECT photo_keys FROM inspection WHERE id = 'i1'`);
     // Same visible set on both devices; B's unobserved re-add of p1 survives
@@ -248,5 +261,234 @@ describe('two devices syncing through a server', () => {
     );
     expect(fc.name > fc.note).toBe(true);
     expect(await A.all(`SELECT id FROM apiary`)).toHaveLength(1);
+  });
+});
+
+// A server speaking protocol 1, reduced to what matters to a device: a
+// change log with sequence numbers, the merged rows behind it, cursors
+// "<epoch>:<seq>:<tag>" that are checked like the real server checks them,
+// snapshots, compaction, and a backup that can be restored.
+type Logged = { seq: number; tag: string; change: Change };
+type ServerRow = RowState & { entity: string; id: string; fields: Record<string, unknown> };
+type ServerState = { head: number; horizon: number; log: Logged[]; rows: Map<string, ServerRow> };
+
+function protocolServer() {
+  const epoch = 7;
+  const SET_COLS: Record<string, string[]> = { inspection: ['photo_keys'] };
+  let state: ServerState = { head: 0, horizon: 0, log: [], rows: new Map() };
+  let tags = 0;
+  const tagAt = (seq: number) => state.log.find((e) => e.seq === seq)?.tag ?? '';
+  const cursorAt = (seq: number) => `${epoch}:${seq}:${tagAt(seq)}`;
+
+  function apply(ch: Change) {
+    const key = `${ch.entity}/${ch.entityId}`;
+    const setCols = SET_COLS[ch.entity] ?? [];
+    let row = state.rows.get(key);
+    if (!row) {
+      row = { entity: ch.entity, id: ch.entityId, fields: {}, clock: {}, sets: {} };
+      state.rows.set(key, row);
+    }
+    const fields: Record<string, unknown> = ch.op === 2 ? tombstone() : JSON.parse(ch.payloadJson);
+    for (const c of setCols) if (c in fields) fields[c] = parseSetDelta(fields[c]);
+    for (const c of mergeFields(row, fields, setCols, ch.hlc)) {
+      if (!setCols.includes(c)) row.fields[c] = fields[c];
+    }
+  }
+
+  // RESET (2), SNAPSHOT (1) or the sequence number to read after.
+  function check(raw: string): { status: number; after: number } {
+    if (raw === '') return state.horizon > 0 ? { status: 1, after: 0 } : { status: 0, after: 0 };
+    const [e, seq, tag] = raw.split(':');
+    const n = Number(seq);
+    if (Number(e) !== epoch || !(n >= 0) || n > state.head) return { status: 2, after: 0 };
+    if (n < state.horizon) return { status: 1, after: 0 };
+    const have = tagAt(n);
+    if (have !== '' && have !== tag) return { status: 2, after: 0 };
+    return { status: 0, after: n };
+  }
+
+  return {
+    push: async (req: { changes: Change[] }) => {
+      for (const change of req.changes) {
+        apply(change);
+        state.log.push({ seq: ++state.head, tag: `t${++tags}`, change });
+      }
+      return { rejected: [] };
+    },
+    pull: async (req: { cursor: string }) => {
+      const { status, after } = check(req.cursor);
+      if (status !== 0) return { changes: [], nextCursor: req.cursor, hasMore: false, status };
+      const page = state.log.filter((e) => e.seq > after);
+      return {
+        changes: page.map((e) => e.change),
+        nextCursor: cursorAt(state.head),
+        hasMore: false,
+        status: 0
+      };
+    },
+    snapshot: async () => ({
+      rows: [...state.rows.values()].map((r) => ({
+        entity: r.entity,
+        entityId: r.id,
+        payloadJson: JSON.stringify({ ...r.fields, ...r.sets }),
+        fieldHlcJson: JSON.stringify(r.clock)
+      })),
+      nextPageToken: '',
+      cursor: cursorAt(state.head)
+    }),
+    backup: (): ServerState => structuredClone(state),
+    restore: (b: ServerState) => {
+      state = structuredClone(b);
+    },
+    // Drops the log up to and including seq; the rows stay.
+    compact: (seq: number) => {
+      state.horizon = seq;
+      state.log = state.log.filter((e) => e.seq > seq);
+    },
+    head: () => state.head,
+    logLength: () => state.log.length,
+    row: (entity: string, id: string) => state.rows.get(`${entity}/${id}`)
+  };
+}
+
+describe('two devices and a server that loses or forgets history', () => {
+  let server: ReturnType<typeof protocolServer>;
+  const sync = async (db: LocalDB) => {
+    setCurrentDB(db);
+    await push();
+    await pull();
+  };
+  // Runs both devices until nothing is waiting anywhere.
+  const settle = async () => {
+    for (let round = 0; round < 6; round++) {
+      await sync(A);
+      await sync(B);
+    }
+    for (const db of [A, B]) expect(await db.all(`SELECT id FROM outbox`)).toHaveLength(0);
+  };
+  const tables = ['apiary', 'hive', 'inspection'];
+  const contents = async (db: LocalDB) => {
+    const out: Record<string, unknown[]> = {};
+    for (const table of tables) {
+      const rows = await db.all<any>(`SELECT * FROM ${table} ORDER BY id`);
+      // Compared by meaning: the field clock as an object, the photo set by
+      // what it shows (key and tag order differ between devices).
+      out[table] = rows.map((r) => ({
+        ...r,
+        field_hlc: JSON.parse(r.field_hlc),
+        ...('photo_keys' in r ? { photo_keys: orValues(parseORSet(r.photo_keys)).sort() } : {})
+      }));
+    }
+    return out;
+  };
+
+  beforeEach(() => {
+    server = protocolServer();
+    pushMock.mockImplementation(server.push);
+    pullMock.mockImplementation(server.pull);
+    snapshotMock.mockImplementation(server.snapshot);
+  });
+
+  it('a restored backup: nothing the devices had is lost, and both end up equal', async () => {
+    vi.setSystemTime(51_000_000);
+    setCurrentDB(A);
+    const id = await apiaries.create({ organization_id: 'org1', name: 'Orchard', note: '' });
+    await patch('inspection', 'i1', id, { organization_id: 'org1', hive_id: 'h1', deleted: 0 });
+    await setAdd('inspection', 'i1', id, 'photo_keys', 'p1');
+    await settle();
+    expect((await apiaryRow(B, id))!.name).toBe('Orchard'); // B started from a snapshot
+
+    const backup = server.backup(); // last night's backup
+
+    // After the backup: A renames, adds a photo and removes the first one,
+    // and both devices sync it.
+    vi.setSystemTime(52_000_000);
+    setCurrentDB(A);
+    await apiaries.rename(id, 'Renamed after the backup');
+    await setAdd('inspection', 'i1', id, 'photo_keys', 'p2');
+    await setRemove('inspection', 'i1', id, 'photo_keys', 'p1');
+    await settle();
+    // B writes a note it has not uploaded when the server dies.
+    vi.setSystemTime(53_000_000);
+    setCurrentDB(B);
+    await apiaries.setNote(id, 'written while the server was down');
+
+    server.restore(backup);
+    expect(server.row('apiary', id)!.fields.name).toBe('Orchard'); // the rename is gone
+
+    // A third party keeps working with the restored server, so the sequence
+    // numbers A and B had read are handed out again, to other changes.
+    for (let i = 0; i < 12; i++) {
+      await server.push({
+        changes: [
+          {
+            entity: 'hive',
+            entityId: `hx${i}`,
+            op: 1,
+            payloadJson: JSON.stringify({ apiary_id: id, name: `Hive ${i}`, deleted: 0 }),
+            hlc: stamp(53_500_000 + i, 'devC')
+          }
+        ]
+      });
+    }
+
+    vi.setSystemTime(54_000_000);
+    await settle();
+
+    // The server has the lost rename and photo changes back, and B's note.
+    expect(server.row('apiary', id)!.fields).toMatchObject({
+      name: 'Renamed after the backup',
+      note: 'written while the server was down'
+    });
+    expect(orValues(server.row('inspection', 'i1')!.sets.photo_keys!)).toEqual(['p2']);
+    // Both devices hold the same rows, including what was written after the restore.
+    const a = await contents(A);
+    expect(await contents(B)).toEqual(a);
+    expect(a.hive).toHaveLength(12);
+    expect(a.apiary![0]).toMatchObject({ name: 'Renamed after the backup' });
+    expect(a.inspection![0]).toMatchObject({ photo_keys: ['p2'] });
+    expect(get(resyncNotice)).toBe(true);
+  });
+
+  it('a compacted log: a device that was away catches up from a snapshot', async () => {
+    vi.setSystemTime(61_000_000);
+    setCurrentDB(A);
+    const id = await apiaries.create({ organization_id: 'org1', name: 'Orchard', note: '' });
+    await settle();
+
+    // B is away. A keeps working; B edits offline.
+    for (let i = 0; i < 5; i++) {
+      vi.setSystemTime(62_000_000 + i * 1000);
+      setCurrentDB(A);
+      await apiaries.rename(id, `Name ${i}`);
+      await patch('hive', `h${i}`, id, {
+        organization_id: 'org1',
+        apiary_id: id,
+        name: `H${i}`,
+        deleted: 0
+      });
+      await sync(A);
+    }
+    vi.setSystemTime(63_000_000);
+    setCurrentDB(B);
+    await apiaries.setNote(id, 'from B, offline');
+
+    // The retention period passes: everything B has not read is compacted.
+    server.compact(server.head());
+    expect(server.logLength()).toBe(0);
+
+    await settle();
+
+    const a = await contents(A);
+    expect(await contents(B)).toEqual(a);
+    expect(a.hive).toHaveLength(5);
+    expect(a.apiary![0]).toMatchObject({ name: 'Name 4', note: 'from B, offline' });
+    // Nothing was lost on the server, so nothing is announced or re-sent.
+    expect(get(resyncNotice)).toBe(false);
+
+    // A device that joins now starts from the snapshot, too.
+    const C = await makeLocalDB();
+    await sync(C);
+    expect(await contents(C)).toEqual(a);
   });
 });

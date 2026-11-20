@@ -10,10 +10,12 @@ vi.mock('./db', async () => {
 
 const pushMock = vi.fn();
 const pullMock = vi.fn();
+const snapshotMock = vi.fn();
 vi.mock('#lib/client.js', () => ({
   syncClient: {
     push: (...a: unknown[]) => pushMock(...a),
-    pull: (...a: unknown[]) => pullMock(...a)
+    pull: (...a: unknown[]) => pullMock(...a),
+    snapshot: (...a: unknown[]) => snapshotMock(...a)
   }
 }));
 
@@ -26,13 +28,14 @@ import {
   unsentCount,
   listFailed,
   retryFailed,
-  discardFailed
+  discardFailed,
+  dismissResyncNotice
 } from './sync';
 import { UpgradeRequiredSchema } from '../proto/openbeehive/v1/sync_pb';
 import { patch, setAdd, setRemove } from './repo';
 import { hlc, formatHLC, parseHLC, MAX_DRIFT_MS } from './hlc';
 import { parseFieldClock, parseORSet, orValues } from './merge';
-import { storageState } from './live';
+import { resyncNotice, storageState } from './live';
 
 const t = (ms: number, node = 'remote') => `${String(ms).padStart(15, '0')}:00000:${node}`;
 
@@ -48,6 +51,9 @@ const outbox = () => getCurrentDB().all<any>(`SELECT * FROM outbox ORDER BY hlc 
 const meta = async (k: string) =>
   (await getCurrentDB().get<{ v: string }>(`SELECT v FROM sync_meta WHERE k = ?`, [k]))?.v;
 const emptyPull = { changes: [], nextCursor: '', hasMore: false };
+// A device without a cursor loads a snapshot first; by default the
+// workspace is empty and Pull continues from 'snap'.
+const emptySnapshot = { rows: [], nextPageToken: '', cursor: 'snap' };
 
 // Every local write nudges a background sync. Tests that write through the
 // repo and then drive push/pull themselves keep that run from starting (a
@@ -72,6 +78,9 @@ beforeEach(async () => {
   pushMock.mockReset();
   pullMock.mockReset();
   pullMock.mockResolvedValue(emptyPull);
+  snapshotMock.mockReset();
+  snapshotMock.mockResolvedValue(emptySnapshot);
+  resyncNotice.set(false);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -604,16 +613,19 @@ describe('pull / applyRemote', () => {
   });
 
   // Devices that ran the cursor bug have gaps. The first pull of a fixed app
-  // starts over once; merging is idempotent, so that only fills the gaps.
-  it('re-pulls from the start once on a device with a cursor from before the fix', async () => {
+  // starts over once, from the current rows; merging is idempotent, so that
+  // only fills the gaps.
+  it('loads the current rows once on a device with a cursor from before the fix', async () => {
     await getCurrentDB().exec(`INSERT INTO sync_meta (k, v) VALUES ('cursor', '42')`);
     pullMock.mockResolvedValue({ changes: [], nextCursor: '50', hasMore: false });
 
     await pull();
-    expect(pullMock.mock.calls[0]![0]).toMatchObject({ cursor: '' });
+    expect(snapshotMock).toHaveBeenCalledOnce();
+    expect(pullMock.mock.calls[0]![0]).toMatchObject({ cursor: 'snap' });
     expect(await meta('cursor')).toBe('50');
 
     await pull(); // repaired: continues from where it is
+    expect(snapshotMock).toHaveBeenCalledOnce();
     expect(pullMock.mock.calls[1]![0]).toMatchObject({ cursor: '50' });
   });
 
@@ -650,6 +662,388 @@ describe('pull / applyRemote', () => {
     const fc = parseFieldClock(row!.field_hlc);
     expect(fc.note).toBe(t(5));
     expect(parseHLC(fc.name)).not.toBeNull();
+  });
+});
+
+// A snapshot row as the server sends it.
+const snapRow = (
+  entity: string,
+  entityId: string,
+  fields: Record<string, unknown>,
+  stamps: Record<string, string>
+) => ({
+  entity,
+  entityId,
+  payloadJson: JSON.stringify(fields),
+  fieldHlcJson: JSON.stringify(stamps)
+});
+
+const RESET = 2; // PullStatus.RESET_REQUIRED
+const SNAPSHOT = 1; // PullStatus.SNAPSHOT_REQUIRED
+
+describe('snapshot bootstrap', () => {
+  it('a device without a cursor loads the current rows page by page, then pulls', async () => {
+    snapshotMock
+      .mockResolvedValueOnce({
+        rows: [
+          snapRow(
+            'apiary',
+            'a1',
+            { organization_id: 'org1', name: 'Orchard', note: 'n', lat: 48.2, deleted: 0 },
+            { name: t(5), note: t(7), deleted: t(5) }
+          )
+        ],
+        nextPageToken: 'p2',
+        cursor: '9:40:aa'
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          snapRow('hive', 'h1', { apiary_id: 'a1', name: 'H1', deleted: 1 }, { deleted: t(8) })
+        ],
+        nextPageToken: '',
+        cursor: '9:40:aa'
+      });
+    pullMock.mockResolvedValueOnce({ changes: [], nextCursor: '9:41:bb', hasMore: false });
+
+    await pull();
+
+    expect(snapshotMock.mock.calls.map((c) => c[0].pageToken)).toEqual(['', 'p2']);
+    expect(pullMock.mock.calls[0]![0]).toMatchObject({ cursor: '9:40:aa' });
+    expect(await meta('cursor')).toBe('9:41:bb');
+    const a = await getCurrentDB().get<any>(`SELECT * FROM apiary WHERE id = 'a1'`);
+    expect(a).toMatchObject({ organization_id: 'org1', name: 'Orchard', note: 'n', lat: 48.2 });
+    // Stamps arrive per column; a column without one has none here either.
+    expect(parseFieldClock(a!.field_hlc)).toEqual({ name: t(5), note: t(7), deleted: t(5) });
+    // Tombstones are rows like any other.
+    const h = await getCurrentDB().get<any>(`SELECT * FROM hive WHERE id = 'h1'`);
+    expect(h).toMatchObject({ name: 'H1', deleted: 1 });
+  });
+
+  it('keeps no cursor from a snapshot that broke off, and starts it over', async () => {
+    const page1 = {
+      rows: [snapRow('apiary', 'a1', { name: 'Orchard', deleted: 0 }, { name: t(5) })],
+      nextPageToken: 'p2',
+      cursor: '9:40:aa'
+    };
+    snapshotMock
+      .mockResolvedValueOnce(page1)
+      .mockRejectedValueOnce(new ConnectError('gone', Code.Unavailable));
+    await expect(pull()).rejects.toThrow();
+    expect(await meta('cursor')).toBe('');
+    expect(pullMock).not.toHaveBeenCalled();
+
+    snapshotMock
+      .mockResolvedValueOnce(page1)
+      .mockResolvedValueOnce({ rows: [], nextPageToken: '', cursor: '9:40:aa' });
+    await pull();
+    expect(snapshotMock.mock.calls.map((c) => c[0].pageToken)).toEqual(['', 'p2', '', 'p2']);
+    expect(await meta('cursor')).toBe('9:40:aa');
+    expect(await getCurrentDB().all(`SELECT id FROM apiary`)).toHaveLength(1);
+  });
+
+  it('never overwrites a newer local edit and leaves the outbox alone', async () => {
+    await withoutBackgroundSync(() =>
+      patch('apiary', 'a1', 'a1', { organization_id: 'org1', name: 'Local name', deleted: 0 })
+    );
+    const local = parseFieldClock(
+      (await getCurrentDB().get<any>(`SELECT field_hlc FROM apiary WHERE id = 'a1'`))!.field_hlc
+    );
+    const before = await outbox();
+    expect(before).toHaveLength(1);
+    const older = t(parseHLC(local.name)!.ms - 60_000);
+    const newer = t(parseHLC(local.name)!.ms + 60_000);
+    snapshotMock.mockResolvedValueOnce({
+      rows: [
+        snapRow(
+          'apiary',
+          'a1',
+          { name: 'Server name', note: 'server note', address: 'unstamped', deleted: 1, lat: 1 },
+          { name: older, note: newer, deleted: older }
+        )
+      ],
+      nextPageToken: '',
+      cursor: 'c'
+    });
+
+    await pull();
+
+    const row = await getCurrentDB().get<any>(`SELECT * FROM apiary WHERE id = 'a1'`);
+    // name and deleted were written here after the server's stamps; note is
+    // newer on the server; address and lat have no stamp on either side.
+    expect(row).toMatchObject({
+      name: 'Local name',
+      deleted: 0,
+      note: 'server note',
+      address: 'unstamped',
+      lat: 1
+    });
+    expect(parseFieldClock(row!.field_hlc)).toEqual({ ...local, note: newer });
+    expect(await outbox()).toEqual(before);
+  });
+
+  it('takes a column without a stamp only where this device has none either', async () => {
+    await getCurrentDB().exec(
+      `INSERT INTO apiary (id, name, note, deleted, field_hlc) VALUES ('a1', 'Local', 'old', 0, ?)`,
+      [JSON.stringify({ name: t(3, 'local') })]
+    );
+    snapshotMock.mockResolvedValueOnce({
+      rows: [snapRow('apiary', 'a1', { name: 'Server', note: 'server' }, {})],
+      nextPageToken: '',
+      cursor: 'c'
+    });
+    await pull();
+    const row = await getCurrentDB().get<any>(`SELECT name, note FROM apiary WHERE id = 'a1'`);
+    expect(row).toEqual({ name: 'Local', note: 'server' });
+  });
+
+  it('merges set columns by union of their tags', async () => {
+    await getCurrentDB().exec(
+      `INSERT INTO inspection (id, photo_keys, deleted, field_hlc) VALUES ('i1', ?, 0, '{}')`,
+      [JSON.stringify({ p1: { a: [t(1, 'local')], r: [] }, p3: { a: [t(2, 'local')], r: [] } })]
+    );
+    snapshotMock.mockResolvedValueOnce({
+      rows: [
+        snapRow(
+          'inspection',
+          'i1',
+          {
+            photo_keys: { p1: { a: [t(1, 'local')], r: [t(1, 'local')] }, p2: { a: [t(4)], r: [] } }
+          },
+          {}
+        )
+      ],
+      nextPageToken: '',
+      cursor: 'c'
+    });
+    await pull();
+    const row = await getCurrentDB().get<any>(`SELECT photo_keys FROM inspection WHERE id = 'i1'`);
+    // p1 was removed on the server, p2 added there, p3 added here.
+    expect(orValues(parseORSet(row!.photo_keys)).sort()).toEqual(['p2', 'p3']);
+  });
+
+  it('skips rows and columns this app does not know', async () => {
+    snapshotMock.mockResolvedValueOnce({
+      rows: [
+        snapRow('gadget', 'g1', { name: 'x' }, { name: t(1) }),
+        snapRow('sync_meta', 'cursor', { v: 'x' }, {}),
+        snapRow('apiary', 'a1', { name: 'ok', colour: 'blue', nested: { a: 1 } }, { name: t(1) }),
+        { entity: 'apiary', entityId: 'a2', payloadJson: 'not json', fieldHlcJson: '{}' },
+        { entity: 'apiary', entityId: 'a3', payloadJson: '[1]', fieldHlcJson: '{}' }
+      ],
+      nextPageToken: '',
+      cursor: 'c'
+    });
+    await pull();
+    const rows = await getCurrentDB().all<any>(`SELECT id, name FROM apiary`);
+    expect(rows).toEqual([{ id: 'a1', name: 'ok' }]);
+    expect(await meta('cursor')).toBe('c');
+  });
+
+  it('reads the change log from the start on a server without snapshots', async () => {
+    snapshotMock.mockRejectedValue(new ConnectError('unimplemented', Code.Unimplemented));
+    pullMock.mockResolvedValueOnce({
+      changes: [
+        { entity: 'apiary', entityId: 'a1', op: 1, hlc: t(5), payloadJson: '{"name":"R"}' }
+      ],
+      nextCursor: '7',
+      hasMore: false
+    });
+    await pull();
+    expect(pullMock.mock.calls[0]![0]).toMatchObject({ cursor: '' });
+    expect(await meta('cursor')).toBe('7');
+    expect(await getCurrentDB().all(`SELECT id FROM apiary`)).toHaveLength(1);
+  });
+
+  it('loads a snapshot when its cursor is behind the compacted log, and re-sends nothing', async () => {
+    await getCurrentDB().exec(
+      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:3:aa'), ('sync_epoch', '1')`
+    );
+    await getCurrentDB().exec(
+      `INSERT INTO apiary (id, name, deleted, field_hlc) VALUES ('a1', 'Mine', 0, ?)`,
+      [JSON.stringify({ name: t(3, 'local') })]
+    );
+    await queueOutbox('apiary', 'a1', { note: 'waiting' }, t(4, 'local'));
+    pullMock
+      .mockResolvedValueOnce({
+        changes: [],
+        nextCursor: '9:3:aa',
+        hasMore: false,
+        status: SNAPSHOT
+      })
+      .mockResolvedValueOnce({ changes: [], nextCursor: '9:80:cc', hasMore: false });
+    snapshotMock.mockResolvedValueOnce({
+      rows: [snapRow('apiary', 'a2', { name: 'Theirs', deleted: 0 }, { name: t(9) })],
+      nextPageToken: '',
+      cursor: '9:78:bb'
+    });
+
+    await pull();
+
+    expect(pullMock.mock.calls.map((c) => c[0].cursor)).toEqual(['9:3:aa', '9:78:bb']);
+    expect(await meta('cursor')).toBe('9:80:cc');
+    expect(await getCurrentDB().all(`SELECT id FROM apiary`)).toHaveLength(2);
+    expect(await outbox()).toHaveLength(1); // only what was already waiting
+    expect(get(resyncNotice)).toBe(false);
+  });
+});
+
+describe('reset: the server is not the database this device synced with', () => {
+  // Builds a device that has synced before: rows written over time, a photo
+  // set with history, a deleted row, a personal task. Returns the stamps.
+  async function seedSyncedDevice() {
+    const db = getCurrentDB();
+    await db.exec(
+      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:150:aa'), ('sync_epoch', '1')`
+    );
+    const s = {
+      made: t(100, 'devA'),
+      renamed: t(200, 'devB'),
+      photo: t(300, 'devA'),
+      gone: t(400, 'devA')
+    };
+    await db.exec(
+      `INSERT INTO apiary (id, organization_id, name, note, lat, deleted, field_hlc) VALUES ('a1', 'org1', 'Renamed', 'n', 48.2, 0, ?)`,
+      [JSON.stringify({ organization_id: s.made, name: s.renamed, note: s.made, deleted: s.made })]
+    );
+    await db.exec(
+      `INSERT INTO hive (id, organization_id, apiary_id, name, deleted, field_hlc) VALUES ('h1', 'org1', 'a1', 'H1', 1, ?)`,
+      [JSON.stringify({ apiary_id: s.made, name: s.made, deleted: s.gone })]
+    );
+    await db.exec(
+      `INSERT INTO inspection (id, hive_id, note, photo_keys, deleted, field_hlc) VALUES ('i1', 'h1', 'calm', ?, 0, ?)`,
+      [
+        JSON.stringify({
+          p1: { a: [s.made], r: [s.made] },
+          p2: { a: [s.photo], r: [] }
+        }),
+        JSON.stringify({ hive_id: s.made, note: s.made, deleted: s.made })
+      ]
+    );
+    await db.exec(
+      `INSERT INTO task (id, organization_id, apiary_id, title, done, deleted, field_hlc) VALUES ('t1', 'org1', '', 'jars', 0, 0, ?)`,
+      [JSON.stringify({ title: s.made, done: s.made })]
+    );
+    await db.exec(
+      `INSERT INTO event (id, scope_id, hive_id, title, deleted, field_hlc) VALUES ('e1', 'a1', 'h1', 'Created', 0, ?)`,
+      [JSON.stringify({ title: s.made })]
+    );
+    return s;
+  }
+
+  const queued = async () =>
+    (await outbox()).map((o) => ({
+      entity: o.entity,
+      id: o.entity_id,
+      scope: o.scope_id,
+      op: o.op,
+      hlc: o.hlc,
+      payload: JSON.parse(o.payload)
+    }));
+
+  it('queues every local row again by stamp, loads a snapshot and tells the user', async () => {
+    const s = await seedSyncedDevice();
+    // One change of this device has not been uploaded yet; one was refused.
+    await queueOutbox('apiary', 'a1', { name: 'Renamed' }, s.renamed);
+    await getCurrentDB().exec(
+      `INSERT INTO outbox_failed (id, entity, entity_id, scope_id, op, payload, hlc, author_id, code, reason, failed_at)
+       VALUES ('f1', 'event', 'e1', 'a1', 1, '{"title":"Created"}', ?, 'u1', 'invalid', 'r', 'now')`,
+      [s.made]
+    );
+    pullMock
+      .mockResolvedValueOnce({ changes: [], nextCursor: '9:150:aa', hasMore: false, status: RESET })
+      .mockResolvedValueOnce({ changes: [], nextCursor: '9:101:cc', hasMore: false });
+    snapshotMock.mockResolvedValueOnce({
+      rows: [snapRow('apiary', 'a1', { name: 'Before the backup' }, { name: t(100, 'devA') })],
+      nextPageToken: '',
+      cursor: '9:100:bb'
+    });
+
+    await pull();
+
+    // The snapshot did not undo what this device knows better.
+    const a = await getCurrentDB().get<any>(`SELECT name FROM apiary WHERE id = 'a1'`);
+    expect(a!.name).toBe('Renamed');
+    expect(await meta('cursor')).toBe('9:101:cc');
+
+    const out = await queued();
+    const of = (entity: string, hlc: string) =>
+      out.filter((o) => o.entity === entity && o.hlc === hlc);
+    // One change per row and stamp, carrying the columns that stamp wrote.
+    expect(of('apiary', s.made)).toEqual([
+      {
+        entity: 'apiary',
+        id: 'a1',
+        scope: 'a1',
+        op: 1,
+        hlc: s.made,
+        payload: { organization_id: 'org1', note: 'n', deleted: 0 }
+      }
+    ]);
+    // The rename was still waiting in the outbox: it is not queued twice.
+    expect(of('apiary', s.renamed)).toHaveLength(1);
+    // A deleted row comes back as deleted, in its apiary's scope.
+    expect(of('hive', s.made)[0]).toMatchObject({
+      scope: 'a1',
+      payload: { apiary_id: 'a1', name: 'H1' }
+    });
+    expect(of('hive', s.gone)[0]).toMatchObject({ scope: 'a1', op: 1, payload: { deleted: 1 } });
+    // Set columns: an add per tag, and the removal with the tags it names.
+    expect(of('inspection', s.made)[0]).toMatchObject({
+      scope: 'a1', // the apiary of its hive
+      payload: { hive_id: 'h1', note: 'calm', deleted: 0, photo_keys: { add: ['p1'] } }
+    });
+    expect(of('inspection', s.photo)[0]!.payload).toEqual({
+      photo_keys: { add: ['p2'], remove: ['p1'], removed_tags: { p1: [s.made] } }
+    });
+    // A personal task goes to the user's own scope.
+    expect(of('task', s.made)[0]).toMatchObject({
+      scope: 'user:u1',
+      payload: { title: 'jars', done: 0 }
+    });
+    // What the server refused before is not sent again behind the user's back.
+    expect(of('event', s.made)).toHaveLength(0);
+    expect(out).toHaveLength(7);
+
+    expect(get(resyncNotice)).toBe(true);
+    expect(await meta('resynced')).toBe('1');
+    await dismissResyncNotice();
+    expect(get(resyncNotice)).toBe(false);
+    expect(await meta('resynced')).toBe('');
+  });
+
+  it('does not queue everything twice when the snapshot fails after the reset', async () => {
+    await seedSyncedDevice();
+    pullMock.mockResolvedValue({
+      changes: [],
+      nextCursor: '9:150:aa',
+      hasMore: false,
+      status: RESET
+    });
+    snapshotMock.mockRejectedValueOnce(new ConnectError('down', Code.Unavailable));
+    await expect(pull()).rejects.toThrow();
+    const first = await outbox();
+    expect(first.length).toBeGreaterThan(0);
+    expect(await meta('cursor')).toBe('9:150:aa');
+    expect(get(resyncNotice)).toBe(false);
+
+    // The queue is uploaded, then the same position is refused once more.
+    await getCurrentDB().exec(`DELETE FROM outbox`);
+    pullMock
+      .mockReset()
+      .mockResolvedValueOnce({ changes: [], nextCursor: '9:150:aa', hasMore: false, status: RESET })
+      .mockResolvedValueOnce({ changes: [], nextCursor: '', hasMore: false });
+    await pull();
+    expect(await outbox()).toHaveLength(0);
+    expect(await meta('cursor')).toBe('snap');
+    expect(get(resyncNotice)).toBe(true);
+  });
+
+  it('gives up when the server refuses the cursor of its own snapshot', async () => {
+    await seedSyncedDevice();
+    pullMock.mockResolvedValue({ changes: [], nextCursor: '', hasMore: false, status: RESET });
+    await expect(pull()).rejects.toThrow(/own snapshot/);
+    expect(pullMock).toHaveBeenCalledTimes(2);
+    expect(snapshotMock).toHaveBeenCalledOnce();
   });
 });
 

@@ -1,6 +1,10 @@
 // The sync engine. Runs in the background: pushes the outbox up (Push),
 // pulls foreign changes (Pull) and applies them via last-writer-wins.
 // Works offline (queued) and syncs automatically once connected.
+//
+// A device that has no pull position yet, or whose position the server can
+// no longer serve, loads the current rows instead (Snapshot) and continues
+// with Pull from there.
 
 import { ConnectError, Code } from '@connectrpc/connect';
 import { get, writable, type Readable } from 'svelte/store';
@@ -12,16 +16,24 @@ import {
   parseORSet,
   parseSetDelta,
   mergeFields,
+  mergeSnapshot,
+  toORSet,
   tombstone,
   type FieldClock,
   type ORSet,
   type RowState,
   type SetDelta
 } from './merge';
-import { columnsOf, setColsOf, toScalar } from './tables';
-import { bumpData, initialSyncPending, storageState } from './live';
+import { SYNCED_TABLES, columnsOf, setColsOf, toScalar } from './tables';
+import { bumpData, initialSyncPending, resyncNotice, storageState } from './live';
 import { syncClient } from '#lib/client.js'; // generated Connect client (SyncService)
-import { ChangeOp, UpgradeRequiredSchema, type Change } from '../proto/openbeehive/v1/sync_pb';
+import {
+  ChangeOp,
+  PullStatus,
+  UpgradeRequiredSchema,
+  type Change,
+  type SnapshotRow
+} from '../proto/openbeehive/v1/sync_pb';
 
 // --- Status, for the status chip and the "sync problems" list ---
 
@@ -86,16 +98,19 @@ async function setMeta(k: string, v: string) {
 
 const getCursor = async () => (await getMeta('cursor')) ?? '';
 
-// Version of the pull logic this device's cursor was built by. Raising it
-// makes every device pull the change log once more from the start (merging
-// is idempotent, so that only fills gaps).
+// Version of the local repairs this database has been through (kept under
+// the key "sync_epoch"). Raising it runs them once more on every device and
+// makes the device load the current rows again (merging is idempotent, so
+// that only fills gaps).
 //   1: the cursor used to be overwritten with a counter returned by Push,
 //      so a device that pushed skipped what others had written before.
-const SYNC_EPOCH = 1;
+const LOCAL_REPAIR = 1;
 
-async function repairCursor(db: LocalDB) {
-  if (Number((await getMeta('sync_epoch')) ?? 0) >= SYNC_EPOCH) return;
-  await db.batch([setMetaStmt('cursor', ''), setMetaStmt('sync_epoch', String(SYNC_EPOCH))]);
+const userId = () => localStorage.getItem('obh.userId') ?? 'local';
+
+async function repairLocal(db: LocalDB) {
+  if (Number((await getMeta('sync_epoch')) ?? 0) >= LOCAL_REPAIR) return;
+  await db.batch([setMetaStmt('cursor', ''), setMetaStmt('sync_epoch', String(LOCAL_REPAIR))]);
 }
 
 // Every response carries the server's wall clock; the middle of the round
@@ -317,31 +332,298 @@ function swapRemovedTags(p: OutboxRow, swap: (tags: string[]) => string[]): stri
 // --- Pull: apply remote changes ---
 export async function pull() {
   const db = await getDB();
-  await repairCursor(db);
+  await repairLocal(db);
   let cursor = await getCursor();
-  let hasMore = true;
+  // A device without a position starts from the current rows, not from the
+  // first change ever made. (A server without snapshots returns no cursor
+  // and the log is read from the start, as before.)
+  if (!cursor) cursor = await loadSnapshot(db);
+  let redirected = false;
 
-  while (hasMore) {
+  for (;;) {
     const sentAt = Date.now();
     const res = await syncClient.pull({ cursor, limit: 200 });
     learnServerTime(res.serverTimeMs, sentAt);
 
+    if (res.status === PullStatus.RESET_REQUIRED || res.status === PullStatus.SNAPSHOT_REQUIRED) {
+      // Once per run: a server that also refuses the cursor of the snapshot
+      // it just handed out would keep this loop going for ever.
+      if (redirected) throw new Error('the server refused the cursor of its own snapshot');
+      redirected = true;
+      const reset = res.status === PullStatus.RESET_REQUIRED;
+      if (reset) await requeueLocal(db, cursor);
+      cursor = await loadSnapshot(db);
+      if (!cursor) throw new Error('the server asked for a snapshot but offers none');
+      if (reset) await showResyncNotice();
+      continue;
+    }
+
     for (const ch of res.changes) await applyRemote(db, ch);
+    const next = res.nextCursor || cursor;
     // A page that does not move the cursor cannot be followed by another.
-    hasMore = res.hasMore && res.nextCursor !== cursor;
-    cursor = res.nextCursor;
+    const more = res.hasMore && next !== cursor;
+    cursor = next;
     await setMeta('cursor', cursor);
     // Notify open pages per applied batch, not once at the end: a large first
     // sync fills the UI progressively instead of after the whole download.
     if (res.changes.length > 0) bumpData();
+    if (!more) break;
   }
   // This device now holds a full replica: an empty table is a real empty state.
   initialSyncPending.set(false);
 }
 
+// --- Snapshot: the current rows instead of the whole change log ---
+
+// Loads the current rows of the workspace page by page, merges them into
+// the local tables and stores the cursor Pull continues from. The cursor is
+// stored only after the last page: an interrupted snapshot starts over,
+// which is harmless because merging a row twice changes nothing. Local
+// edits newer than the server's rows stay, and the outbox is not touched.
+// Returns '' when the server has no snapshots (a release before 0.5).
+async function loadSnapshot(db: LocalDB): Promise<string> {
+  let pageToken = '';
+  let cursor: string;
+  do {
+    const sentAt = Date.now();
+    let res;
+    try {
+      res = await syncClient.snapshot({ pageToken });
+    } catch (e) {
+      if (pageToken === '' && e instanceof ConnectError && e.code === Code.Unimplemented) return '';
+      throw e;
+    }
+    learnServerTime(res.serverTimeMs, sentAt);
+    for (const row of res.rows) await applySnapshotRow(db, row);
+    if (res.rows.length > 0) bumpData();
+    cursor = res.cursor;
+    pageToken = res.nextPageToken;
+  } while (pageToken);
+  if (cursor) await setMeta('cursor', cursor);
+  return cursor;
+}
+
+const text = (v: unknown) => (typeof v === 'string' ? v : '');
+
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v);
+
+function parseObject(json: string): Record<string, unknown> | null {
+  try {
+    const v: unknown = JSON.parse(json);
+    return isObject(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// Merges one snapshot row into the local table, column by column (see
+// mergeSnapshot). Like a pulled change, a row this device cannot make sense
+// of is skipped.
+async function applySnapshotRow(db: LocalDB, snap: SnapshotRow) {
+  const cols = await columnsOf(db, snap.entity);
+  if (!cols || !snap.entityId) return; // not a table this app syncs
+  const payload = parseObject(snap.payloadJson);
+  if (!payload) {
+    console.warn('skipping snapshot row with an unreadable payload:', snap.entity, snap.entityId);
+    return;
+  }
+  const stamps = parseFieldClock(snap.fieldHlcJson);
+  const setCols = setColsOf(snap.entity);
+  const fields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (k === 'id' || k === 'field_hlc' || !cols.has(k)) continue;
+    if (setCols.includes(k)) {
+      fields[k] = toORSet(v);
+      continue;
+    }
+    const value = toScalar(v);
+    if (value !== undefined) fields[k] = value;
+  }
+
+  await exclusive(async () => {
+    const row = await loadRow(db, snap.entity, snap.entityId);
+    const changed = mergeSnapshot(row, fields, stamps, setCols);
+    await storeMerged(db, snap.entity, snap.entityId, row, changed, fields);
+  });
+  // Every later local stamp must sort after what this row carries.
+  for (const stamp of Object.values(stamps)) hlc.recv(stamp);
+}
+
+// Writes the merged columns of a row and its field clock. Set columns are
+// stored from the merged state in row.sets, scalars from fields.
+async function storeMerged(
+  db: LocalDB,
+  entity: string,
+  id: string,
+  row: RowState & { exists: boolean },
+  changed: string[],
+  fields: Record<string, unknown>
+) {
+  const setCols = setColsOf(entity);
+  const value = (c: string) => (setCols.includes(c) ? JSON.stringify(row.sets[c]) : fields[c]);
+  if (!row.exists) {
+    if (changed.length === 0) return;
+    const names = ['id', ...changed, 'field_hlc'];
+    await db.exec(
+      `INSERT INTO ${entity} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`,
+      [id, ...changed.map(value), JSON.stringify(row.clock)]
+    );
+    return;
+  }
+  if (changed.length === 0) return; // everything stale
+  await db.exec(
+    `UPDATE ${entity} SET ${[...changed, 'field_hlc'].map((c) => `${c} = ?`).join(', ')}
+     WHERE id = ?`,
+    [...changed.map(value), JSON.stringify(row.clock), id]
+  );
+}
+
+// --- Reset: the server is not the database this device synced with ---
+
+// The server was restored from a backup or replaced, so it may lack changes
+// this device has. Every local row is queued for upload again, as ordinary
+// changes: one per row and stamp, carrying the columns last written with
+// that stamp. The stamps are the existing ones, so where the server still
+// has a change the merge does nothing, and where it lost one the value comes
+// back. What already waits in the outbox stays as it is.
+//
+// staleCursor is the position the server refused. It is remembered once the
+// queue is complete: if the snapshot that follows fails, the next run finds
+// the same position refused again and must not queue everything twice.
+async function requeueLocal(db: LocalDB, staleCursor: string) {
+  if (staleCursor && (await getMeta('requeued_for')) === staleCursor) return;
+
+  const key = (entity: string, id: string, stamp: string) => `${entity}\n${id}\n${stamp}`;
+  const queued = new Set(
+    (
+      await db.all<{ entity: string; entity_id: string; hlc: string }>(
+        `SELECT entity, entity_id, hlc FROM outbox
+         UNION ALL SELECT entity, entity_id, hlc FROM outbox_failed`
+      )
+    ).map((o) => key(o.entity, o.entity_id, o.hlc))
+  );
+  const hiveApiary = new Map(
+    (await db.all<{ id: string; apiary_id: string | null }>(`SELECT id, apiary_id FROM hive`)).map(
+      (h) => [h.id, h.apiary_id ?? '']
+    )
+  );
+  const anyApiary =
+    (await db.get<{ id: string }>(`SELECT id FROM apiary ORDER BY deleted, id LIMIT 1`))?.id ?? '';
+  // The scope a row is uploaded in. The server only checks that it is one
+  // the user may write to, and keeps personal tasks to their owner.
+  const scopeOf = (entity: string, row: Record<string, unknown>) => {
+    if (entity === 'apiary') return text(row.id);
+    if (entity === 'task') return text(row.apiary_id) || `user:${userId()}`;
+    return (
+      text(row.scope_id) || text(row.apiary_id) || hiveApiary.get(text(row.hive_id)) || anyApiary
+    );
+  };
+
+  const PAGE = 200;
+  for (const entity of SYNCED_TABLES) {
+    const cols = await columnsOf(db, entity);
+    if (!cols) continue;
+    const setCols = setColsOf(entity);
+    let after = '';
+    for (;;) {
+      const rows = await db.all<Record<string, unknown>>(
+        `SELECT * FROM ${entity} WHERE id > ? ORDER BY id LIMIT ?`,
+        [after, PAGE]
+      );
+      const stmts: Statement[] = [];
+      for (const row of rows) {
+        const id = text(row.id);
+        const scope = scopeOf(entity, row);
+        if (!scope) continue; // no apiary at all: nowhere to upload it to
+        for (const [stamp, payload] of rowChanges(row, cols, setCols)) {
+          if (queued.has(key(entity, id, stamp))) continue;
+          stmts.push({
+            sql: `INSERT INTO outbox (id, entity, entity_id, scope_id, op, payload, hlc, author_id)
+                  VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
+            params: [
+              crypto.randomUUID(),
+              entity,
+              id,
+              scope,
+              JSON.stringify(payload),
+              stamp,
+              userId()
+            ]
+          });
+        }
+      }
+      await db.batch(stmts);
+      if (rows.length < PAGE) break;
+      after = text(rows[rows.length - 1]!.id);
+    }
+  }
+  if (staleCursor) await setMeta('requeued_for', staleCursor);
+}
+
+// The changes that reproduce a local row on the server: per stamp in the
+// row's field clock, the columns that carry it with their current values.
+// A set column contributes an add per element and tag, and one removal
+// naming the tags it has tombstoned. Columns without a stamp were never
+// written through sync and are left out.
+function rowChanges(
+  row: Record<string, unknown>,
+  cols: Set<string>,
+  setCols: readonly string[]
+): Map<string, Record<string, unknown>> {
+  const out = new Map<string, Record<string, unknown>>();
+  const at = (stamp: string) => {
+    let payload = out.get(stamp);
+    if (!payload) out.set(stamp, (payload = {}));
+    return payload;
+  };
+  for (const [col, stamp] of Object.entries(parseFieldClock(text(row.field_hlc)))) {
+    if (!isHLC(stamp) || col === 'id' || !cols.has(col) || setCols.includes(col)) continue;
+    const value = toScalar(row[col]);
+    if (value !== undefined) at(stamp)[col] = value;
+  }
+  for (const col of setCols) {
+    const removed: Record<string, string[]> = {};
+    let last = '';
+    for (const [elem, e] of Object.entries(parseORSet(text(row[col])))) {
+      for (const tag of e.a.filter(isHLC)) {
+        const delta = (at(tag)[col] ??= { add: [] }) as SetDelta;
+        (delta.add ??= []).push(elem);
+        if (tag > last) last = tag;
+      }
+      if (e.r.length > 0) removed[elem] = e.r;
+    }
+    // A removal is not tied to a stamp of its own; it travels with the
+    // newest add of the column.
+    if (last && Object.keys(removed).length > 0) {
+      const delta = at(last)[col] as SetDelta;
+      delta.remove = Object.keys(removed);
+      delta.removed_tags = removed;
+    }
+  }
+  return out;
+}
+
+// --- Notice: this device was synchronised again from scratch ---
+
+async function showResyncNotice() {
+  await setMeta('resynced', '1');
+  resyncNotice.set(true);
+}
+
+// The user has read the notice.
+export async function dismissResyncNotice() {
+  resyncNotice.set(false);
+  await setMeta('resynced', '').catch(() => undefined);
+}
+
 // The merge state of a local row: field clock and set columns. entity must
 // be a synced table.
-async function loadRow(db: LocalDB, entity: string, id: string) {
+async function loadRow(
+  db: LocalDB,
+  entity: string,
+  id: string
+): Promise<RowState & { exists: boolean }> {
   const setCols = setColsOf(entity);
   const cur = await db.get<Record<string, string | null>>(
     `SELECT ${['field_hlc', ...setCols].join(', ')} FROM ${entity} WHERE id = ?`,
@@ -373,13 +655,8 @@ function storeRowState(entity: string, id: string, row: RowState): Statement {
 // null when the payload is unusable as a whole.
 function remoteFields(ch: Change, cols: Set<string>): Record<string, unknown> | null {
   if (ch.op === ChangeOp.DELETE) return tombstone();
-  let raw: unknown;
-  try {
-    raw = JSON.parse(ch.payloadJson);
-  } catch {
-    return null;
-  }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const raw = parseObject(ch.payloadJson);
+  if (!raw) return null;
   const setCols = setColsOf(ch.entity);
   const fields: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(raw)) {
@@ -418,23 +695,7 @@ async function applyRemote(db: LocalDB, ch: Change) {
   await exclusive(async () => {
     const row = await loadRow(db, ch.entity, ch.entityId);
     const changed = mergeFields(row, fields, setCols, ch.hlc);
-    const value = (c: string) => (setCols.includes(c) ? JSON.stringify(row.sets[c]) : fields[c]);
-
-    if (!row.exists) {
-      if (changed.length === 0) return;
-      const names = ['id', ...changed, 'field_hlc'];
-      await db.exec(
-        `INSERT INTO ${ch.entity} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`,
-        [ch.entityId, ...changed.map(value), JSON.stringify(row.clock)]
-      );
-      return;
-    }
-    if (changed.length === 0) return; // everything stale
-    await db.exec(
-      `UPDATE ${ch.entity} SET ${[...changed, 'field_hlc'].map((c) => `${c} = ?`).join(', ')}
-       WHERE id = ?`,
-      [...changed.map(value), JSON.stringify(row.clock), ch.entityId]
-    );
+    await storeMerged(db, ch.entity, ch.entityId, row, changed, fields);
   });
   // A stamp the clock cannot follow (too far ahead) is still merged above;
   // it just does not drag this device's clock along.
@@ -599,6 +860,7 @@ export function startSync() {
       if (await getCursor()) initialSyncPending.set(false);
       const last = Number(await getMeta('last_sync'));
       if (last > 0) status.update((s) => ({ ...s, lastSyncedAt: last }));
+      if (await getMeta('resynced')) resyncNotice.set(true);
     } catch {
       /* flag resolves with the first sync instead */
     }

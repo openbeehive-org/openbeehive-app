@@ -28,3 +28,8 @@ export const initialSyncPending = writable(true);
 //             and does nothing until the user takes over
 export type StorageState = 'ok' | 'volatile' | 'elsewhere';
 export const storageState = writable<StorageState>('ok');
+
+// True after this device was synchronised again from scratch because the
+// server had been restored from a backup or replaced, until the user
+// dismisses the notice about it. Set by the sync engine (sync.ts).
+export const resyncNotice = writable(false);

@@ -6,6 +6,8 @@ import {
   parseORSet,
   parseSetDelta,
   mergeFields,
+  mergeSnapshot,
+  toORSet,
   tombstone,
   orAdd,
   orRemove,
@@ -224,5 +226,66 @@ describe('set deltas', () => {
     });
     expect(parseORSet('[1,2]')).toEqual({});
     expect(parseFieldClock('[1]')).toEqual({});
+  });
+});
+
+describe('snapshot rows', () => {
+  const row = (clock: Record<string, string>, sets: Record<string, ORSet> = {}): RowState => ({
+    clock,
+    sets
+  });
+
+  it('takes a column whose stamp is newer and keeps one that is newer here', () => {
+    const local = row({ name: t2, note: t1 });
+    const changed = mergeSnapshot(
+      local,
+      { name: 'server', note: 'server', id: 'x', field_hlc: '{}' },
+      { name: t1, note: t3 },
+      []
+    );
+    expect(changed).toEqual(['note']);
+    expect(local.clock).toEqual({ name: t2, note: t3 });
+  });
+
+  it('applying the same row twice changes nothing the second time', () => {
+    const local = row({});
+    const fields = { name: 'a', note: 'b' };
+    const stamps = { name: t1, note: t2 };
+    expect(mergeSnapshot(local, fields, stamps, [])).toEqual(['name', 'note']);
+    expect(mergeSnapshot(local, fields, stamps, [])).toEqual([]);
+    expect(local.clock).toEqual(stamps);
+  });
+
+  it('a column without a stamp is taken only where there is none here either', () => {
+    const local = row({ name: t1 });
+    const changed = mergeSnapshot(
+      local,
+      { name: 'server', note: 'server' },
+      { note: 'garbage' },
+      []
+    );
+    expect(changed).toEqual(['note']);
+    expect(local.clock).toEqual({ name: t1 }); // an unstamped value leaves no stamp
+  });
+
+  it('unions set columns: adds and removals from both sides survive', () => {
+    const local = row({}, { photos: { p1: { a: [t1], r: [] }, p3: { a: [t3], r: [] } } });
+    const remote = toORSet({ p1: { a: [t1], r: [t1] }, p2: { a: [t2], r: [] } });
+    expect(mergeSnapshot(local, { photos: remote }, {}, ['photos'])).toEqual(['photos']);
+    expect(orValues(local.sets.photos!).sort()).toEqual(['p2', 'p3']);
+    // A set column this device never had starts from the server's state.
+    const fresh = row({});
+    mergeSnapshot(fresh, { photos: remote }, {}, ['photos']);
+    expect(orValues(fresh.sets.photos!)).toEqual(['p2']);
+  });
+
+  it('reads anything that is not an OR-Set as the empty set', () => {
+    expect(toORSet(null)).toEqual({});
+    expect(toORSet('p1')).toEqual({});
+    expect(toORSet(['p1'])).toEqual({});
+    expect(toORSet({ p1: null, p2: { a: [t1, 7], r: 'x' } })).toEqual({
+      p1: { a: [], r: [] },
+      p2: { a: [t1], r: [] }
+    });
   });
 });

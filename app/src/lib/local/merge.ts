@@ -34,16 +34,20 @@ export type ORSet = Record<string, Elem>;
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
+// Reads a decoded JSON value as an OR-Set; anything else is the empty set.
+export function toORSet(raw: unknown): ORSet {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const set: ORSet = {};
+  for (const [elem, e] of Object.entries(raw as Record<string, Partial<Elem> | null>)) {
+    set[elem] = { a: strings(e?.a), r: strings(e?.r) };
+  }
+  return set;
+}
+
 export function parseORSet(s: string | null | undefined): ORSet {
   if (!s || s === 'null') return {};
   try {
-    const raw = JSON.parse(s);
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-    const set: ORSet = {};
-    for (const [elem, e] of Object.entries(raw as Record<string, Partial<Elem> | null>)) {
-      set[elem] = { a: strings(e?.a), r: strings(e?.r) };
-    }
-    return set;
+    return toORSet(JSON.parse(s));
   } catch {
     return {};
   }
@@ -159,6 +163,37 @@ export function mergeFields(
       orApplyDelta(set, v as SetDelta, hlc);
       changed.push(col);
     } else if (accept(row.clock, col, hlc)) {
+      changed.push(col);
+    }
+  }
+  return changed.sort();
+}
+
+// Merges one row of a snapshot into the local row and returns the columns
+// that have to be written back, sorted. Unlike a change, a snapshot row
+// carries a stamp per column (stamps) and whole OR-Sets (values of setCols
+// must be ORSet objects):
+//  - a column is taken when its stamp is newer than the local one, so a
+//    newer local edit is never overwritten;
+//  - a column without a stamp was never written through sync. It is taken
+//    only where this device has no stamp for it either;
+//  - set columns are merged by union of their tags.
+// The server has no counterpart: it never receives a snapshot.
+export function mergeSnapshot(
+  row: RowState,
+  fields: Record<string, unknown>,
+  stamps: FieldClock,
+  setCols: readonly string[]
+): string[] {
+  const changed: string[] = [];
+  for (const [col, v] of Object.entries(fields)) {
+    if (col === 'id' || col === 'field_hlc') continue;
+    if (setCols.includes(col)) {
+      orMerge((row.sets[col] ??= {}), v as ORSet);
+      changed.push(col);
+    } else if (compare(stamps[col], undefined) > 0) {
+      if (accept(row.clock, col, stamps[col]!)) changed.push(col);
+    } else if (compare(row.clock[col], undefined) <= 0) {
       changed.push(col);
     }
   }

@@ -629,6 +629,8 @@
     "chip_sync_now": "Sincronizar ahora",
     "chip_update_required": "Aplicación desactualizada · actualízala para sincronizar",
     "update_now": "Cargar la nueva versión",
+    "resynced": "El servidor se restauró desde una copia de seguridad. Este dispositivo ha vuelto a enviar sus registros y ha cargado los datos actuales.",
+    "resynced_dismiss": "Aceptar",
     "last_synced": "Última sincronización {when}",
     "never_synced": "Aún sin sincronizar",
     "just_now": "ahora mismo",
