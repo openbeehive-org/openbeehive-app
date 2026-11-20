@@ -94,6 +94,12 @@ export async function migrateLocal(db: LocalDB) {
   // Set whenever a saved record is edited; shown as "Amended on <date>".
   await ensureColumns(db, 'treatment', [['amended_at', 'TEXT']]);
   await ensureColumns(db, 'harvest', [['amended_at', 'TEXT']]);
+
+  // "Last visit per hive" for the lists is answered from this index alone,
+  // without reading the inspection rows and the photos stored in them.
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_inspection_last ON inspection (hive_id, deleted, date, source)`
+  );
 }
 
 // Add any missing columns to an existing table (idempotent; SQLite ALTER TABLE

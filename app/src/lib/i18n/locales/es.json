@@ -121,7 +121,8 @@
     "honey_season": "Miel esta temporada",
     "never": "nunca",
     "days_ago": "hace {days} d",
-    "all_current": "Todo al día — ¡bien hecho!"
+    "all_current": "Todo al día — ¡bien hecho!",
+    "today": "hoy"
   },
   "apiaries": {
     "title": "Colmenares",
@@ -141,6 +142,22 @@
     "use_location": "Usar mi ubicación",
     "qr_sheet": "Etiquetas QR",
     "map_hint": "Escribe una dirección o arrastra el pin: posición y dirección se mantienen sincronizadas."
+  },
+  "hivelist": {
+    "apiary": "Colmenar",
+    "apiary_deleted": "Colmenar eliminado",
+    "search": "Buscar",
+    "search_ph": "Nombre, colmenar o código de la etiqueta",
+    "all_statuses": "Todos los estados",
+    "all_apiaries": "Todos los colmenares",
+    "no_apiary": "Sin colmenar",
+    "sort": "Ordenar por",
+    "sort_name": "Nombre",
+    "sort_apiary": "Colmenar",
+    "sort_inspected": "Más tiempo sin inspección",
+    "shown": "{shown} de {total} mostradas",
+    "clear": "Borrar filtros",
+    "no_match": "Ninguna colmena coincide con estos filtros."
   },
   "hives": {
     "title": "Colmenas",

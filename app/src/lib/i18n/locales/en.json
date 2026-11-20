@@ -121,7 +121,8 @@
     "honey_season": "Honey this season",
     "never": "never",
     "days_ago": "{days}d ago",
-    "all_current": "All up to date — well done!"
+    "all_current": "All up to date — well done!",
+    "today": "today"
   },
   "apiaries": {
     "title": "Apiaries",
@@ -141,6 +142,22 @@
     "use_location": "Use my location",
     "qr_sheet": "QR labels",
     "map_hint": "Type an address or drag the pin — position and address stay in sync."
+  },
+  "hivelist": {
+    "apiary": "Apiary",
+    "apiary_deleted": "Apiary deleted",
+    "search": "Search",
+    "search_ph": "Name, apiary or label code",
+    "all_statuses": "All statuses",
+    "all_apiaries": "All apiaries",
+    "no_apiary": "Without apiary",
+    "sort": "Sort by",
+    "sort_name": "Name",
+    "sort_apiary": "Apiary",
+    "sort_inspected": "Longest since last visit",
+    "shown": "{shown} of {total} shown",
+    "clear": "Clear filters",
+    "no_match": "No hive matches these filters."
   },
   "hives": {
     "title": "Hives",

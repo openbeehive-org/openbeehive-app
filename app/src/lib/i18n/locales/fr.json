@@ -121,7 +121,8 @@
     "honey_season": "Miel cette saison",
     "never": "jamais",
     "days_ago": "il y a {days} j",
-    "all_current": "Tout est à jour — bravo !"
+    "all_current": "Tout est à jour — bravo !",
+    "today": "aujourd'hui"
   },
   "apiaries": {
     "title": "Ruchers",
@@ -141,6 +142,22 @@
     "use_location": "Utiliser ma position",
     "qr_sheet": "Étiquettes QR",
     "map_hint": "Saisissez une adresse ou déplacez le repère — position et adresse restent synchronisées."
+  },
+  "hivelist": {
+    "apiary": "Rucher",
+    "apiary_deleted": "Rucher supprimé",
+    "search": "Rechercher",
+    "search_ph": "Nom, rucher ou code de l'étiquette",
+    "all_statuses": "Tous les statuts",
+    "all_apiaries": "Tous les ruchers",
+    "no_apiary": "Sans rucher",
+    "sort": "Trier par",
+    "sort_name": "Nom",
+    "sort_apiary": "Rucher",
+    "sort_inspected": "Visite la plus ancienne",
+    "shown": "{shown} sur {total} affichées",
+    "clear": "Effacer les filtres",
+    "no_match": "Aucune ruche ne correspond à ces filtres."
   },
   "hives": {
     "title": "Ruches",

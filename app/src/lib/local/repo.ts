@@ -7,6 +7,7 @@ import { getDB } from './db';
 import { hlc } from './hlc';
 import { syncOnce } from './sync';
 import { parseFieldClock, parseORSet, orAdd, orRemove, orValues } from './merge';
+import { byName, type HiveOverview } from '../hivelist';
 
 const authorId = () => localStorage.getItem('obh.userId') ?? 'local';
 
@@ -118,7 +119,7 @@ export async function setRemove(
 export const apiaries = {
   async list() {
     const db = await getDB();
-    return db.all(`SELECT * FROM apiary WHERE deleted = 0 ORDER BY name`);
+    return byName(await db.all(`SELECT * FROM apiary WHERE deleted = 0 ORDER BY name`));
   },
   // create = full delta; edit = only changed fields via patch().
   async create(s: {
@@ -202,9 +203,37 @@ export const hives = {
   },
   async list(apiaryId?: string) {
     const db = await getDB();
-    return apiaryId
+    const rows = await (apiaryId
       ? db.all(`SELECT * FROM hive WHERE deleted = 0 AND apiary_id = ? ORDER BY name`, [apiaryId])
-      : db.all(`SELECT * FROM hive WHERE deleted = 0 ORDER BY name`);
+      : db.all(`SELECT * FROM hive WHERE deleted = 0 ORDER BY name`));
+    return byName(rows);
+  },
+  // Everything the hive lists show, in one query: the hive, its apiary's name
+  // (null when that apiary is deleted), the active queen and the date of the
+  // last visit a person recorded. Sensor readings (source = 2) never count as
+  // "inspected". Names come back in natural order.
+  async overview(apiaryId?: string) {
+    const db = await getDB();
+    const rows = await db.all<HiveOverview>(
+      `SELECT h.id, h.apiary_id, h.name, h.status, h.photo,
+              a.name AS apiary_name, li.date AS last_inspection,
+              q.year AS queen_year, q.marking AS queen_marking
+       FROM hive h
+       LEFT JOIN apiary a ON a.id = h.apiary_id AND a.deleted = 0
+       LEFT JOIN (
+         SELECT hive_id, MAX(date) AS date FROM inspection
+         WHERE deleted = 0 AND COALESCE(source, 0) <> 2
+         GROUP BY hive_id
+       ) li ON li.hive_id = h.id
+       LEFT JOIN queen q ON q.id = (
+         SELECT id FROM queen
+         WHERE deleted = 0 AND hive_id = h.id AND active = 1
+         ORDER BY introduced_at DESC LIMIT 1
+       )
+       WHERE h.deleted = 0${apiaryId ? ' AND h.apiary_id = ?' : ''}`,
+      apiaryId ? [apiaryId] : []
+    );
+    return byName(rows);
   },
   async count(apiaryId: string) {
     const db = await getDB();
@@ -213,6 +242,14 @@ export const hives = {
       [apiaryId]
     );
     return r?.n ?? 0;
+  },
+  // Number of hives per apiary id, in one grouped query.
+  async countByApiary() {
+    const db = await getDB();
+    const rows = await db.all<{ apiary_id: string; n: number }>(
+      `SELECT apiary_id, COUNT(*) AS n FROM hive WHERE deleted = 0 GROUP BY apiary_id`
+    );
+    return Object.fromEntries(rows.map((r) => [r.apiary_id, r.n])) as Record<string, number>;
   },
   // edit = only the changed scalar fields (per-field LWW). scope = apiary id.
   update: (id: string, apiaryId: string, fields: Record<string, unknown>) =>

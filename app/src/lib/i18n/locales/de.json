@@ -121,7 +121,8 @@
     "honey_season": "Honig diese Saison",
     "never": "noch nie",
     "days_ago": "vor {days} T.",
-    "all_current": "Alles aktuell – gut gemacht!"
+    "all_current": "Alles aktuell – gut gemacht!",
+    "today": "heute"
   },
   "apiaries": {
     "title": "Standorte",
@@ -141,6 +142,22 @@
     "use_location": "Mein Standort",
     "qr_sheet": "QR-Etiketten",
     "map_hint": "Adresse eingeben oder Pin verschieben — Position und Adresse bleiben synchron."
+  },
+  "hivelist": {
+    "apiary": "Standort",
+    "apiary_deleted": "Standort gelöscht",
+    "search": "Suche",
+    "search_ph": "Name, Standort oder Etikettencode",
+    "all_statuses": "Alle Status",
+    "all_apiaries": "Alle Standorte",
+    "no_apiary": "Ohne Standort",
+    "sort": "Sortieren nach",
+    "sort_name": "Name",
+    "sort_apiary": "Standort",
+    "sort_inspected": "Am längsten ohne Durchsicht",
+    "shown": "{shown} von {total} angezeigt",
+    "clear": "Filter zurücksetzen",
+    "no_match": "Keine Beute passt zu diesen Filtern."
   },
   "hives": {
     "title": "Beuten",
