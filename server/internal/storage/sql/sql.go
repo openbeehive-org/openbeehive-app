@@ -28,7 +28,9 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 
 	"github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
 
@@ -65,7 +67,13 @@ func Open(cfg *config.Config) (*Store, error) {
 			dsn = mycfg.FormatDSN()
 		}
 	}
-	db, err := sqlx.Open(driverName, dsn)
+	var db *sqlx.DB
+	var err error
+	if cfg.DB.Driver == config.DriverPostgres {
+		db, err = openPostgres(dsn)
+	} else {
+		db, err = sqlx.Open(driverName, dsn)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("db open: %w", err)
 	}
@@ -79,6 +87,47 @@ func Open(cfg *config.Config) (*Store, error) {
 		return nil, fmt.Errorf("db ping: %w", err)
 	}
 	return &Store{db: db, driver: cfg.DB.Driver}, nil
+}
+
+// openPostgres opens the pool with utcTimestampCodec on every connection.
+func openPostgres(dsn string) (*sqlx.DB, error) {
+	pcfg, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db := stdlib.OpenDB(*pcfg, stdlib.OptionAfterConnect(func(_ context.Context, conn *pgx.Conn) error {
+		conn.TypeMap().RegisterType(&pgtype.Type{
+			Name: "timestamp", OID: pgtype.TimestampOID,
+			Codec: utcTimestampCodec{&pgtype.TimestampCodec{}},
+		})
+		return nil
+	}))
+	return sqlx.NewDb(db, "pgx"), nil
+}
+
+// utcTimestampCodec writes a time.Time argument to a TIMESTAMP column as the
+// instant it denotes, in UTC. pgx on its own drops the zone and stores the
+// wall clock, so a value in any other zone (a client timestamp with an
+// offset, a time.Now() on a host that does not run in UTC) lands hours off,
+// while the MySQL driver and SQLite keep the instant.
+type utcTimestampCodec struct{ *pgtype.TimestampCodec }
+
+func (c utcTimestampCodec) PlanEncode(m *pgtype.Map, oid uint32, format int16, value any) pgtype.EncodePlan {
+	if _, ok := value.(time.Time); !ok {
+		return c.TimestampCodec.PlanEncode(m, oid, format, value)
+	}
+	plan := c.TimestampCodec.PlanEncode(m, oid, format, pgtype.Timestamp{})
+	if plan == nil {
+		return nil
+	}
+	return utcTimestampPlan{plan}
+}
+
+type utcTimestampPlan struct{ next pgtype.EncodePlan }
+
+func (p utcTimestampPlan) Encode(value any, buf []byte) ([]byte, error) {
+	t, _ := value.(time.Time)
+	return p.next.Encode(pgtype.Timestamp{Time: t.UTC(), Valid: true}, buf)
 }
 
 func (s *Store) Apiaries() storage.ApiaryRepo { return &apiaryRepo{s} }

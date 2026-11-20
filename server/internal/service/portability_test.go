@@ -5,11 +5,71 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 )
+
+// TestFrozenContextComparesInstants: where a hive stood and which queen
+// reigned at a given moment is decided by the instants the timestamps denote,
+// whatever form a client wrote them in (with or without milliseconds, with a
+// zone offset).
+func TestFrozenContextComparesInstants(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	if err := push(f.sync, ctx,
+		change("apiary", "apiary-a2", "apiary-a2",
+			`{"name":"Second","created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z","deleted":0}`),
+		// The hive stood on apiary-a until 10:00 UTC on 1 June, written with
+		// a +02:00 offset, and on apiary-a2 from that moment on.
+		change("placement", "pl-1", "apiary-a",
+			`{"hive_id":"hive-a","apiary_id":"apiary-a","start_at":"2026-03-01T08:00:00Z","end_at":"2026-06-01T12:00:00+02:00","deleted":0}`),
+		change("placement", "pl-2", "apiary-a2",
+			`{"hive_id":"hive-a","apiary_id":"apiary-a2","start_at":"2026-06-01T12:00:00+02:00","deleted":0}`),
+		// The first queen arrived at that same moment, written without
+		// milliseconds, and was replaced on 1 August.
+		change("queen", "queen-1", "apiary-a",
+			`{"hive_id":"hive-a","year":2025,"introduced_at":"2026-06-01T10:00:00Z","replaced_at":"2026-08-01T02:00:00+02:00","active":0,`+
+				`"created_at":"2026-06-01T10:00:00Z","updated_at":"2026-06-01T10:00:00Z","deleted":0}`),
+		change("queen", "queen-2", "apiary-a",
+			`{"hive_id":"hive-a","year":2026,"introduced_at":"2026-08-01T00:00:00Z","active":1,`+
+				`"created_at":"2026-08-01T00:00:00Z","updated_at":"2026-08-01T00:00:00Z","deleted":0}`),
+	); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+
+	// A treatment at exactly 10:00:00.000 UTC on 1 June.
+	at := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	res, err := f.treat.CreateTreatment(ctx, &wv1.CreateTreatmentRequest{
+		HiveId: "hive-a", Product: "Formic acid 60%", Date: timestamppb.New(at),
+	})
+	if err != nil {
+		t.Fatalf("create treatment: %v", err)
+	}
+	if got := res.Treatment.ApiaryId; got != "apiary-a2" {
+		t.Errorf("apiary at %s: got %q, want apiary-a2", at.Format(time.RFC3339), got)
+	}
+	if got := res.Treatment.QueenId; got != "queen-1" {
+		t.Errorf("queen at %s: got %q, want queen-1", at.Format(time.RFC3339), got)
+	}
+
+	// The offset form is stored as the instant it denotes.
+	queens, err := f.queen.ListQueens(ctx, &wv1.ListQueensRequest{HiveId: "hive-a"})
+	if err != nil {
+		t.Fatalf("list queens: %v", err)
+	}
+	for _, q := range queens.Queens {
+		if q.Id != "queen-1" {
+			continue
+		}
+		if want := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC); !q.ReplacedAt.AsTime().Equal(want) {
+			t.Errorf("replaced_at: got %s, want %s", q.ReplacedAt.AsTime(), want)
+		}
+	}
+}
 
 // TestDecimalsReadBackAsEntered: weights, temperatures and coordinates come
 // back as the numbers that were sent, not as their nearest 4-byte float.

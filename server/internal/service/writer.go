@@ -186,8 +186,8 @@ func (t *txWriter) row(entity, id string) (map[string]any, error) {
 	return rows[0], nil
 }
 
-// tsArg turns a JS-style ISO timestamp into a comparable query argument:
-// SQLite compares the stored strings, Postgres and MySQL need time.Time.
+// tsArg turns a JS-style ISO timestamp into the query argument for tsCmp:
+// SQLite parses the string itself, Postgres and MySQL need time.Time.
 func (t *txWriter) tsArg(iso string) any {
 	if t.tx.DriverName() == "sqlite" {
 		return iso
@@ -207,14 +207,25 @@ func latestFirst(col string) string {
 	return " ORDER BY CASE WHEN " + col + " IS NULL THEN 1 ELSE 0 END, " + col + " DESC, id DESC"
 }
 
+// tsCmp renders "col op ?" for a timestamp column, to be bound with tsArg.
+// SQLite keeps timestamps as the strings the clients sent, and those come
+// with and without milliseconds, with a zone offset or as a bare date, so
+// comparing the strings misorders them; julianday compares the instants.
+func (t *txWriter) tsCmp(col, op string) string {
+	if t.tx.DriverName() == "sqlite" {
+		return "julianday(" + col + ") " + op + " julianday(?)"
+	}
+	return col + " " + op + " ?"
+}
+
 // resolveContext mirrors history.ts: where the hive lived and which queen
 // reigned at the (possibly back-dated) point in time. Every lookup is bound
 // to the caller's tenant: hive ids are printed on QR labels, so another
 // tenant can store placements or queens that name this hive.
 func (t *txWriter) resolveContext(hiveID, date string) (apiaryID, queenID string, err error) {
 	rows, err := queryMaps(t.ctx, t.tx, `SELECT apiary_id FROM placement
-		WHERE hive_id = ? AND organization_id = ? AND deleted = FALSE AND start_at <= ?
-		  AND (end_at IS NULL OR end_at > ?)`+latestFirst("start_at")+` LIMIT 1`,
+		WHERE hive_id = ? AND organization_id = ? AND deleted = FALSE AND `+t.tsCmp("start_at", "<=")+`
+		  AND (end_at IS NULL OR `+t.tsCmp("end_at", ">")+`)`+latestFirst("start_at")+` LIMIT 1`,
 		hiveID, t.id.OrgID, t.tsArg(date), t.tsArg(date))
 	if err != nil {
 		return "", "", err
@@ -231,8 +242,8 @@ func (t *txWriter) resolveContext(hiveID, date string) (apiaryID, queenID string
 	}
 
 	rows, err = queryMaps(t.ctx, t.tx, `SELECT id FROM queen
-		WHERE hive_id = ? AND organization_id = ? AND deleted = FALSE AND introduced_at <= ?
-		  AND (replaced_at IS NULL OR replaced_at > ?)`+latestFirst("introduced_at")+` LIMIT 1`,
+		WHERE hive_id = ? AND organization_id = ? AND deleted = FALSE AND `+t.tsCmp("introduced_at", "<=")+`
+		  AND (replaced_at IS NULL OR `+t.tsCmp("replaced_at", ">")+`)`+latestFirst("introduced_at")+` LIMIT 1`,
 		hiveID, t.id.OrgID, t.tsArg(date), t.tsArg(date))
 	if err != nil {
 		return "", "", err
