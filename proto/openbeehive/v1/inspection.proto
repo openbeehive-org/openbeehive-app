@@ -5,7 +5,20 @@ package openbeehive.v1;
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 
+// Who recorded an inspection. Sensor readings (a hive scale, a climate probe)
+// are measurements, not visits: they appear in charts but do not count as
+// "last inspected", are left out of the due list and of the dashboard's
+// recent inspections.
+enum InspectionSource {
+  INSPECTION_SOURCE_UNSPECIFIED = 0; // treated as MANUAL
+  INSPECTION_SOURCE_MANUAL = 1;      // a person visited the hive
+  INSPECTION_SOURCE_SENSOR = 2;      // an automated reading
+}
+
 // An inspection / a visit to a hive.
+//
+// Counts, amounts and climate readings are optional: unset means "not
+// recorded", which is different from an observed 0.
 message Inspection {
   string id = 1;
   string organization_id = 2;
@@ -15,38 +28,41 @@ message Inspection {
   bool queen_seen = 6;
   bool eggs_seen = 7;
   Temperament temperament = 8;
-  int32 frames = 9;       // occupied frames
+  optional int32 frames = 9; // occupied frames
   Stores stores = 10;
-  int32 queen_cells = 11;
+  optional int32 queen_cells = 11;
   string varroa = 12;   // e.g. "3 mites/day debris count"
-  double honey_kg = 13;        // harvested during this inspection
+  optional double honey_kg = 13; // harvested during this inspection (superseded by Harvest records)
   string note = 14;
   repeated string photo_keys = 15; // photos as data-URL thumbnails (OR-Set)
   google.protobuf.Timestamp created_at = 16;
 
   // Stockkarte detail: colony state, a calmness/steadiness rating (Wabensitz)
   // and the activities done during this visit.
-  int32 brood_frames = 17;     // frames carrying brood
+  optional int32 brood_frames = 17;   // frames carrying brood
   int32 calmness = 18;         // steadiness on the comb (Wabensitz), 1..4
-  double fed_kg = 19;          // feed given during this visit
-  int32 frames_added = 20;     // frames / foundation added
-  int32 frames_removed = 21;   // frames removed
+  optional double fed_kg = 19;        // feed given during this visit
+  optional int32 frames_added = 20;   // frames / foundation added
+  optional int32 frames_removed = 21; // frames removed
   bool drone_frame_cut = 22;   // drone brood frame cut out (varroa control)
   bool super_added = 23;       // honey super added
-  double weight_kg = 24;       // hive weight at this visit
-  int32 youngest_larva = 25;   // age in days of the youngest larva seen (swarm timing)
+  optional double weight_kg = 24;     // hive weight at this visit
+  optional int32 youngest_larva = 25; // age in days of the youngest larva seen (swarm timing)
   bool covered_larva = 26;     // capped/sealed brood seen
 
   // Climate readings (optional): temperature in °C and relative humidity in %,
   // measured inside the hive and outside. Well suited to automated sensor feeds.
-  double temp_hive = 27;
-  double temp_outside = 28;
-  double humidity_hive = 29;
-  double humidity_outside = 30;
+  optional double temp_hive = 27;
+  optional double temp_outside = 28;
+  optional double humidity_hive = 29;
+  optional double humidity_outside = 30;
+
+  InspectionSource source = 31;
 }
 
 // The server freezes the context (apiary and reigning queen at `date`) and
 // records an INSPECTION event, exactly as the app does for a visit.
+// Optional fields that are not sent are stored as "not recorded".
 message CreateInspectionRequest {
   string hive_id = 1;
   google.protobuf.Timestamp date = 2; // unset = now
@@ -54,39 +70,44 @@ message CreateInspectionRequest {
   bool queen_seen = 4;
   bool eggs_seen = 5;
   Temperament temperament = 6;
-  int32 frames = 7;
+  optional int32 frames = 7;
   Stores stores = 8;
-  int32 queen_cells = 9;
+  optional int32 queen_cells = 9;
   string varroa = 10;
-  double honey_kg = 11;
+  optional double honey_kg = 11;
   string note = 12;
-  double temp_hive = 13;
-  double temp_outside = 14;
-  double humidity_hive = 15;
-  double humidity_outside = 16;
+  optional double temp_hive = 13;
+  optional double temp_outside = 14;
+  optional double humidity_hive = 15;
+  optional double humidity_outside = 16;
   // Stock card details (see Inspection for the meaning of each field).
-  int32 brood_frames = 17;
+  optional int32 brood_frames = 17;
   int32 calmness = 18;
-  double fed_kg = 19;
-  int32 frames_added = 20;
-  int32 frames_removed = 21;
+  optional double fed_kg = 19;
+  optional int32 frames_added = 20;
+  optional int32 frames_removed = 21;
   bool drone_frame_cut = 22;
   bool super_added = 23;
-  double weight_kg = 24;
-  int32 youngest_larva = 25;
+  optional double weight_kg = 24;
+  optional int32 youngest_larva = 25;
   bool covered_larva = 26;
+  InspectionSource source = 27; // unset = MANUAL; integrations feeding readings set SENSOR
 }
 message CreateInspectionResponse { Inspection inspection = 1; }
 
+// Newest first. source filters by who recorded the entry: unset returns
+// everything, MANUAL only visits by a person, SENSOR only automated readings.
 message ListInspectionsRequest {
   PageRequest page = 1;
   string hive_id = 2;
+  InspectionSource source = 3;
 }
 message ListInspectionsResponse {
   repeated Inspection inspections = 1;
   PageResponse page = 2;
 }
 
+// Deleting an inspection also removes its INSPECTION timeline event.
 message DeleteInspectionRequest { string id = 1; }
 message DeleteInspectionResponse {}
 

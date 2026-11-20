@@ -22,6 +22,21 @@ func NewInspectionService(w *Writer) *InspectionService { return &InspectionServ
 // thumbnails (tens of KB); a data URL is replicated to every device.
 const maxPhotoBytes = 512 * 1024
 
+// inspectionCols lists the observation fields of an inspection, named alike
+// in CreateInspectionRequest, in Inspection and in the table. The optional
+// numbers among them (counts, amounts, climate readings) are stored as NULL
+// when not sent: "not recorded" is not the same as an observed 0.
+var inspectionCols = []string{
+	"weather", "queen_seen", "eggs_seen", "temperament", "frames", "stores", "queen_cells",
+	"varroa", "honey_kg", "note", "brood_frames", "calmness", "fed_kg", "frames_added",
+	"frames_removed", "drone_frame_cut", "super_added", "weight_kg", "youngest_larva",
+	"covered_larva", "temp_hive", "temp_outside", "humidity_hive", "humidity_outside", "source",
+}
+
+// sourceSensor marks an automated reading (InspectionSource); such rows are
+// measurements, not visits.
+const sourceSensor = int32(wv1.InspectionSource_INSPECTION_SOURCE_SENSOR)
+
 func (s *InspectionService) CreateInspection(ctx context.Context, req *wv1.CreateInspectionRequest) (*wv1.CreateInspectionResponse, error) {
 	id, ok := auth.FromContext(ctx)
 	if !ok {
@@ -31,19 +46,12 @@ func (s *InspectionService) CreateInspection(ctx context.Context, req *wv1.Creat
 	if m.HiveId == "" {
 		return nil, invalid("hive_id is required")
 	}
-	fields := map[string]any{
-		"weather": m.Weather, "queen_seen": b2i(m.QueenSeen), "eggs_seen": b2i(m.EggsSeen),
-		"temperament": int32(m.Temperament), "frames": m.Frames, "stores": int32(m.Stores),
-		"queen_cells": m.QueenCells, "varroa": m.Varroa, "honey_kg": m.HoneyKg, "note": m.Note,
-		"temp_hive": m.TempHive, "temp_outside": m.TempOutside,
-		"humidity_hive": m.HumidityHive, "humidity_outside": m.HumidityOutside,
-		"brood_frames": m.BroodFrames, "calmness": m.Calmness, "fed_kg": m.FedKg,
-		"frames_added": m.FramesAdded, "frames_removed": m.FramesRemoved,
-		"drone_frame_cut": b2i(m.DroneFrameCut), "super_added": b2i(m.SuperAdded),
-		"weight_kg": m.WeightKg, "youngest_larva": m.YoungestLarva, "covered_larva": b2i(m.CoveredLarva),
+	fields, err := createPayload(m.ProtoReflect(), inspectionCols)
+	if err != nil {
+		return nil, err
 	}
 	var out map[string]any
-	err := s.w.Run(ctx, id, func(t *txWriter) error {
+	err = s.w.Run(ctx, id, func(t *txWriter) error {
 		if _, err := t.hive(m.HiveId); err != nil {
 			return err
 		}
@@ -68,6 +76,14 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListIn
 	if req.HiveId != "" {
 		where += ` AND hive_id = ?`
 		args = append(args, req.HiveId)
+	}
+	switch req.Source {
+	case wv1.InspectionSource_INSPECTION_SOURCE_MANUAL:
+		where += ` AND source <> ?`
+		args = append(args, sourceSensor)
+	case wv1.InspectionSource_INSPECTION_SOURCE_SENSOR:
+		where += ` AND source = ?`
+		args = append(args, sourceSensor)
 	}
 	total, err := countRows(ctx, s.w.db, `SELECT COUNT(*)`+where, args...)
 	if err != nil {

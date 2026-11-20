@@ -12,3 +12,11 @@ lint:
 breaking:
   use:
     - FILE
+  ignore_only:
+    # Inspection counts, amounts and climate readings became `optional` so an
+    # unset value ("not recorded") differs from an observed 0. The wire format
+    # is the same and clients built against the previous contract keep working;
+    # only regenerated stubs see the new presence accessors. The check compares
+    # against the last release tag, so drop this once 0.5.0 is tagged.
+    FIELD_SAME_CARDINALITY:
+      - proto/openbeehive/v1/inspection.proto

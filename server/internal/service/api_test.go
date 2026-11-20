@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect/v2"
 	"github.com/jmoiron/sqlx"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
@@ -84,13 +85,13 @@ func TestCreateInspectionReachesDevicesThroughPull(t *testing.T) {
 	ctx := identityCtx("user-a", "org-a")
 
 	res, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{
-		HiveId: "hive-a", WeightKg: 42.5, TempHive: 34.2, Note: "from a scale",
+		HiveId: "hive-a", WeightKg: proto.Float64(42.5), TempHive: proto.Float64(34.2), Note: "from a scale",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	got := res.Inspection
-	if got.HiveId != "hive-a" || got.WeightKg != 42.5 || got.TempHive != 34.2 || got.Date == nil {
+	if got.HiveId != "hive-a" || got.GetWeightKg() != 42.5 || got.GetTempHive() != 34.2 || got.Date == nil {
 		t.Fatalf("unexpected inspection: %+v", got)
 	}
 

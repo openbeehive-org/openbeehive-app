@@ -127,7 +127,8 @@ func dashboardHoney(ctx context.Context, q dashboardQuery, res *wv1.DashboardRes
 	return nil
 }
 
-// dashboardDue: days since the last visit per hive (never = -1), hives at or past the threshold.
+// dashboardDue: days since the last visit per hive (never = -1), hives at or
+// past the threshold. Sensor readings are not visits and do not count.
 func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
 	hives, err := queryMaps(ctx, q.db, `SELECT h.id, h.name, a.name AS apiary_name
 		FROM hive h LEFT JOIN apiary a ON a.id = h.apiary_id AND a.organization_id = h.organization_id
@@ -136,7 +137,7 @@ func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardRespo
 		return err
 	}
 	last, err := queryMaps(ctx, q.db, `SELECT hive_id, MAX(date) AS last_date FROM inspection
-		WHERE organization_id = ? AND deleted = FALSE GROUP BY hive_id`, q.org)
+		WHERE organization_id = ? AND deleted = FALSE AND source <> ? GROUP BY hive_id`, q.org, sourceSensor)
 	if err != nil {
 		return err
 	}
@@ -168,11 +169,11 @@ func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardRespo
 	return nil
 }
 
-// dashboardRecent: the ten latest inspections.
+// dashboardRecent: the ten latest visits (sensor readings are left out).
 func dashboardRecent(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
 	recent, err := queryMaps(ctx, q.db, `SELECT * FROM inspection
-		WHERE organization_id = ? AND deleted = FALSE
-		ORDER BY date DESC, id DESC LIMIT 10`, q.org)
+		WHERE organization_id = ? AND deleted = FALSE AND source <> ?
+		ORDER BY date DESC, id DESC LIMIT 10`, q.org, sourceSensor)
 	if err != nil {
 		return err
 	}

@@ -199,22 +199,40 @@ func queenFromRow(r map[string]any) *wv1.Queen {
 	}
 }
 
+// rpi and rpf read an optional number: NULL ("not recorded") stays unset.
+func rpi(v any) *int32 {
+	if v == nil {
+		return nil
+	}
+	n := i32(ri(v))
+	return &n
+}
+
+func rpf(v any) *float64 {
+	if v == nil {
+		return nil
+	}
+	f := rf(v)
+	return &f
+}
+
 func inspectionFromRow(r map[string]any) *wv1.Inspection {
 	return &wv1.Inspection{
 		Id: rs(r["id"]), OrganizationId: rs(r["organization_id"]), HiveId: rs(r["hive_id"]),
 		Date: rt(r["date"]), Weather: rs(r["weather"]),
 		QueenSeen: rb(r["queen_seen"]), EggsSeen: rb(r["eggs_seen"]),
-		Temperament: wv1.Temperament(i32(ri(r["temperament"]))), Frames: i32(ri(r["frames"])),
-		Stores: wv1.Stores(i32(ri(r["stores"]))), QueenCells: i32(ri(r["queen_cells"])),
-		Varroa: rs(r["varroa"]), HoneyKg: rf(r["honey_kg"]), Note: rs(r["note"]),
+		Temperament: wv1.Temperament(i32(ri(r["temperament"]))), Frames: rpi(r["frames"]),
+		Stores: wv1.Stores(i32(ri(r["stores"]))), QueenCells: rpi(r["queen_cells"]),
+		Varroa: rs(r["varroa"]), HoneyKg: rpf(r["honey_kg"]), Note: rs(r["note"]),
 		PhotoKeys: rset(r["photo_keys"]), CreatedAt: rt(r["created_at"]),
-		BroodFrames: i32(ri(r["brood_frames"])), Calmness: i32(ri(r["calmness"])),
-		FedKg: rf(r["fed_kg"]), FramesAdded: i32(ri(r["frames_added"])),
-		FramesRemoved: i32(ri(r["frames_removed"])), DroneFrameCut: rb(r["drone_frame_cut"]),
-		SuperAdded: rb(r["super_added"]), WeightKg: rf(r["weight_kg"]),
-		YoungestLarva: i32(ri(r["youngest_larva"])), CoveredLarva: rb(r["covered_larva"]),
-		TempHive: rf(r["temp_hive"]), TempOutside: rf(r["temp_outside"]),
-		HumidityHive: rf(r["humidity_hive"]), HumidityOutside: rf(r["humidity_outside"]),
+		BroodFrames: rpi(r["brood_frames"]), Calmness: i32(ri(r["calmness"])),
+		FedKg: rpf(r["fed_kg"]), FramesAdded: rpi(r["frames_added"]),
+		FramesRemoved: rpi(r["frames_removed"]), DroneFrameCut: rb(r["drone_frame_cut"]),
+		SuperAdded: rb(r["super_added"]), WeightKg: rpf(r["weight_kg"]),
+		YoungestLarva: rpi(r["youngest_larva"]), CoveredLarva: rb(r["covered_larva"]),
+		TempHive: rpf(r["temp_hive"]), TempOutside: rpf(r["temp_outside"]),
+		HumidityHive: rpf(r["humidity_hive"]), HumidityOutside: rpf(r["humidity_outside"]),
+		Source: wv1.InspectionSource(i32(ri(r["source"]))),
 	}
 }
 
