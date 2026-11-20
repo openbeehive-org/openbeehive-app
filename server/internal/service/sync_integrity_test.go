@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect/v2"
+
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
@@ -83,4 +85,27 @@ func TestStoredForeignPhotoKeysAreNotSent(t *testing.T) {
 			t.Fatalf("a current app was sent %s", c.PayloadJson)
 		}
 	}
+}
+
+// A 0.4.x app drops its whole outbox batch after a Push that succeeds and
+// never looks at the rejections. A change it stamped too far ahead must
+// therefore fail the Push, so the batch is kept and sent again.
+func TestLegacyPushWithClockAheadFailsAsAWhole(t *testing.T) {
+	svc := newSyncFixture(t)
+	ahead := change("hive", "hive-a", "apiary-a", `{"note":"from a fast clock"}`)
+	ahead.Hlc = wsync.Format(time.Now().Add(time.Hour).UnixMilli(), 0, "dev")
+	fine := change("hive", "hive-a", "apiary-a", `{"name":"renamed"}`)
+
+	_, err := svc.Push(legacyA, &wv1.PushRequest{Changes: []*wv1.Change{fine, ahead}})
+	wantCode(t, err, connect.CodeFailedPrecondition)
+	if got := hiveName(t, svc, "hive-a"); got != "H1" {
+		t.Fatalf("part of the failed batch was applied: name %q", got)
+	}
+	// Other refusals stay per change for such an app: sending them again
+	// could never succeed.
+	res := pushRes(t, svc, legacyA, fine, change("hive", "hive-x", "apiary-b", `{"name":"intruder"}`))
+	wantRejected(t, res, map[int32]string{1: rejForbiddenScope})
+	// A current app gets the rejection and re-stamps.
+	res = pushRes(t, svc, ctxA, ahead)
+	wantRejected(t, res, map[int32]string{0: rejClockAhead})
 }

@@ -377,7 +377,8 @@ func (s *SyncService) Push(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	if _, err := s.admit(ctx); err != nil {
+	client, err := s.admit(ctx)
+	if err != nil {
 		return nil, err
 	}
 	// Read-only identities (demo account, read-scoped API keys) upload
@@ -415,6 +416,9 @@ func (s *SyncService) Push(
 			return nil, internalErr(err)
 		}
 		if cerr != nil {
+			if cerr.code == rejClockAhead && client.legacy() {
+				return nil, legacyClockAhead(cerr)
+			}
 			rejected = append(rejected, &wv1.RejectedChange{
 				Index: int32(i), Code: cerr.code, Reason: cerr.reason,
 			})
@@ -431,6 +435,16 @@ func (s *SyncService) Push(
 		_ = s.hlc.Recv(stamp)
 	}
 	return &wv1.PushResponse{Rejected: rejected, ServerTimeMs: now.UnixMilli()}, nil
+}
+
+// legacyClockAhead fails the Push of a 0.4.x app that sent a change stamped
+// too far ahead. Such an app ignores the per-change rejections and empties
+// its outbox after every successful Push, so a refused change would be lost
+// without a trace. A failed request it retries instead, with the batch kept,
+// until its clock is right again or it has updated itself; an updated app
+// re-stamps such changes. Nothing of the batch is applied.
+func legacyClockAhead(cerr *changeError) error {
+	return upgradeRequired(protocolSnapshots, "the device clock is ahead of the server: "+cerr.reason)
 }
 
 // lockWrites serializes everything that merges rows and appends to the
