@@ -3,6 +3,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import type * as Leaflet from 'leaflet';
+  import { popupHtml } from '#lib/map.js';
 
   type LeafletLib = typeof import('leaflet');
   type ApiaryPin = { id: string; name: string; lat: number; lng: number };
@@ -32,7 +33,7 @@
     const pts: Leaflet.LatLngTuple[] = [];
     for (const a of located) {
       const m = L.marker([a.lat, a.lng], { icon: pin(L) }).addTo(layer);
-      m.bindPopup(`<strong>${a.name}</strong>`);
+      m.bindPopup(popupHtml(a.name));
       m.on('click', () => goto(`/apiaries/${a.id}`));
       pts.push([a.lat, a.lng]);
     }

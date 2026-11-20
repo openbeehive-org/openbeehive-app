@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { hiveUrl, qrSvg, shortCode } from '#lib/qr.js';
+  import { printQrLabel } from '#lib/qrlabel.js';
 
   let { hiveId, name = '' }: { hiveId: string; name?: string } = $props();
   let svg = $state('');
@@ -11,17 +12,7 @@
 
   // Print a clean label in a separate window (avoids app chrome).
   function printLabel() {
-    const w = window.open('', '_blank', 'width=420,height=560');
-    if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>${name}</title>
-      <style>body{font-family:system-ui,sans-serif;text-align:center;padding:28px;margin:0}
-      .n{font-size:20px;font-weight:700;margin:14px 0 2px}.c{color:#666;letter-spacing:.18em}
-      svg{width:280px;height:auto}</style></head>
-      <body>${svg}<div class="n">${name || 'Hive'}</div>
-      <div class="c">${shortCode(hiveId)}</div></body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 150);
+    printQrLabel({ name, code: shortCode(hiveId), svg });
   }
 
   // Download the QR as an SVG file.
@@ -39,19 +30,19 @@
   <!-- eslint-disable-next-line svelte/no-at-html-tags -- svg is rendered locally by qr.ts, never user input -->
   <div class="qr">{@html svg}</div>
   <div class="meta">
-    <strong>{name || 'Hive'}</strong>
+    {#if name}<strong>{name}</strong>{/if}
     <span class="code">{shortCode(hiveId)}</span>
   </div>
   <div class="actions">
-    <button class="btn primary" onclick={printLabel}>{$_('qr.print')}</button>
-    <button class="btn ghost" onclick={download}>SVG</button>
+    <button type="button" class="btn primary" onclick={printLabel}>{$_('qr.print')}</button>
+    <button type="button" class="btn ghost" onclick={download}>SVG</button>
   </div>
 </div>
 
 <style>
   .card {
-    background: var(--cream2, #fffdf7);
-    border: 1px solid var(--line, #e5dcc6);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 16px;
     padding: 18px;
     display: flex;
@@ -74,7 +65,7 @@
     display: block;
   }
   .code {
-    color: var(--ink-soft, #6b5e48);
+    color: var(--text-soft);
     letter-spacing: 0.18em;
     font-size: 0.8rem;
     font-weight: 600;
@@ -92,12 +83,12 @@
     border: 1px solid transparent;
   }
   .primary {
-    background: var(--honey, #c77f22);
-    color: #fff;
+    background: var(--accent);
+    color: var(--on-accent);
   }
   .ghost {
     background: transparent;
-    border-color: var(--line, #e5dcc6);
-    color: var(--ink, #2c2316);
+    border-color: var(--border-strong);
+    color: var(--text);
   }
 </style>
