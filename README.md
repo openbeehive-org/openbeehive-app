@@ -34,7 +34,7 @@ or without a signal.
   best-before; audit-ready.
 - **QR codes** — print a label per hive and scan straight into its record.
 - **Multi-device sync** — conflict-free (HLC + per-field LWW + OR-Sets);
-  shared tenants with invites for teams and clubs.
+  shared workspaces with invites for teams and clubs.
 - **Multi-language** — English, German, French, Spanish, Italian.
 - **Your data, your choice** — use the free hosted service or self-host.
 
@@ -45,11 +45,11 @@ overridable.
 
 | Profile     | Database   | Blob storage   | Target                                |
 |-------------|------------|----------------|---------------------------------------|
-| `cloud`     | PostgreSQL | MinIO / S3     | central public service, scaling       |
+| `cloud`     | PostgreSQL | MinIO / S3     | a service for many users, one server  |
 | `selfhost`  | SQLite     | local filesystem | one beekeeper, one server, one binary |
 
 ```
-BEEHIVE_DATABASE_DRIVER=postgres|mysql|sqlite
+BEEHIVE_DATABASE_DRIVER=postgres|mysql|sqlite   # mysql = MariaDB
 BEEHIVE_DATABASE_DSN=...
 BEEHIVE_BLOB_BACKEND=minio|fs
 ```
@@ -63,7 +63,7 @@ plus a data folder on one host.
   (SQLite-WASM on OPFS).
 - **Backend:** Go, API via [Connect-RPC](https://connectrpc.com/) (gRPC + HTTP/JSON).
 - **Auth:** email + password (with invites), passkeys (WebAuthn), OIDC (multiple providers).
-- **Database (pluggable):** PostgreSQL · MySQL · SQLite.
+- **Database (pluggable):** PostgreSQL · MariaDB · SQLite.
 - **Blob storage (pluggable):** MinIO/S3 · local filesystem.
 
 ## Quick start — self-hosted
@@ -98,6 +98,11 @@ BEEHIVE_SESSION_SECRET=...    # openssl rand -base64 32
 ```bash
 docker compose -f docker-compose.selfhost.yml up -d
 ```
+
+With the `docker run` line above, `BEEHIVE_BIND` has no effect: pass the
+settings with `-e` or `--env-file`, and once login is on, remove the container
+and start it again with `-p 8080:8080` instead of `-p 127.0.0.1:8080:8080`
+(the volume keeps your data).
 
 Records made before login was switched on move into the admin's workspace at
 the next start. Put a reverse proxy with TLS in front for anything beyond your
