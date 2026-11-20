@@ -28,7 +28,7 @@
     "entityId": "event-1",
     "scopeId": "apiary-a",
     "op": 1,
-    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"author_id\":\"s-author_id\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"detail\":\"s-detail\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"ref_entity\":\"s-ref_entity\",\"ref_id\":\"s-ref_id\",\"scope_id\":\"apiary-a\",\"title\":\"s-title\",\"type\":3}",
+    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"author_id\":\"user-a\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"detail\":\"s-detail\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"ref_entity\":\"s-ref_entity\",\"ref_id\":\"s-ref_id\",\"scope_id\":\"apiary-a\",\"title\":\"s-title\",\"type\":3}",
     "hlc": "001767225600004:00000:new"
   },
   {
@@ -36,7 +36,7 @@
     "entityId": "event-2",
     "scopeId": "apiary-a",
     "op": 1,
-    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"author_id\":\"s-author_id\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"detail\":\"s-detail\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"ref_entity\":\"s-ref_entity\",\"ref_id\":\"s-ref_id\",\"scope_id\":\"apiary-a\",\"title\":\"s-title\",\"type\":3}",
+    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"author_id\":\"user-a\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"detail\":\"s-detail\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"ref_entity\":\"s-ref_entity\",\"ref_id\":\"s-ref_id\",\"scope_id\":\"apiary-a\",\"title\":\"s-title\",\"type\":3}",
     "hlc": "001767225600005:00000:new"
   },
   {

@@ -734,6 +734,7 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	if !exists && !spec.perUser {
 		fields["organization_id"] = orgID // new rows always belong to the caller's tenant
 	}
+	stampAuthor(ch, fields, exists)
 
 	payload, err := json.Marshal(fields)
 	if err != nil {
@@ -758,6 +759,20 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 		return err
 	}
 	return claimOwner(ctx, tx, ch)
+}
+
+// stampAuthor sets the author column of a record (event.author_id). Who
+// wrote a record is whoever was signed in when it was created, never what a
+// payload claims: the change's author, which the caller sets from the
+// identity. Later changes leave it as it is.
+func stampAuthor(ch *wv1.Change, fields map[string]any, exists bool) {
+	if _, authored := kindsOf(ch.Entity)["author_id"]; !authored {
+		return
+	}
+	delete(fields, "author_id")
+	if !exists {
+		fields["author_id"] = ch.AuthorId
+	}
 }
 
 // claimOwner records who owns a personal task: the user in whose personal

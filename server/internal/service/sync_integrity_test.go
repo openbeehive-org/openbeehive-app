@@ -87,27 +87,27 @@ func TestStoredForeignPhotoKeysAreNotSent(t *testing.T) {
 	}
 }
 
-// A 0.4.x app drops its whole outbox batch after a Push that succeeds and
-// never looks at the rejections. A change it stamped too far ahead must
-// therefore fail the Push, so the batch is kept and sent again.
-func TestLegacyPushWithClockAheadFailsAsAWhole(t *testing.T) {
+// The author of an event is whoever created it, not what the payload says.
+func TestEventAuthorIsTheSignedInUser(t *testing.T) {
 	svc := newSyncFixture(t)
-	ahead := change("hive", "hive-a", "apiary-a", `{"note":"from a fast clock"}`)
-	ahead.Hlc = wsync.Format(time.Now().Add(time.Hour).UnixMilli(), 0, "dev")
-	fine := change("hive", "hive-a", "apiary-a", `{"name":"renamed"}`)
-
-	_, err := svc.Push(legacyA, &wv1.PushRequest{Changes: []*wv1.Change{fine, ahead}})
-	wantCode(t, err, connect.CodeFailedPrecondition)
-	if got := hiveName(t, svc, "hive-a"); got != "H1" {
-		t.Fatalf("part of the failed batch was applied: name %q", got)
+	a, b := identityCtx("user-a", "org-a"), identityCtx("user-b2", "org-a")
+	ev := `{"scope_id":"apiary-a","type":6,"date":"2026-07-11","hive_id":"hive-a","title":"Oxalic","author_id":"someone-else"}`
+	if err := push(svc, a, change("event", "ev-1", "apiary-a", ev)); err != nil {
+		t.Fatal(err)
 	}
-	// Other refusals stay per change for such an app: sending them again
-	// could never succeed.
-	res := pushRes(t, svc, legacyA, fine, change("hive", "hive-x", "apiary-b", `{"name":"intruder"}`))
-	wantRejected(t, res, map[int32]string{1: rejForbiddenScope})
-	// A current app gets the rejection and re-stamps.
-	res = pushRes(t, svc, ctxA, ahead)
-	wantRejected(t, res, map[int32]string{0: rejClockAhead})
+	// A later edit by a colleague claiming authorship changes nothing about it.
+	if err := push(svc, b, change("event", "ev-1", "apiary-a", `{"title":"Oxalic acid","author_id":"user-b2"}`)); err != nil {
+		t.Fatal(err)
+	}
+	var author string
+	if err := svc.db.Get(&author, `SELECT author_id FROM event WHERE id = 'ev-1'`); err != nil || author != "user-a" {
+		t.Fatalf("stored author = %q (%v), want user-a", author, err)
+	}
+	for _, c := range pullAll(t, svc, identityCtx("user-c", "org-a")) {
+		if c.EntityId == "ev-1" && (strings.Contains(c.PayloadJson, "someone-else") || strings.Contains(c.PayloadJson, "user-b2")) {
+			t.Fatalf("pulled a claimed author: %s", c.PayloadJson)
+		}
+	}
 }
 
 // An apiary with the id of a member's personal scope must not open that
@@ -166,4 +166,27 @@ func TestSharedRowsAreNotWrittenInThePersonalScope(t *testing.T) {
 	if got := hiveName(t, svc, "hive-a"); got != "H1" {
 		t.Fatalf("hive renamed to %q", got)
 	}
+}
+
+// A 0.4.x app drops its whole outbox batch after a Push that succeeds and
+// never looks at the rejections. A change it stamped too far ahead must
+// therefore fail the Push, so the batch is kept and sent again.
+func TestLegacyPushWithClockAheadFailsAsAWhole(t *testing.T) {
+	svc := newSyncFixture(t)
+	ahead := change("hive", "hive-a", "apiary-a", `{"note":"from a fast clock"}`)
+	ahead.Hlc = wsync.Format(time.Now().Add(time.Hour).UnixMilli(), 0, "dev")
+	fine := change("hive", "hive-a", "apiary-a", `{"name":"renamed"}`)
+
+	_, err := svc.Push(legacyA, &wv1.PushRequest{Changes: []*wv1.Change{fine, ahead}})
+	wantCode(t, err, connect.CodeFailedPrecondition)
+	if got := hiveName(t, svc, "hive-a"); got != "H1" {
+		t.Fatalf("part of the failed batch was applied: name %q", got)
+	}
+	// Other refusals stay per change for such an app: sending them again
+	// could never succeed.
+	res := pushRes(t, svc, legacyA, fine, change("hive", "hive-x", "apiary-b", `{"name":"intruder"}`))
+	wantRejected(t, res, map[int32]string{1: rejForbiddenScope})
+	// A current app gets the rejection and re-stamps.
+	res = pushRes(t, svc, ctxA, ahead)
+	wantRejected(t, res, map[int32]string{0: rejClockAhead})
 }
