@@ -45,6 +45,9 @@ func newFixtureStore(t *testing.T) *sqlstore.Store {
 		t.Fatalf("migrate: %v", err)
 	}
 	db := store.DB()
+	if err := RecordBoot(context.Background(), db); err != nil {
+		t.Fatalf("record boot: %v", err)
+	}
 	seed := []string{
 		`INSERT INTO apiary (id, organization_id, name, created_at, updated_at)
 		 VALUES ('apiary-a', 'org-a', 'A', '2026-01-01', '2026-01-01')`,

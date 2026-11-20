@@ -82,20 +82,24 @@ app/        SvelteKit PWA
   as cursors. New synced columns and tables reach only clients that announce a version.
   `TestLegacyPullStaysInsideTheFrozenSet` (Go) and `app/src/lib/local/legacy.test.ts`, which runs the
   pull code of release 0.4.1 on what the server sends, guard this.
-- **Cursor and epoch.** Every database has a random epoch (`sync_state`). For protocol 1 a cursor is
-  `<epoch>:<sequence number>:<fingerprint of the log entry at that number>`. `Pull` answers a cursor
+- **Cursor and epoch.** Every database has a random epoch (`sync_state`), and every start of the
+  server leaves a mark at the log position it started at (`sync_boot`). For protocol 1 a cursor is
+  `<epoch>:<sequence number>:<mark of the last start before that number>`. `Pull` answers a cursor
   that is not part of this database's history with `RESET_REQUIRED` instead of changes: another
-  epoch, a number beyond the end of the log, or a number whose entry is no longer the one the device
-  saw. The last two are what a restored backup looks like, which hands the numbers after the backup
-  out again.
+  epoch, a number beyond the end of the log, or a mark that is not the one that belongs there. The
+  last two are what a restored backup looks like: the server starts on it at an earlier position
+  than devices have read, and hands the numbers after it out again. The check does not depend on
+  log entries, so compaction, a deleted workspace or the rebuilt demo cannot hide a restore. It does
+  depend on the server being started on the restored database before it serves requests.
 - **Snapshot.** `Snapshot` returns the current rows of the workspace (tombstones included, personal
   rows only to their owner) with their field clocks, in pages cut by size, plus the cursor to
   continue from. The device merges each row column by column, so newer local edits survive and the
   outbox is untouched. A device uses it when it has no cursor, after `RESET_REQUIRED`, and after
   `SNAPSHOT_REQUIRED`.
 - **Reset.** After `RESET_REQUIRED` the device also queues every local row for upload again, as
-  ordinary changes grouped by the stamps the columns already carry. Where the server still has a
-  change the merge does nothing; where the restore lost one, it comes back. 0.4.x apps get neither
+  ordinary changes grouped by the stamps the columns already carry; the oldest change of a row
+  carries all its columns, so it can create a row the server no longer has. Where the server still
+  has a change the merge does nothing; where the restore lost one, it comes back. 0.4.x apps get neither
   signal; one whose position lies beyond the restored log reads the log again from the start.
 - **Compaction.** Once a day the server deletes log entries it received more than
   `BEEHIVE_CHANGELOG_RETENTION_DAYS` ago (default 180, 0 keeps everything) and stores the sequence

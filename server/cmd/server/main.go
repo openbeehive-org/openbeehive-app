@@ -141,6 +141,10 @@ func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 	if err := store.Migrate(ctx); err != nil {
 		log.Fatalf("migration: %v", err)
 	}
+	// Before anything writes: devices tell a restored database by this mark.
+	if err := service.RecordBoot(ctx, store.DB()); err != nil {
+		log.Fatalf("sync: %v", err)
+	}
 
 	// Dedicated instance admin (BEEHIVE_ADMIN_EMAIL/PASSWORD, mandatory with
 	// password auth). Created or repaired on every boot; sign-up never grants

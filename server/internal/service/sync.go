@@ -164,7 +164,7 @@ func internalErr(err error) error {
 // workspace they were written in. idx_change_org_seq serves both queries.
 const (
 	pullQuery = `
-		SELECT id, scope_id, entity, entity_id, op, payload, hlc, author_id, seq
+		SELECT scope_id, entity, entity_id, op, payload, hlc, author_id, seq
 		FROM change_log
 		WHERE org_id = ? AND seq > ? AND (scope_id NOT LIKE 'user:%' OR scope_id = ?)
 		ORDER BY seq ASC LIMIT ?`
@@ -176,7 +176,6 @@ const (
 
 // logEntry is one change-log row as Pull reads it.
 type logEntry struct {
-	id     string
 	seq    int64
 	change *wv1.Change
 }
@@ -281,31 +280,23 @@ func (s *SyncService) pullStart(ctx context.Context, client syncClient, st syncS
 // workspace ahead of the compaction horizon. A device that is already there
 // keeps the cursor it sent.
 func (s *SyncService) pullEnd(ctx context.Context, client syncClient, st syncState, after int64, page []logEntry, res *wv1.PullResponse) error {
-	pos, tag := after, ""
+	pos := after
 	if len(page) > 0 {
-		last := page[len(page)-1]
-		pos, tag = last.seq, entryTag(last.id)
+		pos = page[len(page)-1].seq
 	}
 	if !res.HasMore && st.head > pos {
-		pos, tag = st.head, ""
+		pos = st.head
+	}
+	if pos == after && (client.legacy() || res.NextCursor != "") {
+		return nil
 	}
 	if client.legacy() {
-		if pos > after {
-			res.NextCursor = seqToCursor(pos)
-		}
+		res.NextCursor = seqToCursor(pos)
 		return nil
 	}
-	if pos == after && res.NextCursor != "" {
-		return nil
-	}
-	if tag == "" {
-		var err error
-		if tag, err = s.tagAt(ctx, pos); err != nil {
-			return err
-		}
-	}
-	res.NextCursor = cursor{epoch: st.epoch, seq: pos, tag: tag}.String()
-	return nil
+	var err error
+	res.NextCursor, err = s.cursorAt(ctx, st, pos)
+	return err
 }
 
 // readLog returns up to limit changes the identity may see after seq.
@@ -320,14 +311,14 @@ func (s *SyncService) readLog(ctx context.Context, id auth.Identity, after int64
 	var out []logEntry
 	for rows.Next() {
 		var c struct {
-			ID, ScopeID, Entity, EntityID, Payload, HLC, Author string
-			Op                                                  int32
-			Seq                                                 int64
+			ScopeID, Entity, EntityID, Payload, HLC, Author string
+			Op                                              int32
+			Seq                                             int64
 		}
-		if err := rows.Scan(&c.ID, &c.ScopeID, &c.Entity, &c.EntityID, &c.Op, &c.Payload, &c.HLC, &c.Author, &c.Seq); err != nil {
+		if err := rows.Scan(&c.ScopeID, &c.Entity, &c.EntityID, &c.Op, &c.Payload, &c.HLC, &c.Author, &c.Seq); err != nil {
 			return nil, err
 		}
-		out = append(out, logEntry{id: c.ID, seq: c.Seq, change: &wv1.Change{
+		out = append(out, logEntry{seq: c.Seq, change: &wv1.Change{
 			Entity: c.Entity, EntityId: c.EntityID, ScopeId: c.ScopeID,
 			Op: wv1.ChangeOp(c.Op), PayloadJson: c.Payload, Hlc: c.HLC, AuthorId: c.Author,
 		}})

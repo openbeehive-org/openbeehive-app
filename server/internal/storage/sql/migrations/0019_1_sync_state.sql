@@ -4,13 +4,22 @@
 --            notices when it talks to a different database than before.
 --   horizon  sequence number up to which the change log has been compacted;
 --            a cursor below it can no longer be served from the log.
--- The epoch row is written by 0019_2_sync_state.<dialect>.sql (each database
--- spells "random number" differently).
+-- The rows are written by 0019_2_sync_state.<dialect>.sql (each database
+-- spells "random number" and "insert unless it is there" differently).
 CREATE TABLE IF NOT EXISTS sync_state (
   name VARCHAR(32) PRIMARY KEY,
   val  BIGINT NOT NULL
 );
-INSERT INTO sync_state (name, val) VALUES ('horizon', 0);
+
+-- One mark per start of the server: the log position it started at and a
+-- random tag. A cursor carries the tag of the last start before its
+-- position. After a backup has been restored, the server starts at an
+-- earlier position than devices have already read, and their cursors no
+-- longer carry the tag that belongs there.
+CREATE TABLE IF NOT EXISTS sync_boot (
+  head BIGINT PRIMARY KEY,
+  tag  BIGINT NOT NULL
+);
 
 -- When the server received a change (Unix milliseconds). Compaction goes by
 -- this, not by the change's own stamp, which is the time on the device that

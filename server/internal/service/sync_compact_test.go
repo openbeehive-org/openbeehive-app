@@ -48,7 +48,7 @@ func TestCompactionRemovesOldEntriesAndRecordsTheHorizon(t *testing.T) {
 	}
 	first := pullStatus(t, svc, ctx, "")
 	early, _ := parseCursor(first.NextCursor)
-	early.seq, early.tag = 2, ""
+	early.seq = 2
 
 	// Nothing is old enough yet.
 	if n, err := svc.Compact(ctx, time.Now().Add(-time.Hour)); err != nil || n != 0 {
@@ -150,15 +150,15 @@ func TestQuietWorkspaceStaysAheadOfTheHorizon(t *testing.T) {
 		}
 	}
 	res := pullStatus(t, svc, a, cur)
-	if c, _ := parseCursor(res.NextCursor); len(res.Changes) != 0 || c.seq != 4 || c.tag == "" {
+	if c, _ := parseCursor(res.NextCursor); len(res.Changes) != 0 || c.seq != 4 {
 		t.Fatalf("idle pull: %d changes, cursor %q", len(res.Changes), res.NextCursor)
 	}
 	compactUpTo(t, svc, 3)
 	if got := pullStatus(t, svc, a, res.NextCursor); got.Status != 0 {
 		t.Fatalf("a device that kept syncing is behind the horizon: %v", got.Status)
 	}
-	// The entry the cursor names can go away (compaction, a deleted
-	// workspace) without that being a restore.
+	// The entry at the cursor's position can go away without that being a
+	// restore.
 	compactUpTo(t, svc, 4)
 	if got := pullStatus(t, svc, a, res.NextCursor); got.Status != 0 {
 		t.Fatalf("cursor at the horizon: %v", got.Status)
@@ -211,7 +211,7 @@ func TestSnapshotAfterCompactionMatchesTheLog(t *testing.T) {
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("compaction changed what a snapshot returns")
 	}
-	if c, _ := parseCursor(cur); c.seq != st.head || c.tag != "" {
+	if c, _ := parseCursor(cur); c.seq != st.head {
 		t.Fatalf("cursor of a snapshot over an empty log: %q", cur)
 	}
 	if res := pullStatus(t, svc, ctx, cur); res.Status != 0 {
