@@ -71,6 +71,23 @@
     --honey-l: #e9a744;
     --moss: #5c6b4a;
     --line: #e5dcc6;
+
+    /* Semantic tokens: components use these, never raw colours, so a theme
+       only has to redefine this block. */
+    --bg: var(--cream);
+    --surface: var(--cream2);
+    --text: var(--ink);
+    --text-soft: var(--ink-soft);
+    --border: var(--line);
+    --border-strong: #8f8270; /* form controls: 3:1 against --surface */
+    --accent: var(--honey-d); /* button backgrounds: 4.5:1 with --on-accent */
+    --on-accent: #ffffff;
+    --accent-text: #8a5210; /* accent-coloured text on --bg / --surface */
+    --danger: #b3261e;
+    --on-danger: #ffffff;
+    --ok: var(--moss);
+    --warn-bg: #f6e3b4;
+    --warn-text: #5a3d00;
   }
   :global(*) {
     box-sizing: border-box;
