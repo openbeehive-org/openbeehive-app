@@ -128,12 +128,12 @@ describe('visitChips', () => {
       '9 insp.frames',
       '6 insp.brood_frames',
       '2 insp.queen_cells',
-      'insp.fed_kg 1.5 common.kg',
+      'insp.fed_kg 1.5 kg',
       '+2 insp.frames',
       '−1 insp.frames',
       'insp.drone_frame_cut',
       'insp.super_added',
-      '38 common.kg',
+      '38 kg',
       'insp.temp_hive 34 °C',
       'insp.humidity_hive 62 %',
       'insp.varroa: 3 mites/day'
@@ -150,7 +150,20 @@ describe('visitChips', () => {
   });
 
   it('still shows honey recorded on an old visit', () => {
-    expect(visitChips(row({ source: 0, honey_kg: 12 }), t)).toEqual(['insp.honey_kg 12 common.kg']);
+    expect(visitChips(row({ source: 0, honey_kg: 12 }), t)).toEqual(['insp.honey_kg 12 kg']);
+  });
+
+  it('shows weights and temperatures in the chosen units and language', () => {
+    const imperial = { weight: 'lb', temp: 'f' } as const;
+    const visit = row({ source: 1, weight_kg: 38, fed_kg: 0.5, temp_hive: 34.5 });
+    expect(visitChips(visit, t, imperial, 'de')).toEqual([
+      'insp.fed_kg 1,1 lb',
+      '83,78 lb',
+      'insp.temp_hive 94,1 °F'
+    ]);
+    expect(visitChips(visit, t, { weight: 'kg', temp: 'c' }, 'de')).toContain(
+      'insp.temp_hive 34,5 °C'
+    );
   });
 
   it('shows frost readings', () => {

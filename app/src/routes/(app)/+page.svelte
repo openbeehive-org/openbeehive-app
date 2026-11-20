@@ -6,6 +6,8 @@
   import { apiaries, hives, tasks as taskRepo } from '#lib/local/repo.js';
   import { getDB } from '#lib/local/db.js';
   import { honeyByYear } from '#lib/local/history.js';
+  import { units } from '#lib/prefs.js';
+  import { formatNumber, fromMetric, unitSymbol } from '#lib/units.js';
   import type { ApiaryRow, TaskRow } from './rows.js';
   import { dataVersion, initialSyncPending } from '#lib/local/live.js';
   import { formatDate, todayLocal } from '#lib/dates.js';
@@ -54,7 +56,7 @@
       hives: hiveRows.length,
       active_queens: queenRow?.n ?? 0,
       open_tasks: await taskRepo.openCount(),
-      honey_kg_season: Math.round(Number(honey?.kg ?? 0))
+      honey_kg_season: Number(honey?.kg ?? 0)
     };
 
     // Hives sorted by how long since a person last inspected them (sensor
@@ -167,7 +169,11 @@
     {/each}
     <div class="stat honey">
       <span class="n">
-        {#if loaded}{stats.honey_kg_season}<small> {$_('common.kg')}</small>{:else}<span
+        {#if loaded}{formatNumber(
+            fromMetric('weight', stats.honey_kg_season, $units),
+            $locale,
+            0
+          )}<small> {unitSymbol('weight', $units)}</small>{:else}<span
             class="n-skl"
             aria-hidden="true"
           ></span>{/if}

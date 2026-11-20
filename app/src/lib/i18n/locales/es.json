@@ -502,8 +502,8 @@
     "water": "Contenido de agua",
     "batch": "N.º de lote",
     "best_before": "Consumir preferentemente antes de",
-    "confirm_delete": "¿Eliminar la cosecha de {amount} kg del {date}?",
-    "deleted": "Cosecha de {amount} kg eliminada",
+    "confirm_delete": "¿Eliminar la cosecha de {amount} del {date}?",
+    "deleted": "Cosecha de {amount} eliminada",
     "amended": "Modificada el {date}"
   },
   "treat": {

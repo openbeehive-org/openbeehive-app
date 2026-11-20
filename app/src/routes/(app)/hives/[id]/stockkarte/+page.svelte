@@ -6,7 +6,9 @@
   import type { HiveRow, InspectionRow, QueenRow } from '../../../rows.js';
   import { dataVersion } from '#lib/local/live.js';
   import { formatDate } from '#lib/dates.js';
-  import { level, reading, type NumericKey } from '#lib/components/hive/readings.js';
+  import { level, quantityOf, reading, type NumericKey } from '#lib/components/hive/readings.js';
+  import { units } from '#lib/prefs.js';
+  import { formatValue, unitSymbol } from '#lib/units.js';
   import { dotted } from '#lib/components/hive/forms.js';
   import '#lib/components/hive/hive.css';
 
@@ -31,8 +33,15 @@
     load();
   });
 
-  // Empty cell = not recorded; a recorded 0 is printed as 0.
-  const num = (i: InspectionRow, key: NumericKey) => reading(i, key) ?? '';
+  // Empty cell = not recorded; a recorded 0 is printed as 0. Weights and
+  // temperatures in the chosen units.
+  function num(i: InspectionRow, key: NumericKey) {
+    const v = reading(i, key);
+    const q = quantityOf(key);
+    return v === null ? '' : q ? formatValue(q, v, $units, $locale) : v;
+  }
+  const kg = $derived(unitSymbol('weight', $units));
+  const deg = $derived(unitSymbol('temp', $units));
   const d = (s: string) => formatDate(s, $locale, { dateStyle: 'short' });
 </script>
 
@@ -88,7 +97,7 @@
               <th>{$_('insp.temperament')}</th>
               <th>{$_('insp.calmness')}</th>
               <th>{$_('insp.varroa')}</th>
-              <th>{$_('insp.fed_kg')} ({$_('common.kg')})</th>
+              <th>{$_('insp.fed_kg')} ({kg})</th>
               <th>
                 <ArrowUp size={14} aria-hidden="true" />
                 <span class="hv-sr">{$_('insp.super_added')}</span>
@@ -97,12 +106,12 @@
                 <Scissors size={14} aria-hidden="true" />
                 <span class="hv-sr">{$_('insp.drone_frame_cut')}</span>
               </th>
-              <th>{$_('insp.temp_hive')} °C</th>
-              <th>{$_('insp.temp_outside')} °C</th>
+              <th>{$_('insp.temp_hive')} {deg}</th>
+              <th>{$_('insp.temp_outside')} {deg}</th>
               <th>{$_('insp.humidity_hive')} %</th>
               <th>{$_('insp.humidity_outside')} %</th>
-              <th>{$_('insp.weight_kg')} ({$_('common.kg')})</th>
-              <th>{$_('insp.honey_kg')} ({$_('common.kg')})</th>
+              <th>{$_('insp.weight_kg')} ({kg})</th>
+              <th>{$_('insp.honey_kg')} ({kg})</th>
               <th>{$_('insp.note')}</th>
             </tr>
           </thead>
@@ -132,7 +141,9 @@
                 <td class="c">{num(i, 'humidity_hive')}</td>
                 <td class="c">{num(i, 'humidity_outside')}</td>
                 <td class="c">{num(i, 'weight_kg')}</td>
-                <td class="c">{i.honey_kg || ''}</td>
+                <td class="c">
+                  {i.honey_kg ? formatValue('weight', i.honey_kg, $units, $locale) : ''}
+                </td>
                 <td class="t note">{i.note ?? ''}</td>
               </tr>
             {/each}

@@ -20,6 +20,8 @@
   import LevelChart from '#lib/components/hive/LevelChart.svelte';
   import { dotted } from '#lib/components/hive/forms.js';
   import { timeOf } from '#lib/components/hive/chartScale.js';
+  import { units } from '#lib/prefs.js';
+  import { chartValue, formatNumber, unitSymbol } from '#lib/units.js';
   import '#lib/components/hive/hive.css';
 
   const id = page.params.id ?? '';
@@ -32,8 +34,10 @@
   // What is charted over the inspection history, in card order. Numbers are
   // plotted as recorded (empty = no point, 0 and frost are real points);
   // ratings as named levels; varroa only where a plain number was entered.
+  // Weights and temperatures are charted in the chosen units.
+  type Unit = 'weight' | 'temp' | 'd' | '%';
   type Metric =
-    | { kind: 'number'; key: NumericKey; unit?: 'kg' | 'd' | '°C' | '%' }
+    | { kind: 'number'; key: NumericKey; unit?: Unit }
     | { kind: 'level'; key: OrdinalKey }
     | { kind: 'varroa'; key: 'varroa' };
   const METRICS: Metric[] = [
@@ -44,11 +48,11 @@
     { kind: 'level', key: 'temperament' },
     { kind: 'level', key: 'calmness' },
     { kind: 'varroa', key: 'varroa' },
-    { kind: 'number', key: 'weight_kg', unit: 'kg' },
-    { kind: 'number', key: 'fed_kg', unit: 'kg' },
+    { kind: 'number', key: 'weight_kg', unit: 'weight' },
+    { kind: 'number', key: 'fed_kg', unit: 'weight' },
     { kind: 'number', key: 'youngest_larva', unit: 'd' },
-    { kind: 'number', key: 'temp_hive', unit: '°C' },
-    { kind: 'number', key: 'temp_outside', unit: '°C' },
+    { kind: 'number', key: 'temp_hive', unit: 'temp' },
+    { kind: 'number', key: 'temp_outside', unit: 'temp' },
     { kind: 'number', key: 'humidity_hive', unit: '%' },
     { kind: 'number', key: 'humidity_outside', unit: '%' }
   ];
@@ -62,10 +66,19 @@
   ];
 
   const day = (iso: string) => formatDate(iso, $locale);
-  const unitText = (unit?: string) =>
-    unit === 'kg' ? $_('common.kg') : unit === 'd' ? $_('insp.unit_d') : (unit ?? '');
-  const withUnit = (v: number | string, unit?: string) =>
-    unit ? `${v} ${unitText(unit)}` : `${v}`;
+  const unitText = (unit?: Unit) =>
+    unit === 'weight' || unit === 'temp'
+      ? unitSymbol(unit, $units)
+      : unit === 'd'
+        ? $_('insp.unit_d')
+        : (unit ?? '');
+  // v is in the unit shown already (see shownValue).
+  const withUnit = (v: number | string, unit?: Unit) => {
+    const text = typeof v === 'number' ? formatNumber(v, $locale, 2) : v;
+    return unit ? `${text} ${unitText(unit)}` : text;
+  };
+  const shownValue = (v: number, unit?: Unit) =>
+    unit === 'weight' || unit === 'temp' ? chartValue(unit, v, $units) : v;
   const levelName = (key: OrdinalKey, code: number) => $_(`${ORDINALS[key].ns}.${code}`);
 
   function trend(vals: number[]): '' | 'up' | 'down' {
@@ -113,7 +126,7 @@
       const last = pts[pts.length - 1];
       if (!last) continue;
       const unit = m.kind === 'number' ? m.unit : undefined;
-      const vals = pts.map((p) => p.value);
+      const vals = pts.map((p) => shownValue(p.value, unit));
       // Varroa is shown the way it was typed in.
       const shown = (i: number) => varroa?.points[i]?.entered ?? withUnit(vals[i] ?? 0, unit);
       out.push({
@@ -137,11 +150,15 @@
 
   const honeyView = $derived.by(() => {
     const s = harvestRows.filter((h) => h.amount_kg > 0);
-    const total = Math.round(s.reduce((a, h) => a + h.amount_kg, 0) * 100) / 100;
+    const total = shownValue(
+      s.reduce((a, h) => a + h.amount_kg, 0),
+      'weight'
+    );
+    const vals = s.map((h) => shownValue(h.amount_kg, 'weight'));
     return {
-      vals: s.map((h) => h.amount_kg),
+      vals,
       times: s.map((h) => timeOf(h.date)),
-      titles: s.map((h) => `${day(h.date)}: ${withUnit(h.amount_kg, 'kg')}`),
+      titles: s.map((h, i) => `${day(h.date)}: ${withUnit(vals[i] ?? 0, 'weight')}`),
       total
     };
   });
@@ -246,13 +263,13 @@
       <section id="honey" class="hv-card metric">
         <div class="m-head">
           <h2>{$_('harvest.title')}</h2>
-          <div class="latest"><strong>{withUnit(honeyView.total, 'kg')}</strong></div>
+          <div class="latest"><strong>{withUnit(honeyView.total, 'weight')}</strong></div>
         </div>
         <Sparkline
           values={honeyView.vals}
           times={honeyView.times}
           titles={honeyView.titles}
-          label={`${$_('harvest.title')}: ${withUnit(honeyView.total, 'kg')}`}
+          label={`${$_('harvest.title')}: ${withUnit(honeyView.total, 'weight')}`}
         />
         <div class="mm"><span>{honeyView.vals.length} {$_('stats.harvests')}</span></div>
       </section>

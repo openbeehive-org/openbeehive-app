@@ -16,6 +16,8 @@
   import { dataVersion } from '#lib/local/live.js';
   import { formatDate } from '#lib/dates.js';
   import { parseVarroa, reading, type NumericKey } from '#lib/components/hive/readings.js';
+  import { units } from '#lib/prefs.js';
+  import { formatQuantity } from '#lib/units.js';
   import type { Undo } from '#lib/local/history.js';
   import HiveHeader from '#lib/components/hive/HiveHeader.svelte';
   import QueenSection from '#lib/components/hive/QueenSection.svelte';
@@ -118,7 +120,7 @@
         {#each statPills as p}
           <a class="pill" href={`/hives/${id}/stats#${p.key}`}>
             <span class="pl">{$_(p.label)}</span>
-            <strong>{p.value}{p.unit ? ' ' + $_('common.kg') : ''}</strong>
+            <strong>{p.unit ? formatQuantity('weight', p.value, $units, $locale) : p.value}</strong>
           </a>
         {/each}
         <a class="pill dev" href={`/hives/${id}/stats`}

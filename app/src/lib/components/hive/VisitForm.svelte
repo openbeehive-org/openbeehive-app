@@ -2,6 +2,7 @@
   // The visit form, built for use at the hive: large controls, counts that
   // start empty, rarely used blocks folded away and Save always in reach.
   import { untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import { _, locale } from 'svelte-i18n';
   import { History } from '@lucide/svelte';
   import { recordInspection, editInspection } from '#lib/local/history.js';
@@ -16,6 +17,9 @@
   import Stepper from './Stepper.svelte';
   import Segmented from './Segmented.svelte';
   import Photos, { attachVisitPhotos } from './Photos.svelte';
+  import QuantityInput from './QuantityInput.svelte';
+  import { units } from '#lib/prefs.js';
+  import { quantityField, readField, type Quantity, type QuantityField } from '#lib/units.js';
   import './hive.css';
 
   let {
@@ -43,6 +47,22 @@
   // Empty number inputs hand back null or undefined depending on the browser path.
   const num = (v: number | null | undefined) => (v == null || Number.isNaN(v) ? null : v);
 
+  // Weights and temperatures are shown and read in the units this form was
+  // opened with: the account's settings may arrive while it is open, and
+  // must not change what the typed numbers mean.
+  const u = get(units);
+  const loc = get(locale);
+  const QUANTITIES = {
+    weight_kg: 'weight',
+    fed_kg: 'weight',
+    temp_hive: 'temp',
+    temp_outside: 'temp'
+  } as const satisfies Record<string, Quantity>;
+  type QuantityKey = keyof typeof QUANTITIES;
+  const field = (key: QuantityKey, metric: number | null | undefined) =>
+    quantityField(QUANTITIES[key], metric, u, loc);
+  const metric = (key: QuantityKey, f: QuantityField) => readField(QUANTITIES[key], f, u, loc);
+
   function draft(row: InspectionRow | null) {
     return {
       date: row ? toDateInput(row.date) : todayLocal(),
@@ -58,12 +78,12 @@
       temperament: row ? (level(row, 'temperament') ?? 0) : 0,
       calmness: row ? (level(row, 'calmness') ?? 0) : 0,
       varroa: row?.varroa ?? '',
-      weight_kg: row ? reading(row, 'weight_kg') : null,
-      temp_hive: row?.temp_hive ?? null,
-      temp_outside: row?.temp_outside ?? null,
+      weight_kg: field('weight_kg', row ? reading(row, 'weight_kg') : null),
+      temp_hive: field('temp_hive', row?.temp_hive),
+      temp_outside: field('temp_outside', row?.temp_outside),
       humidity_hive: row?.humidity_hive ?? null,
       humidity_outside: row?.humidity_outside ?? null,
-      fed_kg: row ? reading(row, 'fed_kg') : null,
+      fed_kg: field('fed_kg', row ? reading(row, 'fed_kg') : null),
       frames_added: row ? reading(row, 'frames_added') : null,
       frames_removed: row ? reading(row, 'frames_removed') : null,
       drone_frame_cut: !!row?.drone_frame_cut,
@@ -77,9 +97,11 @@
   // Photos chosen here; they are stored once the visit itself is saved.
   let picked = $state<PreparedPhoto[]>([]);
   // Folded away unless the visit being edited has something in them.
-  let climateOpen = $state(CLIMATE_KEYS.some((k) => v[k] !== null));
+  const filled = (x: number | null | QuantityField) =>
+    x !== null && (typeof x === 'number' || x.text !== '');
+  let climateOpen = $state(CLIMATE_KEYS.some((k) => filled(v[k])));
   let activitiesOpen = $state(
-    v.fed_kg !== null ||
+    filled(v.fed_kg) ||
       v.frames_added !== null ||
       v.frames_removed !== null ||
       v.drone_frame_cut ||
@@ -88,6 +110,9 @@
 
   const saver = createSaver();
   const { busy, error } = saver;
+  const unreadable = $derived(
+    (Object.keys(QUANTITIES) as QuantityKey[]).some((k) => metric(k, v[k]) === undefined)
+  );
 
   function startFromLast() {
     if (last) Object.assign(v, carryOver(last));
@@ -108,12 +133,12 @@
       temperament: v.temperament,
       calmness: v.calmness,
       varroa: v.varroa.trim(),
-      weight_kg: num(v.weight_kg),
-      temp_hive: num(v.temp_hive),
-      temp_outside: num(v.temp_outside),
+      weight_kg: metric('weight_kg', v.weight_kg) ?? null,
+      temp_hive: metric('temp_hive', v.temp_hive) ?? null,
+      temp_outside: metric('temp_outside', v.temp_outside) ?? null,
       humidity_hive: num(v.humidity_hive),
       humidity_outside: num(v.humidity_outside),
-      fed_kg: num(v.fed_kg),
+      fed_kg: metric('fed_kg', v.fed_kg) ?? null,
       frames_added: num(v.frames_added),
       frames_removed: num(v.frames_removed),
       drone_frame_cut: v.drone_frame_cut ? 1 : 0,
@@ -126,7 +151,7 @@
   const opened = untrack(() => (editing ? fields() : null));
 
   async function save() {
-    if (!v.date) return;
+    if (!v.date || unreadable) return;
     const ok = await saver.run(async () => {
       let id = editing?.id;
       if (editing && opened) {
@@ -224,24 +249,32 @@
       <input bind:value={v.varroa} placeholder={$_('insp.varroa_ph')} />
       <span class="hv-hint">{$_('insp.varroa_hint')}</span>
     </label>
-    <label class="hv-field">
-      <span>{$_('insp.weight_kg')} ({$_('common.kg')})</span>
-      <input type="number" inputmode="decimal" min="0" step="0.1" bind:value={v.weight_kg} />
-    </label>
+    <QuantityInput
+      label={$_('insp.weight_kg')}
+      quantity="weight"
+      units={u}
+      locale={loc}
+      bind:field={v.weight_kg}
+    />
   </div>
 
   <details bind:open={climateOpen}>
     <summary>{$_('insp.climate')}</summary>
-    <!-- No inputmode on temperatures: the decimal keypad of iOS has no minus key. -->
     <div class="hv-grid2">
-      <label class="hv-field">
-        <span>{$_('insp.temp_hive')} (°C)</span>
-        <input type="number" step="0.1" bind:value={v.temp_hive} />
-      </label>
-      <label class="hv-field">
-        <span>{$_('insp.temp_outside')} (°C)</span>
-        <input type="number" step="0.1" bind:value={v.temp_outside} />
-      </label>
+      <QuantityInput
+        label={$_('insp.temp_hive')}
+        quantity="temp"
+        units={u}
+        locale={loc}
+        bind:field={v.temp_hive}
+      />
+      <QuantityInput
+        label={$_('insp.temp_outside')}
+        quantity="temp"
+        units={u}
+        locale={loc}
+        bind:field={v.temp_outside}
+      />
       <label class="hv-field">
         <span>{$_('insp.humidity_hive')} (%)</span>
         <input
@@ -270,10 +303,13 @@
   <details bind:open={activitiesOpen}>
     <summary>{$_('insp.activities')}</summary>
     <div class="hv-grid2">
-      <label class="hv-field">
-        <span>{$_('insp.fed_kg')} ({$_('common.kg')})</span>
-        <input type="number" inputmode="decimal" min="0" step="0.1" bind:value={v.fed_kg} />
-      </label>
+      <QuantityInput
+        label={$_('insp.fed_kg')}
+        quantity="weight"
+        units={u}
+        locale={loc}
+        bind:field={v.fed_kg}
+      />
       <Stepper bind:value={v.frames_added} label={$_('insp.frames_added')} />
       <Stepper bind:value={v.frames_removed} label={$_('insp.frames_removed')} />
     </div>
@@ -302,7 +338,7 @@
   />
 
   <div class="savebar">
-    <FormFooter busy={$busy} error={$error} invalid={!v.date} {oncancel} />
+    <FormFooter busy={$busy} error={$error} invalid={!v.date || unreadable} {oncancel} />
   </div>
 </form>
 

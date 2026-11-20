@@ -502,8 +502,8 @@
     "water": "Wassergehalt",
     "batch": "Charge",
     "best_before": "MHD",
-    "confirm_delete": "Ernte von {amount} kg vom {date} löschen?",
-    "deleted": "Ernte von {amount} kg gelöscht",
+    "confirm_delete": "Ernte von {amount} vom {date} löschen?",
+    "deleted": "Ernte von {amount} gelöscht",
     "amended": "Geändert am {date}"
   },
   "treat": {

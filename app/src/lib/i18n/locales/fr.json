@@ -502,8 +502,8 @@
     "water": "Teneur en eau",
     "batch": "N° de lot",
     "best_before": "À consommer de préférence avant",
-    "confirm_delete": "Supprimer la récolte de {amount} kg du {date} ?",
-    "deleted": "Récolte de {amount} kg supprimée",
+    "confirm_delete": "Supprimer la récolte de {amount} du {date} ?",
+    "deleted": "Récolte de {amount} supprimée",
     "amended": "Modifiée le {date}"
   },
   "treat": {

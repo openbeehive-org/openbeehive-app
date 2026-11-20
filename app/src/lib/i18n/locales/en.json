@@ -502,8 +502,8 @@
     "water": "Water content",
     "batch": "Batch no.",
     "best_before": "Best before",
-    "confirm_delete": "Delete the harvest of {amount} kg from {date}?",
-    "deleted": "Harvest of {amount} kg deleted",
+    "confirm_delete": "Delete the harvest of {amount} from {date}?",
+    "deleted": "Harvest of {amount} deleted",
     "amended": "Amended on {date}"
   },
   "treat": {

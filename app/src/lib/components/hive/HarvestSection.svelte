@@ -1,5 +1,6 @@
 <script lang="ts">
   // Honey harvests of a hive: season total, record / correct / delete.
+  import { get } from 'svelte/store';
   import { _, locale } from 'svelte-i18n';
   import { recordHarvest, editHarvest, deleteHarvest } from '#lib/local/history.js';
   import { formatDate, toDateInput, todayLocal } from '#lib/dates.js';
@@ -9,6 +10,9 @@
   import FormFooter from './FormFooter.svelte';
   import { deleteWithUndo, type OfferUndo } from './deleting.js';
   import RecordActions from './RecordActions.svelte';
+  import QuantityInput from './QuantityInput.svelte';
+  import { units } from '#lib/prefs.js';
+  import { formatQuantity, quantityField, readField, type Units } from '#lib/units.js';
   import './hive.css';
 
   let {
@@ -25,10 +29,14 @@
     offerUndo: OfferUndo;
   } = $props();
 
+  // The units the form was opened with (see VisitForm).
+  let formUnits = $state<Units>(get(units));
+  let formLocale = $state(get(locale));
+
   function draft(row: HarvestRow | null) {
     return {
       date: row ? toDateInput(row.date) : todayLocal(),
-      amount_kg: row?.amount_kg ?? (null as number | null),
+      amount: quantityField('weight', row?.amount_kg, formUnits, formLocale),
       variety: row?.variety ?? '',
       water_content: row?.water_content || (null as number | null),
       batch_number: row?.batch_number ?? '',
@@ -44,11 +52,14 @@
   let opened: ReturnType<typeof fields> | null = null;
   const saver = createSaver();
   const { busy, error } = saver;
-  const valid = $derived(!!f.date && (f.amount_kg ?? 0) > 0);
+  const amountKg = $derived(readField('weight', f.amount, formUnits, formLocale));
+  const valid = $derived(!!f.date && (amountKg ?? 0) > 0);
   const day = (iso: string | null) => formatDate(iso, $locale);
-  const kg = $derived($_('common.kg'));
+  const weight = (kg: number) => formatQuantity('weight', kg, $units, $locale);
 
   function show(row: HarvestRow | null) {
+    formUnits = get(units);
+    formLocale = get(locale);
     editing = row;
     f = draft(row);
     opened = row ? fields() : null;
@@ -62,7 +73,7 @@
   function fields() {
     return {
       date: storedDate(f.date, editing?.date),
-      amount_kg: f.amount_kg ?? 0,
+      amount_kg: readField('weight', f.amount, formUnits, formLocale) ?? 0,
       variety: f.variety.trim(),
       water_content: f.water_content ?? 0,
       batch_number: f.batch_number.trim(),
@@ -82,7 +93,7 @@
   }
 
   function del(h: HarvestRow) {
-    const values = { amount: h.amount_kg, date: day(h.date) };
+    const values = { amount: weight(h.amount_kg), date: day(h.date) };
     return deleteWithUndo({
       ask: $_('harvest.confirm_delete', { values }),
       done: $_('harvest.deleted', { values }),
@@ -95,7 +106,7 @@
 
 <section class="hv-section">
   <div class="hv-sec-head">
-    <h2>{dotted($_('harvest.title'), total ? `${total} ${kg}` : '')}</h2>
+    <h2>{dotted($_('harvest.title'), total ? weight(total) : '')}</h2>
     <button type="button" class="hv-btn" onclick={() => (open ? close() : show(null))}
       >+ {$_('harvest.record')}</button
     >
@@ -114,17 +125,14 @@
           <span>{$_('insp.date')}</span>
           <input type="date" bind:value={f.date} max={todayLocal()} required />
         </label>
-        <label class="hv-field">
-          <span>{$_('harvest.amount')} ({kg})</span>
-          <input
-            type="number"
-            inputmode="decimal"
-            min="0"
-            step="0.1"
-            bind:value={f.amount_kg}
-            required
-          />
-        </label>
+        <QuantityInput
+          label={$_('harvest.amount')}
+          quantity="weight"
+          units={formUnits}
+          locale={formLocale}
+          bind:field={f.amount}
+          required
+        />
         <label class="hv-field">
           <span>{$_('harvest.variety')}</span>
           <input bind:value={f.variety} placeholder={$_('harvest.variety_ph')} />
@@ -164,7 +172,7 @@
       {#each harvests as h (h.id)}
         <li class="hv-card hv-record">
           <div class="hv-rhead">
-            <strong>{dotted(`${h.amount_kg} ${kg}`, h.variety)}</strong>
+            <strong>{dotted(weight(h.amount_kg), h.variety)}</strong>
             <span class="hv-muted hv-sm">{day(h.date)}</span>
           </div>
           <div class="hv-chips">
@@ -185,7 +193,7 @@
           </div>
           {#if h.note}<p class="hv-note">{h.note}</p>{/if}
           <RecordActions
-            name={`${h.amount_kg} ${kg}, ${day(h.date)}`}
+            name={`${weight(h.amount_kg)}, ${day(h.date)}`}
             onedit={() => show(h)}
             ondelete={() => del(h)}
           />

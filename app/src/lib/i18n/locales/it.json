@@ -502,8 +502,8 @@
     "water": "Contenuto d'acqua",
     "batch": "N. lotto",
     "best_before": "Da consumarsi preferibilmente entro",
-    "confirm_delete": "Eliminare il raccolto di {amount} kg del {date}?",
-    "deleted": "Raccolto di {amount} kg eliminato",
+    "confirm_delete": "Eliminare il raccolto di {amount} del {date}?",
+    "deleted": "Raccolto di {amount} eliminato",
     "amended": "Modificato il {date}"
   },
   "treat": {

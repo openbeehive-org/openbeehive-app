@@ -6,6 +6,7 @@
   import { formatDate } from '#lib/dates.js';
   import type { InspectionRow } from '../../../routes/(app)/rows.js';
   import { isSensor, visitChips } from './readings.js';
+  import { units } from '#lib/prefs.js';
   import { deleteWithUndo, type OfferUndo } from './deleting.js';
   import RecordActions from './RecordActions.svelte';
   import Photos from './Photos.svelte';
@@ -39,7 +40,7 @@
 
 <ul class="hv-timeline">
   {#each visits as i (i.id)}
-    {@const chips = visitChips(i, $_)}
+    {@const chips = visitChips(i, $_, $units, $locale)}
     <li class="hv-card hv-record">
       <div class="hv-rhead">
         <strong>{day(i)}</strong>

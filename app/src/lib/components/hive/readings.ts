@@ -1,6 +1,7 @@
 // How the hive screens read an inspection row: which values count as
 // recorded, how a visit is summarised, and what the charts plot.
 import type { InspectionRow } from '../../../routes/(app)/rows.js';
+import { formatQuantity, METRIC, type Quantity, type Units } from '../../units.js';
 
 const MANUAL = 1;
 const SENSOR = 2;
@@ -76,10 +77,22 @@ export function level(row: InspectionRow, key: OrdinalKey): number | null {
 
 type Translate = (key: string) => string;
 
-/** Compact chips summarising a recorded visit. */
-export function visitChips(i: InspectionRow, t: Translate): string[] {
+/** What a numeric field measures, for those shown in the chosen units. */
+export function quantityOf(key: NumericKey): Quantity | null {
+  if (key === 'fed_kg' || key === 'weight_kg') return 'weight';
+  if (key === 'temp_hive' || key === 'temp_outside') return 'temp';
+  return null;
+}
+
+/** Compact chips summarising a recorded visit, weights and temperatures in `u`. */
+export function visitChips(
+  i: InspectionRow,
+  t: Translate,
+  u: Units = METRIC,
+  locale?: string | null
+): string[] {
   const out: string[] = [];
-  const kg = t('common.kg');
+  const qty = (q: Quantity, v: number) => formatQuantity(q, v, u, locale);
   const n = (key: NumericKey) => reading(i, key);
   const withValue = (key: NumericKey, text: (v: number) => string) => {
     const v = n(key);
@@ -100,15 +113,15 @@ export function visitChips(i: InspectionRow, t: Translate): string[] {
   withValue('queen_cells', (v) => `${v} ${t('insp.queen_cells')}`);
   rated('temperament', 'insp.temperament');
   rated('calmness', 'insp.calmness');
-  withValue('fed_kg', (v) => `${t('insp.fed_kg')} ${v} ${kg}`);
+  withValue('fed_kg', (v) => `${t('insp.fed_kg')} ${qty('weight', v)}`);
   withValue('frames_added', (v) => `+${v} ${t('insp.frames')}`);
   withValue('frames_removed', (v) => `−${v} ${t('insp.frames')}`);
   if (i.drone_frame_cut) out.push(t('insp.drone_frame_cut'));
   if (i.super_added) out.push(t('insp.super_added'));
-  withValue('weight_kg', (v) => `${v} ${kg}`);
+  withValue('weight_kg', (v) => qty('weight', v));
   // Honey is recorded as a harvest now; older visits keep showing theirs.
-  if (i.honey_kg) out.push(`${t('insp.honey_kg')} ${i.honey_kg} ${kg}`);
-  withValue('temp_hive', (v) => `${t('insp.temp_hive')} ${v} °C`);
+  if (i.honey_kg) out.push(`${t('insp.honey_kg')} ${qty('weight', i.honey_kg)}`);
+  withValue('temp_hive', (v) => `${t('insp.temp_hive')} ${qty('temp', v)}`);
   withValue('humidity_hive', (v) => `${t('insp.humidity_hive')} ${v} %`);
   if (i.varroa) out.push(`${t('insp.varroa')}: ${i.varroa}`);
   return out;
