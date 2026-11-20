@@ -994,7 +994,9 @@ describe('reset: the server is not the database this device synced with', () => 
     const out = await queued();
     const of = (entity: string, hlc: string) =>
       out.filter((o) => o.entity === entity && o.hlc === hlc);
-    // One change per row and stamp, carrying the columns that stamp wrote.
+    // One change per row and stamp. The oldest one carries every stamped
+    // column, so it can create the row on a server that lost it (a new row
+    // without its name would be refused); the later ones set what they stamped.
     expect(of('apiary', s.made)).toEqual([
       {
         entity: 'apiary',
@@ -1002,7 +1004,7 @@ describe('reset: the server is not the database this device synced with', () => 
         scope: 'a1',
         op: 1,
         hlc: s.made,
-        payload: { organization_id: 'org1', note: 'n', deleted: 0 }
+        payload: { organization_id: 'org1', name: 'Renamed', note: 'n', deleted: 0 }
       }
     ]);
     // The rename was still waiting in the outbox: it is not queued twice.
@@ -1010,9 +1012,10 @@ describe('reset: the server is not the database this device synced with', () => 
     // A deleted row comes back as deleted, in its apiary's scope.
     expect(of('hive', s.made)[0]).toMatchObject({
       scope: 'a1',
-      payload: { apiary_id: 'a1', name: 'H1' }
+      payload: { apiary_id: 'a1', name: 'H1', deleted: 1 }
     });
     expect(of('hive', s.gone)[0]).toMatchObject({ scope: 'a1', op: 1, payload: { deleted: 1 } });
+    expect(Object.keys(of('hive', s.gone)[0]!.payload)).toEqual(['deleted']);
     // Set columns: an add per tag, and the removal with the tags it names.
     expect(of('inspection', s.made)[0]).toMatchObject({
       scope: 'a1', // the apiary of its hive

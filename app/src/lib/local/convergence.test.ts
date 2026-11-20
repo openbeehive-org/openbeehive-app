@@ -266,54 +266,77 @@ describe('two devices syncing through a server', () => {
 
 // A server speaking protocol 1, reduced to what matters to a device: a
 // change log with sequence numbers, the merged rows behind it, cursors
-// "<epoch>:<seq>:<tag>" that are checked like the real server checks them,
-// snapshots, compaction, and a backup that can be restored.
-type Logged = { seq: number; tag: string; change: Change };
+// "<epoch>:<seq>:<mark>" checked the way the real server checks them (the
+// mark is the tag of the last server start before that position),
+// snapshots, compaction, and a backup that can be restored. Like the real
+// server it refuses a new row that lacks a column it requires.
+type Logged = { seq: number; change: Change };
 type ServerRow = RowState & { entity: string; id: string; fields: Record<string, unknown> };
-type ServerState = { head: number; horizon: number; log: Logged[]; rows: Map<string, ServerRow> };
+type ServerState = {
+  head: number;
+  horizon: number;
+  log: Logged[];
+  rows: Map<string, ServerRow>;
+  boots: { head: number; tag: number }[];
+};
+
+const REQUIRED: Record<string, string[]> = {
+  apiary: ['name', 'created_at', 'updated_at'],
+  hive: ['apiary_id', 'name']
+};
 
 function protocolServer() {
   const epoch = 7;
   const SET_COLS: Record<string, string[]> = { inspection: ['photo_keys'] };
-  let state: ServerState = { head: 0, horizon: 0, log: [], rows: new Map() };
-  let tags = 0;
-  const tagAt = (seq: number) => state.log.find((e) => e.seq === seq)?.tag ?? '';
-  const cursorAt = (seq: number) => `${epoch}:${seq}:${tagAt(seq)}`;
+  let state: ServerState = { head: 0, horizon: 0, log: [], rows: new Map(), boots: [] };
+  let starts = 0;
+  // The server process starts on the database as it is.
+  const boot = () => {
+    state.boots = state.boots.filter((b) => b.head !== state.head);
+    state.boots.push({ head: state.head, tag: ++starts });
+  };
+  boot();
+  const markBefore = (seq: number) =>
+    state.boots.filter((b) => b.head < seq).sort((a, b) => b.head - a.head)[0]?.tag ?? 0;
+  const cursorAt = (seq: number) => `${epoch}:${seq}:${markBefore(seq)}`;
 
-  function apply(ch: Change) {
+  // Merges a change; returns false when it would create a row without a
+  // column the table requires.
+  function apply(ch: Change): boolean {
     const key = `${ch.entity}/${ch.entityId}`;
     const setCols = SET_COLS[ch.entity] ?? [];
+    const fields: Record<string, unknown> = ch.op === 2 ? tombstone() : JSON.parse(ch.payloadJson);
     let row = state.rows.get(key);
     if (!row) {
+      if ((REQUIRED[ch.entity] ?? []).some((c) => fields[c] == null)) return false;
       row = { entity: ch.entity, id: ch.entityId, fields: {}, clock: {}, sets: {} };
       state.rows.set(key, row);
     }
-    const fields: Record<string, unknown> = ch.op === 2 ? tombstone() : JSON.parse(ch.payloadJson);
     for (const c of setCols) if (c in fields) fields[c] = parseSetDelta(fields[c]);
     for (const c of mergeFields(row, fields, setCols, ch.hlc)) {
       if (!setCols.includes(c)) row.fields[c] = fields[c];
     }
+    return true;
   }
 
   // RESET (2), SNAPSHOT (1) or the sequence number to read after.
   function check(raw: string): { status: number; after: number } {
     if (raw === '') return state.horizon > 0 ? { status: 1, after: 0 } : { status: 0, after: 0 };
-    const [e, seq, tag] = raw.split(':');
-    const n = Number(seq);
-    if (Number(e) !== epoch || !(n >= 0) || n > state.head) return { status: 2, after: 0 };
-    if (n < state.horizon) return { status: 1, after: 0 };
-    const have = tagAt(n);
-    if (have !== '' && have !== tag) return { status: 2, after: 0 };
-    return { status: 0, after: n };
+    const [e, seq, mark] = raw.split(':').map(Number);
+    if (e !== epoch || !(seq! >= 0) || seq! > state.head) return { status: 2, after: 0 };
+    if (markBefore(seq!) !== mark) return { status: 2, after: 0 };
+    if (seq! < state.horizon) return { status: 1, after: 0 };
+    return { status: 0, after: seq! };
   }
 
   return {
     push: async (req: { changes: Change[] }) => {
-      for (const change of req.changes) {
-        apply(change);
-        state.log.push({ seq: ++state.head, tag: `t${++tags}`, change });
-      }
-      return { rejected: [] };
+      const rejected: { index: number; code: string; reason: string }[] = [];
+      req.changes.forEach((change, index) => {
+        if (apply(change)) state.log.push({ seq: ++state.head, change });
+        else rejected.push({ index, code: 'invalid', reason: 'a required column is missing' });
+      });
+      return { rejected };
     },
     pull: async (req: { cursor: string }) => {
       const { status, after } = check(req.cursor);
@@ -337,13 +360,19 @@ function protocolServer() {
       cursor: cursorAt(state.head)
     }),
     backup: (): ServerState => structuredClone(state),
+    // The backup is put back and the server is started on it.
     restore: (b: ServerState) => {
       state = structuredClone(b);
+      boot();
     },
     // Drops the log up to and including seq; the rows stay.
     compact: (seq: number) => {
       state.horizon = seq;
       state.log = state.log.filter((e) => e.seq > seq);
+    },
+    // Removes log entries as a rebuilt demo or a deleted workspace does.
+    forget: (keep: (e: Logged) => boolean) => {
+      state.log = state.log.filter(keep);
     },
     head: () => state.head,
     logLength: () => state.log.length,
@@ -407,6 +436,18 @@ describe('two devices and a server that loses or forgets history', () => {
     await apiaries.rename(id, 'Renamed after the backup');
     await setAdd('inspection', 'i1', id, 'photo_keys', 'p2');
     await setRemove('inspection', 'i1', id, 'photo_keys', 'p1');
+    // A also creates an apiary with a hive and edits both afterwards, so
+    // their columns carry different stamps.
+    const lost = await apiaries.create({ organization_id: 'org1', name: 'New', note: '' });
+    await patch('hive', 'h-lost', lost, {
+      organization_id: 'org1',
+      apiary_id: lost,
+      name: 'Hive',
+      deleted: 0
+    });
+    vi.setSystemTime(52_500_000);
+    await apiaries.rename(lost, 'New, renamed');
+    await patch('hive', 'h-lost', lost, { name: 'Hive, renamed' });
     await settle();
     // B writes a note it has not uploaded when the server dies.
     vi.setSystemTime(53_000_000);
@@ -415,10 +456,12 @@ describe('two devices and a server that loses or forgets history', () => {
 
     server.restore(backup);
     expect(server.row('apiary', id)!.fields.name).toBe('Orchard'); // the rename is gone
+    expect(server.row('apiary', lost)).toBeUndefined(); // and so are the new rows
 
     // A third party keeps working with the restored server, so the sequence
-    // numbers A and B had read are handed out again, to other changes.
-    for (let i = 0; i < 12; i++) {
+    // numbers A and B had read are handed out again, to other changes, and
+    // some of those entries are removed again before A and B come back.
+    for (let i = 0; i < 40; i++) {
       await server.push({
         changes: [
           {
@@ -431,6 +474,7 @@ describe('two devices and a server that loses or forgets history', () => {
         ]
       });
     }
+    server.forget((e) => e.seq % 2 === 0);
 
     vi.setSystemTime(54_000_000);
     await settle();
@@ -444,10 +488,21 @@ describe('two devices and a server that loses or forgets history', () => {
     // Both devices hold the same rows, including what was written after the restore.
     const a = await contents(A);
     expect(await contents(B)).toEqual(a);
-    expect(a.hive).toHaveLength(12);
-    expect(a.apiary![0]).toMatchObject({ name: 'Renamed after the backup' });
+    expect(a.apiary!.map((r: any) => r.name).sort()).toEqual([
+      'New, renamed',
+      'Renamed after the backup'
+    ]);
     expect(a.inspection![0]).toMatchObject({ photo_keys: ['p2'] });
+    expect(a.hive).toHaveLength(41); // the third party's forty and A's own
     expect(get(resyncNotice)).toBe(true);
+    // Rows created and edited after the backup exist on the server again,
+    // and it refused nothing the devices sent.
+    expect(server.row('apiary', lost)!.fields.name).toBe('New, renamed');
+    expect(server.row('hive', 'h-lost')!.fields).toMatchObject({
+      apiary_id: lost,
+      name: 'Hive, renamed'
+    });
+    for (const db of [A, B]) expect(await db.all(`SELECT id FROM outbox_failed`)).toHaveLength(0);
   });
 
   it('a compacted log: a device that was away catches up from a snapshot', async () => {

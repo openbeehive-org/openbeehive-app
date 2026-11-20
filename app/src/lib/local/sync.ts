@@ -597,6 +597,13 @@ async function requeueLocal(db: LocalDB, staleCursor: string) {
 // A set column contributes an add per element and tag, and one removal
 // naming the tags it has tombstoned. Columns without a stamp were never
 // written through sync and are left out.
+//
+// The oldest change carries every stamped column, not only its own: if the
+// server no longer has the row, that change has to create it, and the
+// server refuses a new row that lacks a required column (a name or date
+// that was edited later would be missing). The later changes then set the
+// columns they stamped. Where the server has the row, a column in the
+// oldest change is older than or as old as what is stored and is ignored.
 function rowChanges(
   row: Record<string, unknown>,
   cols: Set<string>,
@@ -608,10 +615,11 @@ function rowChanges(
     if (!payload) out.set(stamp, (payload = {}));
     return payload;
   };
+  const scalars: Record<string, unknown> = {};
   for (const [col, stamp] of Object.entries(parseFieldClock(text(row.field_hlc)))) {
     if (!isHLC(stamp) || col === 'id' || !cols.has(col) || setCols.includes(col)) continue;
     const value = toScalar(row[col]);
-    if (value !== undefined) at(stamp)[col] = value;
+    if (value !== undefined) scalars[col] = at(stamp)[col] = value;
   }
   for (const col of setCols) {
     const removed: Record<string, string[]> = {};
@@ -632,6 +640,8 @@ function rowChanges(
       delta.removed_tags = removed;
     }
   }
+  const oldest = [...out.keys()].sort()[0];
+  if (oldest !== undefined) out.set(oldest, { ...scalars, ...out.get(oldest) });
   return out;
 }
 
