@@ -7,17 +7,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql/sqltest"
 )
 
 // apiFixture is a server with every plain-HTTP auth and workspace endpoint
-// mounted the way main does, on a fresh SQLite database.
+// mounted the way main does, on a fresh database of the backend under test
+// (see sqltest).
 type apiFixture struct {
 	srv      *httptest.Server
 	store    *sqlstore.Store
@@ -38,8 +39,7 @@ func loginConfig() *config.Config {
 
 func newAPIFixture(t *testing.T, cfg *config.Config) *apiFixture {
 	t.Helper()
-	cfg.DB.Driver = config.DriverSQLite
-	cfg.DB.DSN = "file:" + filepath.Join(t.TempDir(), "api.db")
+	cfg.DB.Driver, cfg.DB.DSN = sqltest.New(t)
 	store, err := sqlstore.Open(cfg)
 	if err != nil {
 		t.Fatalf("open: %v", err)

@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -20,13 +18,14 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql/sqltest"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // newSyncFixture opens a fresh store with two tenants, one apiary each, and
-// one hive owned by tenant A. Defaults to SQLite in a temp dir; set
-// BEEHIVE_TEST_DATABASE_DRIVER + BEEHIVE_TEST_DATABASE_DSN to run the whole
-// suite against a live Postgres or MySQL instead (the schema is wiped!).
+// one hive owned by tenant A. It runs on SQLite in a temp dir unless
+// BEEHIVE_TEST_DATABASE_DRIVER + BEEHIVE_TEST_DATABASE_DSN select a live
+// Postgres or MariaDB; every test gets a database of its own (see sqltest).
 func newSyncFixture(t *testing.T) *SyncService {
 	t.Helper()
 	return NewSyncService(newFixtureStore(t).DB(), wsync.NewHLC("test"))
@@ -36,18 +35,12 @@ func newSyncFixture(t *testing.T) *SyncService {
 func newFixtureStore(t *testing.T) *sqlstore.Store {
 	t.Helper()
 	cfg := &config.Config{Profile: "selfhost"}
-	cfg.DB.Driver = config.DriverSQLite
-	cfg.DB.DSN = "file:" + filepath.Join(t.TempDir(), "sync.db")
-	if d := os.Getenv("BEEHIVE_TEST_DATABASE_DRIVER"); d != "" {
-		cfg.DB.Driver = config.DBDriver(d)
-		cfg.DB.DSN = os.Getenv("BEEHIVE_TEST_DATABASE_DSN")
-	}
+	cfg.DB.Driver, cfg.DB.DSN = sqltest.New(t)
 	store, err := sqlstore.Open(cfg)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	resetSchema(t, store, cfg.DB.Driver)
 	if err := store.Migrate(context.Background()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -66,26 +59,6 @@ func newFixtureStore(t *testing.T) *sqlstore.Store {
 		}
 	}
 	return store
-}
-
-// resetSchema empties a live test database so every test starts blank.
-// (SQLite fixtures live in a fresh temp dir and need no reset.)
-func resetSchema(t *testing.T, store *sqlstore.Store, driver config.DBDriver) {
-	t.Helper()
-	db := store.DB()
-	switch driver {
-	case config.DriverPostgres:
-		db.MustExec(`DROP SCHEMA public CASCADE`)
-		db.MustExec(`CREATE SCHEMA public`)
-	case config.DriverMySQL:
-		var tables []string
-		if err := db.Select(&tables, `SHOW TABLES`); err != nil {
-			t.Fatalf("show tables: %v", err)
-		}
-		for _, table := range tables {
-			db.MustExec("DROP TABLE IF EXISTS `" + table + "`")
-		}
-	}
 }
 
 func identityCtx(user, org string) context.Context {

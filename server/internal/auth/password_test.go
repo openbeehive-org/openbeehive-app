@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,12 +15,12 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql/sqltest"
 )
 
 func newAuthFixture(t *testing.T, cfg *config.Config) (*httptest.Server, *sqlstore.Store, *SessionManager) {
 	t.Helper()
-	cfg.DB.Driver = config.DriverSQLite
-	cfg.DB.DSN = "file:" + filepath.Join(t.TempDir(), "auth.db")
+	cfg.DB.Driver, cfg.DB.DSN = sqltest.New(t)
 	store, err := sqlstore.Open(cfg)
 	if err != nil {
 		t.Fatalf("open: %v", err)

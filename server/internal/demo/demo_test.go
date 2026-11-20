@@ -2,7 +2,6 @@ package demo
 
 import (
 	"context"
-	"path/filepath"
 	"regexp"
 	"testing"
 
@@ -11,15 +10,16 @@ import (
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/service"
 	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql/sqltest"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
-// newSeeder opens a migrated SQLite store and returns a seeder on it.
+// newSeeder opens a migrated store on the backend under test (see sqltest)
+// and returns a seeder on it.
 func newSeeder(t *testing.T) (*Seeder, *sqlstore.Store) {
 	t.Helper()
 	cfg := &config.Config{Profile: "selfhost"}
-	cfg.DB.Driver = config.DriverSQLite
-	cfg.DB.DSN = "file:" + filepath.Join(t.TempDir(), "demo.db")
+	cfg.DB.Driver, cfg.DB.DSN = sqltest.New(t)
 	cfg.Demo.Email = "demo@example.org"
 	cfg.Demo.Password = "demo"
 	store, err := sqlstore.Open(cfg)
@@ -149,5 +149,34 @@ func TestSeedIsRepeatable(t *testing.T) {
 	var events []string
 	if err := store.DB().Select(&events, `SELECT id FROM event WHERE hive_id = 'demo-hive-1' AND type = 7`); err != nil || len(events) != 1 || events[0] != "demo-harv-1:event" {
 		t.Fatalf("event ids must be stable: %v %v", events, err)
+	}
+}
+
+// TestInstallAndReseed runs what boot and the hourly reset run: installing
+// twice and seeding again leaves one demo account, its membership and the
+// four apiaries.
+func TestInstallAndReseed(t *testing.T) {
+	s, store := newSeeder(t)
+	ctx, cancel := context.WithCancel(demoCtx())
+	t.Cleanup(cancel) // stops the reset loop
+	for run, seed := range []func(context.Context) error{s.Install, s.Install, s.Seed} {
+		if err := seed(ctx); err != nil {
+			t.Fatalf("run %d: %v", run, err)
+		}
+		var apiaries int
+		db := store.DB()
+		if err := db.Get(&apiaries, db.Rebind(`SELECT COUNT(*) FROM apiary WHERE organization_id = ?`), OrgID); err != nil {
+			t.Fatalf("run %d: count apiaries: %v", run, err)
+		}
+		if apiaries != 4 {
+			t.Fatalf("run %d: %d apiaries, want 4", run, apiaries)
+		}
+	}
+	u, err := store.Users().GetByEmail(ctx, "demo@example.org")
+	if err != nil || u.ID != UserID || !u.EmailVerified {
+		t.Fatalf("demo user: %+v, %v", u, err)
+	}
+	if m, err := store.Members().Get(ctx, OrgID, UserID); err != nil || m.Role != "owner" {
+		t.Fatalf("demo membership: %+v, %v", m, err)
 	}
 }
