@@ -30,7 +30,7 @@ import (
 var syncedTables = []string{
 	"organization", "users", "member", "apiary", "hive", "queen", "inspection",
 	"task", "treatment", "harvest", "placement", "event", "change_log",
-	"seq_counter", "apiary_share", "user_passkey", "invite",
+	"seq_counter", "user_passkey", "invite",
 }
 
 func openSQLite(t *testing.T) *Store {
