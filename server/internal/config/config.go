@@ -10,7 +10,11 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"net/netip"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -35,6 +39,18 @@ type Config struct {
 	Profile       string // cloud | selfhost
 	Addr          string
 	PublicBaseURL string
+	// EnvFile is true when a .env file in the working directory was applied.
+	EnvFile bool
+	// Warnings are non-fatal remarks about the configuration, logged at boot.
+	Warnings []string
+
+	// TrustProxyHeaders takes the client IP from X-Real-IP / X-Forwarded-For.
+	// Only for deployments behind exactly one reverse proxy that sets them.
+	TrustProxyHeaders bool
+	// AllowedHosts are extra Host names accepted when no login is configured
+	// (see web.HostGuard); "*" disables the check.
+	AllowedHosts []string
+	Maps         MapsConfig
 
 	Server ServerConfig
 	CORS   CORSConfig
@@ -82,14 +98,30 @@ type DemoConfig struct {
 	Password  string
 }
 
-type ServerConfig struct {
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration // 0 = no limit (streaming endpoints)
-	WriteTimeout      time.Duration // 0 = no limit (streaming endpoints)
-	IdleTimeout       time.Duration
-	ShutdownTimeout   time.Duration
+// MapsConfig controls the only remote resources the app loads: map tiles and
+// address search. Disabled, the app shows no map and looks nothing up.
+type MapsConfig struct {
+	Enabled     bool
+	TileURL     string // Leaflet template, e.g. https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
+	GeocoderURL string // Nominatim-compatible base URL
+	// Origins derived from the URLs above for the Content-Security-Policy;
+	// empty when maps are disabled.
+	TileOrigin     string
+	GeocoderOrigin string
 }
 
+type ServerConfig struct {
+	ReadHeaderTimeout time.Duration
+	// ReadTimeout and WriteTimeout bound every request except streaming RPCs
+	// (Subscribe), which stay open; 0 = no limit.
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	IdleTimeout     time.Duration
+	ShutdownTimeout time.Duration
+}
+
+// CORSConfig lists the other origins that may call the API from a browser.
+// Empty means same-origin only. With "*" credentials are never allowed.
 type CORSConfig struct {
 	AllowedOrigins   []string
 	AllowCredentials bool
@@ -217,6 +249,13 @@ func hostOf(raw string) string {
 
 func Load() (*Config, error) {
 	c := &Config{}
+	// A .env file next to the binary configures it without a wrapper script;
+	// variables already present in the environment win.
+	envFile, err := loadDotEnv(".env")
+	if err != nil {
+		return nil, err
+	}
+	c.EnvFile = envFile
 	c.Profile = env("DEPLOYMENT_PROFILE", "selfhost")
 	c.Addr = env("ADDR", ":8080")
 	c.PublicBaseURL = env("PUBLIC_BASE_URL", "http://localhost:8080")
@@ -227,21 +266,38 @@ func Load() (*Config, error) {
 	// --- HTTP server ---
 	c.Server = ServerConfig{
 		ReadHeaderTimeout: envDuration("HTTP_READ_HEADER_TIMEOUT", 10*time.Second),
-		ReadTimeout:       envDuration("HTTP_READ_TIMEOUT", 0),
-		WriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 0),
+		ReadTimeout:       envDuration("HTTP_READ_TIMEOUT", 2*time.Minute),
+		WriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 2*time.Minute),
 		IdleTimeout:       envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
 		ShutdownTimeout:   envDuration("HTTP_SHUTDOWN_TIMEOUT", 15*time.Second),
 	}
 
-	// --- CORS (Connect-Web needs these headers) ---
+	// --- CORS: same-origin unless other origins are listed ---
 	c.CORS = CORSConfig{
-		AllowedOrigins:   envList("CORS_ALLOWED_ORIGINS", []string{"*"}),
+		AllowedOrigins:   envList("CORS_ALLOWED_ORIGINS", nil),
 		AllowCredentials: envBool("CORS_ALLOW_CREDENTIALS", true),
+	}
+	for _, o := range c.CORS.AllowedOrigins {
+		if o == "*" && c.CORS.AllowCredentials {
+			// Any origin plus credentials would let every website act as the
+			// signed-in user.
+			c.CORS.AllowCredentials = false
+			if os.Getenv(envPrefix+"CORS_ALLOW_CREDENTIALS") != "" {
+				c.Warnings = append(c.Warnings, "BEEHIVE_CORS_ALLOWED_ORIGINS=* disables credentials; list the origins explicitly to allow them")
+			}
+		}
+	}
+	c.TrustProxyHeaders = envBool("TRUST_PROXY_HEADERS", false)
+	c.AllowedHosts = envList("ALLOWED_HOSTS", nil)
+	if err := loadMaps(c); err != nil {
+		return nil, err
 	}
 
 	// --- Sync ---
 	c.Sync = SyncConfig{
-		NodeID:       env("NODE_ID", "server"),
+		// A fresh random id per boot keeps server-side change stamps distinct
+		// from every other writer without any configuration.
+		NodeID:       env("NODE_ID", randomNodeID()),
 		DefaultLimit: 200,
 		MaxLimit:     500,
 	}
@@ -255,8 +311,114 @@ func Load() (*Config, error) {
 	if err := loadAuth(c); err != nil {
 		return nil, err
 	}
-	loadOIDC(c)
+	if err := loadOIDC(c); err != nil {
+		return nil, err
+	}
+	if err := checkLogin(c); err != nil {
+		return nil, err
+	}
 	return c, nil
+}
+
+// LoginEnabled reports whether any sign-in method is configured. Without
+// one the server runs in single-user mode: every request acts as the local
+// user.
+func (c *Config) LoginEnabled() bool {
+	return c.Auth.PasswordEnabled || c.Auth.WebAuthn.Enabled || len(c.OIDC.Enabled) > 0
+}
+
+// PublicHost returns the host name of BEEHIVE_PUBLIC_BASE_URL without port.
+func (c *Config) PublicHost() string {
+	u, err := url.Parse(c.PublicBaseURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return true
+	}
+	addr, err := netip.ParseAddr(host)
+	return err == nil && addr.IsLoopback()
+}
+
+// MinSessionSecretBytes is the shortest session secret the server accepts.
+const MinSessionSecretBytes = 32
+
+// checkLogin validates the settings every login method depends on.
+func checkLogin(c *Config) error {
+	if !c.LoginEnabled() {
+		if !isLoopbackHost(c.PublicHost()) {
+			c.Warnings = append(c.Warnings, fmt.Sprintf(
+				"no login is configured, yet BEEHIVE_PUBLIC_BASE_URL is %s: everyone who can reach this server has full access; set BEEHIVE_PASSWORD_AUTH=true to require sign-in",
+				c.PublicBaseURL))
+		}
+		return nil
+	}
+	const hint = "generate one with: openssl rand -base64 32"
+	switch n := len(c.Auth.SessionSecret); {
+	case n == 0:
+		return fmt.Errorf("BEEHIVE_SESSION_SECRET is required when a login method is enabled; %s", hint)
+	case n < MinSessionSecretBytes:
+		return fmt.Errorf("BEEHIVE_SESSION_SECRET is too short (%d bytes, minimum %d); %s", n, MinSessionSecretBytes, hint)
+	}
+	if c.Auth.EmailVerification && c.Auth.SMTP.Host == "" {
+		return fmt.Errorf("BEEHIVE_EMAIL_VERIFICATION=true needs a mail server: set BEEHIVE_SMTP_HOST, or turn verification off")
+	}
+	return nil
+}
+
+func randomNodeID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return "srv-" + hex.EncodeToString(b)
+}
+
+// loadMaps reads the map settings and derives the origins the browser may
+// contact for them.
+func loadMaps(c *Config) error {
+	switch v := strings.ToLower(strings.TrimSpace(env("MAPS", "on"))); v {
+	case "on", "true", "1", "yes":
+		c.Maps.Enabled = true
+	case "off", "false", "0", "no":
+		return nil
+	default:
+		return fmt.Errorf("BEEHIVE_MAPS must be \"on\" or \"off\", not %q", v)
+	}
+	c.Maps.TileURL = env("MAP_TILE_URL", "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png")
+	c.Maps.GeocoderURL = strings.TrimRight(env("GEOCODER_URL", "https://nominatim.openstreetmap.org"), "/")
+	var err error
+	if c.Maps.TileOrigin, err = originOf(c.Maps.TileURL); err != nil {
+		return fmt.Errorf("BEEHIVE_MAP_TILE_URL: %w", err)
+	}
+	if c.Maps.GeocoderOrigin, err = originOf(c.Maps.GeocoderURL); err != nil {
+		return fmt.Errorf("BEEHIVE_GEOCODER_URL: %w", err)
+	}
+	return nil
+}
+
+// originOf returns scheme://host[:port] of an http(s) URL in the form a
+// Content-Security-Policy source expects. A Leaflet "{s}" subdomain
+// placeholder in the first host label becomes a wildcard label.
+func originOf(raw string) (string, error) {
+	u, err := url.Parse(strings.ReplaceAll(raw, "{s}", "*"))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("%q is not an http(s) URL", raw)
+	}
+	host := u.Host
+	if i := strings.IndexByte(host, '*'); i >= 0 {
+		dot := strings.IndexByte(host, '.')
+		if dot < i || strings.Contains(host[dot:], "*") {
+			return "", fmt.Errorf("%q: {s} may only appear in the first label of the host name", raw)
+		}
+		host = "*" + host[dot:]
+	}
+	if strings.ContainsAny(host, " ;,'\"") {
+		return "", fmt.Errorf("%q has an invalid host name", raw)
+	}
+	return u.Scheme + "://" + host, nil
 }
 
 // loadStorage derives the storage defaults from the profile, then lets the
@@ -364,7 +526,7 @@ func loadAuth(c *Config) error {
 
 // loadOIDC reads one issuer/client id/client secret triple per provider, e.g.
 // BEEHIVE_OIDC_GOOGLE_ISSUER, BEEHIVE_OIDC_GOOGLE_CLIENT_ID, BEEHIVE_OIDC_GOOGLE_CLIENT_SECRET.
-func loadOIDC(c *Config) {
+func loadOIDC(c *Config) error {
 	c.OIDC.RedirectURL = env("OIDC_REDIRECT_URL", c.PublicBaseURL+"/auth/callback")
 	c.OIDC.Providers = map[string]OIDCProvider{}
 	for _, name := range envList("OIDC_PROVIDERS", nil) {
@@ -377,5 +539,9 @@ func loadOIDC(c *Config) {
 			ClientSecret: os.Getenv(envPrefix + "OIDC_" + p + "_CLIENT_SECRET"),
 			Scopes:       envList("OIDC_"+p+"_SCOPES", []string{"openid", "profile", "email"}),
 		}
+		if pc := c.OIDC.Providers[name]; pc.IssuerURL == "" || pc.ClientID == "" {
+			return fmt.Errorf("OIDC provider %q is enabled but not configured: set BEEHIVE_OIDC_%s_ISSUER and BEEHIVE_OIDC_%s_CLIENT_ID, or remove it from BEEHIVE_OIDC_PROVIDERS", name, p, p)
+		}
 	}
+	return nil
 }
