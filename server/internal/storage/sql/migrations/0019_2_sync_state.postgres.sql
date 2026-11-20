@@ -3,3 +3,5 @@ INSERT INTO sync_state (name, val) VALUES ('epoch', floor(random() * 10000000000
 UPDATE change_log SET logged_at = floor(extract(epoch FROM now()) * 1000)::bigint;
 -- Pull reads the log by workspace (idx_change_org_seq); nothing reads it by scope.
 DROP INDEX IF EXISTS idx_change_scope_seq;
+-- The daily compaction finds the entries older than its cut-off through this.
+CREATE INDEX IF NOT EXISTS idx_change_logged ON change_log (logged_at, seq);

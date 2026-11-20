@@ -74,8 +74,10 @@ func testSyncStateMigration(t *testing.T, s *Store) {
 	if n := countIndex(t, s, "idx_change_scope_seq"); n != 0 {
 		t.Fatalf("idx_change_scope_seq still exists")
 	}
-	if n := countIndex(t, s, "idx_change_org_seq"); n == 0 {
-		t.Fatalf("idx_change_org_seq is gone")
+	for _, index := range []string{"idx_change_org_seq", "idx_change_logged"} {
+		if n := countIndex(t, s, index); n != 1 {
+			t.Fatalf("index %s: found %d", index, n)
+		}
 	}
 }
 
