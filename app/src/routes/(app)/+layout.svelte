@@ -3,7 +3,8 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { startSync } from '#lib/local/sync.js';
+  import { startSync, syncStatus } from '#lib/local/sync.js';
+  import { recoverSession, takeNotice } from '#lib/account.js';
   import NavIcon from '#lib/components/NavIcon.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
   import SyncChip from '#lib/components/sync/SyncChip.svelte';
@@ -68,6 +69,12 @@
       );
 
       if (authRequired && !me) {
+        // Signed in, but the workspace this session was for is gone (removed
+        // from it, or it was deleted): continue in another one.
+        if (tok && (await recoverSession()) === 'recovered') {
+          location.reload();
+          return;
+        }
         // Pure-showcase host (BEEHIVE_DEMO_AUTOLOGIN): sign in as the demo user
         // automatically so the URL "just works". Combined production+demo
         // instances leave this off: visitors get /login, which carries the
@@ -93,6 +100,8 @@
         return;
       }
       sessionStorage.removeItem('obh.demoTried');
+      const notice = takeNotice();
+      if (notice) toast(get(_)(notice));
 
       if (me) {
         // Signed in: mirror the server identity into the local store keys.
@@ -119,6 +128,16 @@
       removeEventListener('offline', off);
       removeEventListener('unhandledrejection', onRejection);
     };
+  });
+
+  // The server stopped accepting the session while the app was open. If only
+  // the workspace is gone, move to another one instead of asking to sign in.
+  const signedOut = $derived($syncStatus.state === 'signed_out');
+  $effect(() => {
+    if (!signedOut) return;
+    void recoverSession().then((outcome) => {
+      if (outcome === 'recovered') location.reload();
+    });
   });
 
   // Main navigation. Settings lives separately, as the account block at the
