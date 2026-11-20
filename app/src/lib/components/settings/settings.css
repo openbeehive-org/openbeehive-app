@@ -1,0 +1,278 @@
+/* Shared look of the Settings sections. Global on purpose so the section
+   components do not each repeat it; every class is prefixed st- to stay out
+   of the way of other pages.
+
+   Text inputs are at least 16px (iOS zooms into anything smaller) and every
+   control is at least 44px tall. */
+
+.st-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 26px 18px 96px;
+}
+.st-page h1 {
+  font-size: 1.9rem;
+  margin-bottom: 18px;
+}
+.st-page .lucide-icon {
+  vertical-align: -0.15em;
+}
+.st-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.st-card h2 {
+  font-size: 1.2rem;
+  margin-bottom: 6px;
+}
+.st-sub {
+  font-size: 1.02rem;
+  margin: 22px 0 6px;
+}
+.st-help {
+  color: var(--text-soft);
+  font-size: 0.88rem;
+  margin-bottom: 14px;
+}
+.st-help:last-child {
+  margin-bottom: 0;
+}
+
+/* Buttons */
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  text-decoration: none;
+}
+.st-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.st-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.st-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+/* Destructive actions: red outline for the step that opens a confirmation,
+   solid red for the one that does it. */
+.st-btn.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.st-btn.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+}
+.st-btn.danger-solid,
+.st-btn.danger-solid:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-danger);
+}
+
+/* Form fields: always a visible label above the control. */
+.st-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+  min-width: 150px;
+}
+.st-field > span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+.st-field input,
+.st-field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg);
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text);
+}
+.st-field.narrow {
+  flex: 0 1 170px;
+}
+.st-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-top: 6px;
+}
+.st-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 6px;
+}
+.st-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+.st-check input {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.st-check small {
+  display: block;
+  font-weight: 400;
+  color: var(--text-soft);
+}
+.st-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.st-field input.st-mono {
+  font-size: 1rem;
+}
+
+/* Lists of things with actions (members, invites, passkeys, keys) */
+.st-list {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.st-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.st-meta {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.st-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.st-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 2px 7px;
+}
+.st-badge.accent {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.st-badge.bad {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.st-date {
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+/* Feedback */
+.st-msg {
+  margin-top: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ok);
+}
+.st-msg.err {
+  color: var(--danger);
+}
+.st-note {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.st-warn {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.st-code {
+  display: block;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.st-danger-zone {
+  margin-top: 22px;
+  padding: 14px;
+  border: 1px solid var(--danger);
+  border-radius: 12px;
+}
+.st-danger-zone .st-sub {
+  margin: 0 0 4px;
+  color: var(--danger);
+}
+.st-bullets {
+  margin: 0 0 12px 1.2em;
+  font-size: 0.9rem;
+  display: grid;
+  gap: 6px;
+}
+.st-link {
+  color: var(--accent-text);
+  font-weight: 600;
+}
+/* Present for keyboards and screen readers, not painted. */
+.st-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
