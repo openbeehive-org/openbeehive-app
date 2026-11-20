@@ -4,17 +4,7 @@
 // for statistics (no joins, permanently correct).
 
 import { getDB } from './db';
-import {
-  patch,
-  remove,
-  inspections,
-  harvests,
-  treatments,
-  queens,
-  markingForYear,
-  InspectionSource,
-  type InspectionInput
-} from './repo';
+import { markingForYear, InspectionSource, type InspectionInput } from './repo';
 import { unit, type Unit } from './write';
 
 export const EventType = {
@@ -356,6 +346,9 @@ export async function recordInspection(hiveId: string, d: InspectionInput) {
 }
 
 // --- Corrections: edit and delete with the related events kept in step ---
+// Like the flows above, each correction is one unit of work: a record is
+// never changed or deleted without its events following in the same local
+// transaction, and an undo restores all of it or nothing.
 
 /** Restores exactly what the matching delete removed. */
 export type Undo = () => Promise<void>;
@@ -410,15 +403,27 @@ async function scopeOf(row: any, events: EventRef[]): Promise<string> {
   return row.apiary_id || events[0]?.scope_id || (await hiveApiary(row.hive_id));
 }
 
-async function patchEvents(events: EventRef[], scope: string, fields: Record<string, unknown>) {
+function patchEvents(w: Unit, events: EventRef[], scope: string, fields: Record<string, unknown>) {
   if (Object.keys(fields).length === 0) return;
-  for (const e of events) await patch('event', e.id, e.scope_id || scope, fields);
+  for (const e of events) w.patch('event', e.id, e.scope_id || scope, fields);
 }
 
-async function tombstone(targets: Target[]): Promise<Undo> {
-  for (const t of targets) await remove(t.entity, t.id, t.scope);
+// Writes that belong to a delete besides the tombstones themselves, and how
+// the undo takes them back.
+type Along = { apply: (w: Unit) => void; revert: (w: Unit) => void };
+
+// Tombstones the targets (and applies what goes along) in one unit; the
+// returned undo reverses all of it in one unit as well.
+async function tombstone(targets: Target[], along?: Along): Promise<Undo> {
+  const w = unit();
+  for (const t of targets) w.remove(t.entity, t.id, t.scope);
+  along?.apply(w);
+  await w.commit();
   return async () => {
-    for (const t of targets) await patch(t.entity, t.id, t.scope, { deleted: 0 });
+    const back = unit();
+    along?.revert(back);
+    for (const t of targets) back.patch(t.entity, t.id, t.scope, { deleted: 0 });
+    await back.commit();
   };
 }
 
@@ -456,8 +461,11 @@ export async function editInspection(id: string, fields: InspectionInput) {
   if (Object.keys(changes).length === 0) return false;
   const events = await eventsOf('inspection', id);
   const scope = await scopeOf(row, events);
-  await inspections.update(id, scope, changes);
-  await patchEvents(events, scope, await contextChange(row, changes));
+  const ctx = await contextChange(row, changes);
+  const w = unit();
+  w.patch('inspection', id, scope, changes);
+  patchEvents(w, events, scope, ctx);
+  await w.commit();
   return true;
 }
 
@@ -481,15 +489,17 @@ export async function editHarvest(id: string, fields: HarvestFields) {
   const events = await eventsOf('harvest', id);
   const scope = await scopeOf(row, events);
   const ctx = await contextChange(row, changes);
-  await harvests.update(id, scope, { ...changes, ...ctx, amended_at: now() });
   const amount = (changes.amount_kg ?? row.amount_kg) as number;
   const variety = (changes.variety ?? row.variety) as string | null;
-  await patchEvents(events, scope, {
+  const w = unit();
+  w.patch('harvest', id, scope, { ...changes, ...ctx, amended_at: now() });
+  patchEvents(w, events, scope, {
     ...ctx,
     ...('amount_kg' in changes || 'variety' in changes
       ? { amount_kg: amount, title: harvestTitle(amount, variety) }
       : {})
   });
+  await w.commit();
   return true;
 }
 
@@ -515,11 +525,13 @@ export async function editTreatment(id: string, fields: TreatmentFields) {
   const events = await eventsOf('treatment', id);
   const scope = await scopeOf(row, events);
   const ctx = await contextChange(row, changes);
-  await treatments.update(id, scope, { ...changes, ...ctx, amended_at: now() });
-  await patchEvents(events, scope, {
+  const w = unit();
+  w.patch('treatment', id, scope, { ...changes, ...ctx, amended_at: now() });
+  patchEvents(w, events, scope, {
     ...ctx,
     ...('product' in changes ? { title: changes.product } : {})
   });
+  await w.commit();
   return true;
 }
 
@@ -553,18 +565,20 @@ export async function editQueen(id: string, fields: QueenFields) {
   const scope = await scopeOf(row, introduced);
   // Read before the queen row changes: the lookup matches on its old date.
   const before = 'introduced_at' in changes ? await predecessorOf(row) : undefined;
-  await queens.update(id, scope, changes);
-  await patchEvents(introduced, scope, {
+  const replaced = before ? await queenEvents(before.id, EventType.QUEEN_REPLACED) : [];
+  const ts = now();
+  const w = unit();
+  w.patch('queen', id, scope, { ...changes, updated_at: ts });
+  patchEvents(w, introduced, scope, {
     ...('year' in changes ? { title: queenTitle(changes.year as number) } : {}),
     ...('introduced_at' in changes ? { date: changes.introduced_at } : {})
   });
   if (before) {
     // The previous queen reigned until this one arrived.
-    await queens.update(before.id, scope, { replaced_at: changes.introduced_at });
-    await patchEvents(await queenEvents(before.id, EventType.QUEEN_REPLACED), scope, {
-      date: changes.introduced_at
-    });
+    w.patch('queen', before.id, scope, { replaced_at: changes.introduced_at, updated_at: ts });
+    patchEvents(w, replaced, scope, { date: changes.introduced_at });
   }
+  await w.commit();
   return true;
 }
 
@@ -589,13 +603,12 @@ export async function deleteQueen(id: string): Promise<Undo> {
       ...replaced.map((e) => ({ entity: 'event', id: e.id, scope: e.scope_id || scope }))
     );
   }
-  const restore = await tombstone(targets);
-  if (!before) return restore;
-  await patch('queen', before.id, scope, { active: 1, replaced_at: null });
-  return async () => {
-    await patch('queen', before.id, scope, { active: 0, replaced_at: before.replaced_at });
-    await restore();
-  };
+  if (!before) return tombstone(targets);
+  return tombstone(targets, {
+    apply: (w) => w.patch('queen', before.id, scope, { active: 1, replaced_at: null }),
+    revert: (w) =>
+      w.patch('queen', before.id, scope, { active: 0, replaced_at: before.replaced_at })
+  });
 }
 
 // Edit a hive's name, type or status. A status change is part of the hive's
