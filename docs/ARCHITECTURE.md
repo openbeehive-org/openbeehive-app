@@ -36,7 +36,8 @@ app/        SvelteKit PWA
   (`src/lib/local/sync.ts`) pushes and pulls in the background.
 - **The server orders changes, it does not own the UI.** `SyncService.Push` merges each change per field
   (last-writer-wins by HLC for scalars, add-wins OR-Set for list fields) and appends it to the
-  `change_log`; `Pull` serves the log from a cursor, limited to the scopes the user can see.
+  `change_log`; `Pull` serves the log from a cursor, limited to the caller's workspace (personal rows
+  only to their owner).
 - **CRUD services are a second door to the same room.** Scripts and devices use `ApiaryService`,
   `HiveService`, … with API keys. Their writes go through the same `Writer` (merge + change log) as a
   pushed change, so devices see them on the next pull.
@@ -52,14 +53,17 @@ app/        SvelteKit PWA
 
 1. A tap in the app writes a row locally and records a `Change` (entity, id, op, payload, HLC) in the
    outbox.
-2. The sync engine pushes outbox changes to `SyncService.Push`. The server checks the scope, merges the
-   payload field by field against the stored row's field clocks, and appends the change to the log.
-3. Other devices call `Pull` with their cursor and receive the new log entries for their scopes, apply
-   them with the same merge rules, and advance the cursor. `Subscribe` nudges connected devices when
-   the cursor moves.
+2. The sync engine pushes outbox changes to `SyncService.Push`. The server applies each change on its
+   own: it checks workspace, scope, stamp and payload, merges the known columns field by field against
+   the stored row's field clocks, and appends the normalised change to the log. A change it refuses is
+   reported back with a code and does not hold up the others.
+3. Other devices call `Pull` with their cursor and receive the new log entries of their workspace,
+   apply them with the same merge rules, and advance the cursor (only `Pull` moves it). `Subscribe`
+   nudges connected devices when their workspace has news.
 4. Any two devices that have seen the same changes converge to the same state, regardless of arrival
    order (the merge is deterministic; `server/internal/sync` and `app/src/lib/local/merge.ts` mirror
-   each other and must change together).
+   each other, run the same cases from `server/internal/sync/testdata/merge_vectors.json`, and must
+   change together).
 
 ## Deployment
 

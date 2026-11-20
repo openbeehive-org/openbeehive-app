@@ -61,6 +61,11 @@ func (w *Writer) Run(ctx context.Context, id auth.Identity, fn func(t *txWriter)
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Same lock, same order as SyncService.Push: API writes and device
+	// pushes merge the same rows and must not interleave.
+	if err := lockWrites(ctx, tx); err != nil {
+		return err
+	}
 	if err := fn(&txWriter{ctx: ctx, tx: tx, w: w, id: id}); err != nil {
 		return err
 	}

@@ -1,0 +1,763 @@
+{
+  "about": "Merge rules shared by the server (internal/sync) and the app (app/src/lib/local/merge.ts). Both test suites run every case: start from row (null = the row does not exist), apply changes in order, compare with want. fields holds scalar columns, field_hlc their stamps, sets the set columns (row: stored OR-Set, want: visible elements, sorted). want.tags, where given, is the exact stored OR-Set.",
+  "cases": [
+    {
+      "name": "scalar: a newer stamp wins, an older one loses, fields are independent",
+      "row": {
+        "fields": {
+          "name": "Old",
+          "note": "keep"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00000:devB",
+          "note": "000000000004000:00000:devB"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "name": "New",
+            "note": "stale",
+            "address": "fresh"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "New",
+          "note": "keep",
+          "address": "fresh"
+        },
+        "field_hlc": {
+          "name": "000000000003000:00000:devA",
+          "note": "000000000004000:00000:devB",
+          "address": "000000000003000:00000:devA"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "scalar: arrival order does not matter",
+      "row": {
+        "fields": {
+          "name": "Start"
+        },
+        "field_hlc": {
+          "name": "000000000001000:00000:devA"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000004000:00000:devB",
+          "payload": {
+            "name": "Latest"
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {
+            "name": "Earlier"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "Latest"
+        },
+        "field_hlc": {
+          "name": "000000000004000:00000:devB"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "scalar: an equal stamp never overwrites",
+      "row": {
+        "fields": {
+          "name": "First"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00000:devB"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {
+            "name": "Second"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "First"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00000:devB"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "scalar: same time and counter, the node id breaks the tie",
+      "row": {
+        "fields": {
+          "name": "from devA"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00000:devA"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {
+            "name": "from devB"
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devA",
+          "payload": {
+            "name": "replayed devA"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "from devB"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00000:devB"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "scalar: the counter orders stamps within one millisecond",
+      "row": {
+        "fields": {
+          "name": "c1"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00001:devA"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devA",
+          "payload": {
+            "name": "c0"
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00010:devA",
+          "payload": {
+            "name": "c10"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "c10"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00010:devA"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "insert: a missing row takes every field and stamps it",
+      "row": null,
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000001000:00000:devA",
+          "payload": {
+            "name": "Orchard",
+            "lat": 48.5,
+            "deleted": 0,
+            "note": null
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "Orchard",
+          "lat": 48.5,
+          "deleted": 0,
+          "note": null
+        },
+        "field_hlc": {
+          "name": "000000000001000:00000:devA",
+          "lat": "000000000001000:00000:devA",
+          "deleted": "000000000001000:00000:devA",
+          "note": "000000000001000:00000:devA"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "payload: id and field_hlc are never merged",
+      "row": {
+        "fields": {
+          "name": "A"
+        },
+        "field_hlc": {
+          "name": "000000000001000:00000:devA"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {
+            "id": "other",
+            "field_hlc": "{}",
+            "name": "B"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "B"
+        },
+        "field_hlc": {
+          "name": "000000000002000:00000:devB"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "clock: a malformed stored stamp loses against any well-formed one",
+      "row": {
+        "fields": {
+          "name": "poisoned"
+        },
+        "field_hlc": {
+          "name": "zzzz"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000001000:00000:devA",
+          "payload": {
+            "name": "healed"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "healed"
+        },
+        "field_hlc": {
+          "name": "000000000001000:00000:devA"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "delete: writes the tombstone, a later edit of another field does not undelete",
+      "row": {
+        "fields": {
+          "name": "Hive",
+          "deleted": 0
+        },
+        "field_hlc": {
+          "name": "000000000001000:00000:devA",
+          "deleted": "000000000001000:00000:devA"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "delete",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {}
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "name": "Renamed"
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "name": "Renamed",
+          "deleted": 1
+        },
+        "field_hlc": {
+          "name": "000000000003000:00000:devA",
+          "deleted": "000000000002000:00000:devB"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "delete: loses against a newer write to the deleted field, wins against an older one",
+      "row": {
+        "fields": {
+          "deleted": 0
+        },
+        "field_hlc": {
+          "deleted": "000000000003000:00000:devA"
+        },
+        "sets": {}
+      },
+      "changes": [
+        {
+          "op": "delete",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {}
+        },
+        {
+          "op": "delete",
+          "hlc": "000000000004000:00000:devB",
+          "payload": {}
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "deleted": 0
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000005000:00000:devA",
+          "payload": {
+            "deleted": 0
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "deleted": 0
+        },
+        "field_hlc": {
+          "deleted": "000000000005000:00000:devA"
+        },
+        "sets": {}
+      }
+    },
+    {
+      "name": "set: adds from two devices are both kept, a replay changes nothing",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": {}
+        }
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000001000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "add": [
+                "p1"
+              ]
+            }
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {
+            "photo_keys": {
+              "add": [
+                "p2"
+              ]
+            }
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000001000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "add": [
+                "p1"
+              ]
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": [
+            "p1",
+            "p2"
+          ]
+        },
+        "tags": {
+          "photo_keys": {
+            "p1": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            },
+            "p2": {
+              "a": [
+                "000000000002000:00000:devB"
+              ],
+              "r": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set: a remove with removed_tags tombstones only the observed tags (add wins)",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": {
+            "p1": {
+              "a": [
+                "000000000001000:00000:devA",
+                "000000000002000:00000:devB"
+              ],
+              "r": []
+            },
+            "p2": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            }
+          }
+        }
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "remove": [
+                "p1",
+                "p2"
+              ],
+              "removed_tags": {
+                "p1": [
+                  "000000000001000:00000:devA"
+                ],
+                "p2": [
+                  "000000000001000:00000:devA"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": [
+            "p1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "set: a remove without removed_tags tombstones every tag the receiver knows",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": {
+            "p1": {
+              "a": [
+                "000000000001000:00000:devA",
+                "000000000002000:00000:devB"
+              ],
+              "r": []
+            },
+            "p2": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            }
+          }
+        }
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "remove": [
+                "p1"
+              ]
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": [
+            "p2"
+          ]
+        }
+      }
+    },
+    {
+      "name": "set: an empty removed_tags list removes nothing",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": {
+            "p1": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            }
+          }
+        }
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "remove": [
+                "p1"
+              ],
+              "removed_tags": {
+                "p1": []
+              }
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": [
+            "p1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "set: an element missing from removed_tags loses nothing",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": {
+            "p1": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            },
+            "p2": {
+              "a": [
+                "000000000002000:00000:devB"
+              ],
+              "r": []
+            }
+          }
+        }
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "remove": [
+                "p1",
+                "p2"
+              ],
+              "removed_tags": {
+                "p2": [
+                  "000000000002000:00000:devB"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": [
+            "p1"
+          ]
+        }
+      }
+    },
+    {
+      "name": "set: remove then re-add shows the element again; the set ignores the field clock",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": {
+        "fields": {
+          "note": "n"
+        },
+        "field_hlc": {
+          "note": "000000000005000:00000:devA",
+          "photo_keys": "000000000005000:00000:devA"
+        },
+        "sets": {
+          "photo_keys": {
+            "p1": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            }
+          }
+        }
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {
+            "photo_keys": {
+              "remove": [
+                "p1"
+              ],
+              "removed_tags": {
+                "p1": [
+                  "000000000001000:00000:devA"
+                ]
+              }
+            },
+            "note": "stale"
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "add": [
+                "p1"
+              ]
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "note": "n"
+        },
+        "field_hlc": {
+          "note": "000000000005000:00000:devA",
+          "photo_keys": "000000000005000:00000:devA"
+        },
+        "sets": {
+          "photo_keys": [
+            "p1"
+          ]
+        },
+        "tags": {
+          "photo_keys": {
+            "p1": {
+              "a": [
+                "000000000001000:00000:devA",
+                "000000000003000:00000:devA"
+              ],
+              "r": [
+                "000000000001000:00000:devA"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "set: an insert carrying a set delta creates the set",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": null,
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000001000:00000:devA",
+          "payload": {
+            "hive_id": "h1",
+            "photo_keys": {
+              "add": [
+                "p1"
+              ],
+              "remove": [
+                "p9"
+              ],
+              "removed_tags": {}
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {
+          "hive_id": "h1"
+        },
+        "field_hlc": {
+          "hive_id": "000000000001000:00000:devA"
+        },
+        "sets": {
+          "photo_keys": [
+            "p1"
+          ]
+        }
+      }
+    }
+  ]
+}

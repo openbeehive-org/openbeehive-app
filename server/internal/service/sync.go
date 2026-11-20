@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect/v2"
@@ -16,15 +19,16 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
+	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // Column whitelist per entity. cols are merged via per-field LWW,
 // setCols as OR-Set (add-wins). Both stay portable (no UPSERT needed).
-// bools/ints/times drive payload coercion (see coerceFields): clients store
-// rows in SQLite, so their JSON payloads carry 0/1 for booleans, floats for
-// integers and strings (or "") for timestamps; SQLite accepts all of that
-// verbatim, Postgres and MySQL do not.
+// bools/ints/times drive payload validation and coercion (sync_payload.go):
+// clients store rows in SQLite, so their JSON payloads carry 0/1 for
+// booleans, floats for integers and strings (or "") for timestamps; SQLite
+// accepts all of that verbatim, Postgres and MySQL do not.
 type entitySpec struct {
 	table   string
 	cols    []string
@@ -106,17 +110,7 @@ func isSetCol(spec entitySpec, col string) bool {
 	return false
 }
 
-func inCols(spec entitySpec, col string) bool {
-	for _, c := range spec.cols {
-		if c == col {
-			return true
-		}
-	}
-	return false
-}
-
-// --- small conversion helpers for MapScan / JSON ---
-
+// asString reads a text column from a MapScan row (MySQL returns []byte).
 func asString(v any) string {
 	switch t := v.(type) {
 	case string:
@@ -128,67 +122,52 @@ func asString(v any) string {
 	}
 }
 
-func toStrings(v any) []string {
-	arr, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(arr))
-	for _, e := range arr {
-		if s, ok := e.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// coerceFields normalizes JSON payload values to what the target dialect's
-// column types accept. SQLite stores whatever it is given, but Postgres
-// rejects integers in BOOLEAN columns and MySQL cannot parse RFC3339 into
-// DATETIME, so: 0/1 -> bool, integral floats -> int64, "" -> NULL for
-// timestamps, and (outside SQLite) RFC3339 strings -> time.Time.
-func coerceFields(spec entitySpec, fields map[string]any, driver string) {
-	for _, c := range spec.bools {
-		switch v := fields[c].(type) {
-		case float64:
-			fields[c] = v != 0
-		case string:
-			fields[c] = v == "1" || v == "true"
-		}
-	}
-	for _, c := range spec.ints {
-		if v, ok := fields[c].(float64); ok {
-			fields[c] = int64(v)
-		}
-	}
-	for _, c := range spec.times {
-		v, ok := fields[c].(string)
-		if !ok {
-			continue
-		}
-		if v == "" {
-			fields[c] = nil // nullable timestamp: "" means "not set"
-			continue
-		}
-		if driver == "sqlite" {
-			continue // stored verbatim, as the clients themselves do
-		}
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			fields[c] = t
-		}
-		// other layouts (e.g. date-only) stay strings; Postgres and MySQL
-		// parse those natively.
-	}
-}
+const (
+	// maxPushChanges bounds one Push request; the app sends at most 200.
+	maxPushChanges = 2000
+	// maxSubscribeStreams bounds the open Subscribe streams per user. Each
+	// stream polls the database, so an unbounded number is a cheap way to
+	// load the server.
+	maxSubscribeStreams = 4
+	subscribePoll       = 2 * time.Second
+)
 
 type SyncService struct {
 	db  *sqlx.DB
 	hlc *wsync.HLC
+
+	poll    time.Duration // Subscribe poll interval
+	mu      sync.Mutex
+	streams map[string]int // open Subscribe streams per user
 }
 
-func NewSyncService(db *sqlx.DB, hlc *wsync.HLC) *SyncService { return &SyncService{db: db, hlc: hlc} }
+func NewSyncService(db *sqlx.DB, hlc *wsync.HLC) *SyncService {
+	return &SyncService{db: db, hlc: hlc, poll: subscribePoll, streams: map[string]int{}}
+}
 
-// --- Pull: returns changes within the scopes visible to the user ---
+func internalErr(err error) error {
+	return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+}
+
+// --- Pull: returns the changes of the caller's workspace ---
+
+// The workspace (tenant) is the only sharing unit: a device sees every change
+// of the workspace it is signed in to. The exception are personal rows
+// (scope "user:<id>"), which only their owner sees, and only inside the
+// workspace they were written in. idx_change_org_seq serves both queries.
+const (
+	pullQuery = `
+		SELECT scope_id, entity, entity_id, op, payload, hlc, author_id, seq
+		FROM change_log
+		WHERE org_id = ? AND seq > ? AND (scope_id NOT LIKE 'user:%' OR scope_id = ?)
+		ORDER BY seq ASC LIMIT ?`
+	latestQuery = `
+		SELECT seq FROM change_log
+		WHERE org_id = ? AND (scope_id NOT LIKE 'user:%' OR scope_id = ?)
+		ORDER BY seq DESC LIMIT 1`
+)
+
+func personalScope(userID string) string { return "user:" + userID }
 
 func (s *SyncService) Pull(
 	ctx context.Context, req *wv1.PullRequest,
@@ -197,22 +176,15 @@ func (s *SyncService) Pull(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	scopes := s.accessibleScopes(ctx, id.UserID, id.OrgID)
-	if len(scopes) == 0 {
-		return &wv1.PullResponse{NextCursor: req.Cursor}, nil
-	}
 	limit := int(req.Limit)
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
-	q, args, _ := sqlx.In(`
-		SELECT scope_id, entity, entity_id, op, payload, hlc, author_id, seq
-		FROM change_log
-		WHERE scope_id IN (?) AND seq > ?
-		ORDER BY seq ASC LIMIT ?`, scopes, cursorToSeq(req.Cursor), limit+1)
-	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(q), args...)
+	// limit+1 rows are requested to tell whether more pages follow.
+	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(pullQuery),
+		id.OrgID, cursorToSeq(req.Cursor), personalScope(id.UserID), limit+1)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+		return nil, internalErr(err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -225,7 +197,7 @@ func (s *SyncService) Pull(
 			Seq                                             int64
 		}
 		if err := rows.Scan(&c.ScopeID, &c.Entity, &c.EntityID, &c.Op, &c.Payload, &c.HLC, &c.Author, &c.Seq); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+			return nil, internalErr(err)
 		}
 		out = append(out, &wv1.Change{
 			Entity: c.Entity, EntityId: c.EntityID, ScopeId: c.ScopeID,
@@ -233,8 +205,12 @@ func (s *SyncService) Pull(
 		})
 		seqs = append(seqs, c.Seq)
 	}
+	// A page cut short by a read error must not look complete: the device
+	// would move its cursor past rows it never received.
+	if err := rows.Err(); err != nil {
+		return nil, internalErr(err)
+	}
 
-	// limit+1 rows were requested so we can tell whether more pages follow.
 	hasMore := len(out) > limit
 	if hasMore {
 		out, seqs = out[:limit], seqs[:limit]
@@ -245,11 +221,16 @@ func (s *SyncService) Pull(
 	}
 	return &wv1.PullResponse{
 		Changes: out, NextCursor: next, HasMore: hasMore,
+		ServerTimeMs: time.Now().UnixMilli(),
 	}, nil
 }
 
-// --- Push: applies incoming changes via LWW ---
+// --- Push: applies incoming changes one by one ---
 
+// Push merges every change inside its own savepoint and reports the ones it
+// refuses in the response; the rest of the batch is applied. Only an error
+// that is not about a single change (database down, request cancelled)
+// fails the request, and then nothing of it is applied.
 func (s *SyncService) Push(
 	ctx context.Context, req *wv1.PushRequest,
 ) (*wv1.PushResponse, error) {
@@ -257,58 +238,138 @@ func (s *SyncService) Push(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	// Writable scopes for this user: same set Pull reads from. Changes outside
-	// it are rejected; otherwise any authenticated user could inject rows into
-	// a foreign tenant's change feed by picking its scope id.
-	scopes := s.accessibleScopes(ctx, id.UserID, id.OrgID)
-	scopeSet := make(map[string]bool, len(scopes))
-	for _, sc := range scopes {
-		scopeSet[sc] = true
+	// Read-only identities (demo account, read-scoped API keys) upload
+	// nothing at all; the device discards the attempt.
+	if id.ReadOnly || id.Role == "demo" {
+		return nil, connect.NewError(connect.CodePermissionDenied, "this identity is read-only")
 	}
+	if len(req.Changes) > maxPushChanges {
+		return nil, connect.Errorf(connect.CodeInvalidArgument,
+			"a push carries at most %d changes", maxPushChanges)
+	}
+	now := time.Now()
 
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+		return nil, internalErr(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := lockWrites(ctx, tx); err != nil {
+		return nil, internalErr(err)
+	}
+	scopes, err := loadScopes(ctx, tx, id)
+	if err != nil {
+		return nil, internalErr(err)
+	}
 
-	for _, ch := range req.Changes {
-		s.hlc.Recv(ch.Hlc) // sync clock with origin time
-
-		spec, ok := entityCols[ch.Entity]
-		if !ok {
+	var rejected []*wv1.RejectedChange
+	var accepted []string
+	for i, ch := range req.Changes {
+		// The author is whoever is signed in, not what the device claims.
+		ch.AuthorId = id.UserID
+		cerr, err := pushOne(ctx, tx, scopes, id.OrgID, ch, now)
+		if err != nil {
+			return nil, internalErr(err)
+		}
+		if cerr != nil {
+			rejected = append(rejected, &wv1.RejectedChange{
+				Index: int32(i), Code: cerr.code, Reason: cerr.reason,
+			})
 			continue
 		}
-		if err := allowScope(scopeSet, ch); err != nil {
-			return nil, err
-		}
-		if err := applyLogged(ctx, tx, spec, ch, id.OrgID); err != nil {
-			return nil, err
-		}
+		accepted = append(accepted, ch.Hlc)
 	}
-	var cursor int64
-	_ = tx.GetContext(ctx, &cursor, "SELECT val FROM seq_counter WHERE name = 'change'")
 	if err := tx.Commit(); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+		return nil, internalErr(err)
 	}
-	return &wv1.PushResponse{
-		ServerCursor: seqToCursor(cursor), Conflicts: nil,
-	}, nil
+	// The server clock follows only stamps that were validated and stored:
+	// a refused or rolled-back change must not move it.
+	for _, stamp := range accepted {
+		_ = s.hlc.Recv(stamp)
+	}
+	return &wv1.PushResponse{Rejected: rejected, ServerTimeMs: now.UnixMilli()}, nil
 }
 
-// allowScope rejects a change outside the user's writable scopes. A new apiary
-// opens its own scope (scope id = apiary id); its tenant is still enforced
-// against the row in applyChange.
-func allowScope(scopeSet map[string]bool, ch *wv1.Change) error {
-	if scopeSet[ch.ScopeId] {
-		return nil
+// lockWrites serializes everything that merges rows and appends to the
+// change log, by taking the row lock on the sequence counter first. Merging
+// reads a row and writes back its field clock and set columns; without the
+// lock two transactions on Postgres or MySQL read the same state and the
+// later commit silently undoes the earlier one. Taking it before any row is
+// touched also gives every writer the same lock order.
+func lockWrites(ctx context.Context, tx *sqlx.Tx) error {
+	_, err := tx.ExecContext(ctx, "UPDATE seq_counter SET val = val WHERE name = 'change'")
+	return err
+}
+
+// scopeSet holds the scopes the caller may write: the personal scope and
+// the apiaries of the caller's workspace.
+type scopeSet struct {
+	personal string
+	apiaries map[string]bool
+}
+
+func loadScopes(ctx context.Context, tx *sqlx.Tx, id auth.Identity) (*scopeSet, error) {
+	var ids []string
+	if err := tx.SelectContext(ctx, &ids, tx.Rebind(
+		`SELECT id FROM apiary WHERE organization_id = ?`), id.OrgID); err != nil {
+		return nil, err
 	}
-	if ch.Entity == "apiary" && ch.ScopeId == ch.EntityId {
-		scopeSet[ch.ScopeId] = true
-		return nil
+	set := &scopeSet{personal: personalScope(id.UserID), apiaries: make(map[string]bool, len(ids))}
+	for _, a := range ids {
+		set.apiaries[a] = true
 	}
-	return connect.Errorf(connect.CodePermissionDenied,
-		"scope %q is not writable for this user", ch.ScopeId)
+	return set, nil
+}
+
+// allows reports whether the change's scope is writable. A new apiary opens
+// its own scope (scope id = apiary id); that the id is not another
+// workspace's apiary is enforced on the row in applyChange.
+func (s *scopeSet) allows(ch *wv1.Change) bool {
+	if ch.ScopeId == s.personal || s.apiaries[ch.ScopeId] {
+		return true
+	}
+	return ch.Entity == "apiary" && ch.ScopeId == ch.EntityId
+}
+
+// opened records the scope of an apiary that was just stored.
+func (s *scopeSet) opened(ch *wv1.Change) {
+	if ch.Entity == "apiary" {
+		s.apiaries[ch.EntityId] = true
+	}
+}
+
+// pushOne applies one change inside a savepoint. It returns a changeError
+// when the change itself is refused (the savepoint is rolled back, the
+// transaction stays usable) and an error when the request cannot continue.
+func pushOne(ctx context.Context, tx *sqlx.Tx, scopes *scopeSet, orgID string, ch *wv1.Change, now time.Time) (*changeError, error) {
+	spec, cerr := checkChange(ch, now)
+	if cerr != nil {
+		return cerr, nil
+	}
+	if !scopes.allows(ch) {
+		return &changeError{code: rejForbiddenScope,
+			reason: fmt.Sprintf("scope %q is not writable for this user", clip(ch.ScopeId))}, nil
+	}
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT obh_change"); err != nil {
+		return nil, err
+	}
+	applyErr := applyLogged(ctx, tx, spec, ch, orgID)
+	if applyErr == nil {
+		scopes.opened(ch)
+		_, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT obh_change")
+		return nil, err
+	}
+	// Undo whatever the change wrote before it failed. If even that fails the
+	// transaction is gone (deadlock victim, dropped connection): give up.
+	for _, q := range []string{"ROLLBACK TO SAVEPOINT obh_change", "RELEASE SAVEPOINT obh_change"} {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return nil, errors.Join(applyErr, err)
+		}
+	}
+	if cerr := asChangeError(applyErr, sqlstore.IsDataError); cerr != nil {
+		return cerr, nil
+	}
+	return nil, applyErr
 }
 
 // applyLogged merges one change (per-field LWW + OR-Set; stale fields are
@@ -316,47 +377,81 @@ func allowScope(scopeSet map[string]bool, ch *wv1.Change) error {
 // it to the change log.
 func applyLogged(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) error {
 	if err := applyChange(ctx, tx, spec, ch, orgID); err != nil {
-		if errors.Is(err, errWrongTenant) {
-			return connect.NewError(connect.CodePermissionDenied, err.Error()).WithCause(err)
-		}
-		return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+		return err
 	}
-	if err := appendChangeLog(ctx, tx, ch, orgID); err != nil {
-		return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
-	}
-	return nil
+	return appendChangeLog(ctx, tx, ch, orgID)
 }
 
-// --- Subscribe: optional live channel. Polls the global change cursor and
-// nudges the device whenever it advances, so it can pull immediately. ---
+// --- Subscribe: optional live channel. Polls the latest change the caller
+// can see and nudges the device whenever it advances, so it can pull
+// immediately. ---
 
 func (s *SyncService) Subscribe(
 	ctx context.Context, req *wv1.SubscribeRequest,
 	stream openbeehivev1connect.SyncServiceSubscribeServerStream,
 ) error {
-	if _, ok := auth.FromContext(ctx); !ok {
+	id, ok := auth.FromContext(ctx)
+	if !ok {
 		return connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	last := cursorToSeq(req.Cursor)
-	ticker := time.NewTicker(2 * time.Second)
+	return s.subscribe(ctx, id, cursorToSeq(req.Cursor), stream.Send)
+}
+
+func (s *SyncService) subscribe(ctx context.Context, id auth.Identity, last int64, send func(*wv1.SubscribeEvent) error) error {
+	if !s.openStream(id.UserID) {
+		return connect.Errorf(connect.CodeResourceExhausted,
+			"at most %d live sync streams per user", maxSubscribeStreams)
+	}
+	defer s.closeStream(id.UserID)
+
+	ticker := time.NewTicker(s.poll)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			var cur int64
-			if err := s.db.GetContext(ctx, &cur,
-				"SELECT val FROM seq_counter WHERE name = 'change'"); err != nil {
-				return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+			cur, err := s.latestSeq(ctx, id)
+			if err != nil {
+				return internalErr(err)
 			}
 			if cur > last {
 				last = cur
-				if err := stream.Send(&wv1.SubscribeEvent{ServerCursor: seqToCursor(cur)}); err != nil {
+				if err := send(&wv1.SubscribeEvent{ServerCursor: seqToCursor(cur)}); err != nil {
 					return err
 				}
 			}
 		}
+	}
+}
+
+// latestSeq is the sequence of the newest change the identity can pull, so
+// activity in other workspaces neither wakes a device nor shows in the
+// number it receives.
+func (s *SyncService) latestSeq(ctx context.Context, id auth.Identity) (int64, error) {
+	var seq int64
+	err := s.db.GetContext(ctx, &seq, s.db.Rebind(latestQuery), id.OrgID, personalScope(id.UserID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return seq, err
+}
+
+func (s *SyncService) openStream(userID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.streams[userID] >= maxSubscribeStreams {
+		return false
+	}
+	s.streams[userID]++
+	return true
+}
+
+func (s *SyncService) closeStream(userID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.streams[userID]--; s.streams[userID] <= 0 {
+		delete(s.streams, userID)
 	}
 }
 
@@ -368,135 +463,123 @@ var errWrongTenant = errors.New("change targets another tenant's data")
 // orgID is the caller's active tenant: existing rows must belong to it, new
 // rows are stamped with it; a client cannot write into a foreign tenant, and
 // cannot move a row across tenants, no matter what its payload claims.
+//
+// The payload is validated and reduced to the entity's known columns first,
+// and ch.PayloadJson is replaced by that normalised form: it is what the
+// change log stores and every other device receives.
 func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) error {
-	fields := map[string]any{}
-	if ch.Op == wv1.ChangeOp_CHANGE_OP_DELETE {
-		fields["deleted"] = true
-	} else if err := json.Unmarshal([]byte(ch.PayloadJson), &fields); err != nil {
-		return err
+	if !wsync.Valid(ch.Hlc) {
+		return invalidChange("malformed hlc stamp %q", clip(ch.Hlc))
 	}
-	coerceFields(spec, fields, tx.DriverName())
+	fields, cerr := wireFields(ch.Entity, spec, ch)
+	if cerr != nil {
+		return cerr
+	}
 	if v, ok := fields["organization_id"]; ok {
-		if s := asString(v); s == "" {
+		if org, _ := v.(string); org == "" {
 			fields["organization_id"] = orgID // unset -> stamp the caller's tenant
-		} else if s != orgID {
+		} else if org != orgID {
 			return errWrongTenant
 		}
 	}
 
-	// Load the current row state (for field clock and set columns).
-	row := map[string]any{}
-	rows, err := tx.QueryxContext(ctx, tx.Rebind(
-		fmt.Sprintf("SELECT * FROM %s WHERE id = ?", spec.table)), ch.EntityId)
+	row, exists, rowOrg, err := loadMergeState(ctx, tx, spec, ch.EntityId)
 	if err != nil {
 		return err
 	}
-	exists := rows.Next()
-	if exists {
-		_ = rows.MapScan(row)
+	if exists && rowOrg != "" && rowOrg != orgID {
+		return errWrongTenant
 	}
-	_ = rows.Close()
+	if !exists {
+		fields["organization_id"] = orgID // new rows always belong to the caller's tenant
+	}
 
-	if exists {
-		if rowOrg := asString(row["organization_id"]); rowOrg != "" && rowOrg != orgID {
-			return errWrongTenant
-		}
-		return updateMerge(ctx, tx, spec, ch, fields, row)
+	payload, err := json.Marshal(fields)
+	if err != nil {
+		return err
 	}
-	fields["organization_id"] = orgID // new rows always belong to the caller's tenant
-	return insertNew(ctx, tx, spec, ch, fields)
+	ch.PayloadJson = string(payload)
+
+	changed := row.Apply(fields, ch.Hlc)
+	values := dbValues(ch.Entity, fields, tx.DriverName())
+	for _, sc := range spec.setCols {
+		values[sc] = row.Sets[sc].Marshal()
+	}
+	values["field_hlc"] = row.Clock.Marshal()
+	if !exists {
+		// A new row stores every set column, also the ones the change does
+		// not mention: their column default is not valid OR-Set JSON.
+		return insertRow(ctx, tx, spec, ch.EntityId, union(changed, spec.setCols), values)
+	}
+	if len(changed) == 0 {
+		return nil // everything stale -> nothing to do
+	}
+	return updateRow(ctx, tx, spec, ch.EntityId, changed, values)
 }
 
-// insertNew: new row. All provided fields are stamped with ch.Hlc.
-func insertNew(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, fields map[string]any) error {
-	fc := wsync.FieldClock{}
-	cols := []string{"id"}
-	args := []any{ch.EntityId}
-
-	for _, c := range spec.cols {
-		if c == "id" {
-			continue
-		}
-		if v, ok := fields[c]; ok {
-			cols = append(cols, c)
-			args = append(args, v)
-			fc[c] = ch.Hlc
-		}
-	}
+// loadMergeState reads what the merge needs from the stored row: its
+// tenant, field clock and set columns.
+func loadMergeState(ctx context.Context, tx *sqlx.Tx, spec entitySpec, id string) (row wsync.Row, exists bool, org string, err error) {
+	row = wsync.Row{Clock: wsync.FieldClock{}, Sets: map[string]wsync.ORSet{}}
 	for _, sc := range spec.setCols {
-		os := wsync.ORSet{}
-		if d, ok := fields[sc].(map[string]any); ok {
-			for _, e := range toStrings(d["add"]) {
-				os.Add(e, ch.Hlc)
+		row.Sets[sc] = wsync.ORSet{}
+	}
+	cols := append([]string{"organization_id", "field_hlc"}, spec.setCols...)
+	rows, err := queryMaps(ctx, tx, fmt.Sprintf("SELECT %s FROM %s WHERE id = ?",
+		strings.Join(cols, ", "), spec.table), id)
+	if err != nil || len(rows) == 0 {
+		return row, false, "", err
+	}
+	stored := rows[0]
+	row.Clock = wsync.ParseFieldClock(asString(stored["field_hlc"]))
+	for _, sc := range spec.setCols {
+		row.Sets[sc] = wsync.ParseORSet(asString(stored[sc]))
+	}
+	return row, true, asString(stored["organization_id"]), nil
+}
+
+func union(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	var out []string
+	for _, list := range [][]string{a, b} {
+		for _, c := range list {
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
 			}
 		}
-		cols = append(cols, sc)
-		args = append(args, os.Marshal())
 	}
-	cols = append(cols, "field_hlc")
-	args = append(args, fc.Marshal())
+	sort.Strings(out)
+	return out
+}
 
-	ph := make([]string, len(cols))
-	for i := range ph {
-		ph[i] = "?"
+// insertRow writes a new row with the given columns plus its field clock.
+// Column names come from the entity whitelist, never from the payload.
+func insertRow(ctx context.Context, tx *sqlx.Tx, spec entitySpec, id string, cols []string, values map[string]any) error {
+	names := []string{"id"}
+	args := []any{id}
+	for _, c := range append(cols, "field_hlc") {
+		names = append(names, c)
+		args = append(args, values[c])
 	}
 	q := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", spec.table,
-		strings.Join(cols, ", "), strings.Join(ph, ", "))
+		strings.Join(names, ", "), strings.TrimSuffix(strings.Repeat("?, ", len(names)), ", "))
 	_, err := tx.ExecContext(ctx, tx.Rebind(q), args...)
 	return err
 }
 
-// updateMerge: merge an existing row field-by-field.
-func updateMerge(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, fields, row map[string]any) error {
-	fc := wsync.ParseFieldClock(asString(row["field_hlc"]))
+// updateRow writes the merged columns of an existing row and its field clock.
+func updateRow(ctx context.Context, tx *sqlx.Tx, spec entitySpec, id string, cols []string, values map[string]any) error {
 	var set []string
 	var args []any
-
-	for c, v := range fields {
-		if c == "id" || c == "field_hlc" {
-			continue
-		}
-		switch {
-		case isSetCol(spec, c):
-			// OR-Set: union adds/removes from the delta (merge, not LWW).
-			os := wsync.ParseORSet(asString(row[c]))
-			if d, ok := v.(map[string]any); ok {
-				mergeORSetDelta(os, d, ch.Hlc)
-			}
-			set = append(set, c+" = ?")
-			args = append(args, os.Marshal())
-		case inCols(spec, c) && fc.Accept(c, ch.Hlc):
-			// Scalar: apply only if ch.Hlc is newer than the field clock.
-			set = append(set, c+" = ?")
-			args = append(args, v)
-		}
+	for _, c := range append(cols, "field_hlc") {
+		set = append(set, c+" = ?")
+		args = append(args, values[c])
 	}
-	if len(set) == 0 {
-		return nil // everything stale -> nothing to do
-	}
-	set = append(set, "field_hlc = ?")
-	args = append(args, fc.Marshal())
-	args = append(args, ch.EntityId)
+	args = append(args, id)
 	q := fmt.Sprintf("UPDATE %s SET %s WHERE id = ?", spec.table, strings.Join(set, ", "))
 	_, err := tx.ExecContext(ctx, tx.Rebind(q), args...)
 	return err
-}
-
-// mergeORSetDelta applies an add/remove delta to an OR-Set. Newer deltas carry
-// the origin's observed tags; only those are tombstoned (add-wins). Old deltas
-// remove all present.
-func mergeORSetDelta(os wsync.ORSet, d map[string]any, hlc string) {
-	for _, e := range toStrings(d["add"]) {
-		os.Add(e, hlc)
-	}
-	removedTags, _ := d["removed_tags"].(map[string]any)
-	for _, e := range toStrings(d["remove"]) {
-		if tags := toStrings(removedTags[e]); len(tags) > 0 {
-			os.RemoveTags(e, tags)
-		} else {
-			os.Remove(e)
-		}
-	}
 }
 
 func appendChangeLog(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change, orgID string) error {
@@ -513,19 +596,6 @@ func appendChangeLog(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change, orgID str
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		uuid.NewString(), seq, ch.ScopeId, ch.Entity, ch.EntityId, int32(ch.Op), ch.PayloadJson, ch.Hlc, ch.AuthorId, orgID)
 	return err
-}
-
-// accessibleScopes = personal scope + own apiaries + shared apiaries.
-func (s *SyncService) accessibleScopes(ctx context.Context, userID, orgID string) []string {
-	scopes := []string{"user:" + userID}
-	var owned []string
-	_ = s.db.SelectContext(ctx, &owned, s.db.Rebind(
-		`SELECT id FROM apiary WHERE organization_id = ?`), orgID)
-	scopes = append(scopes, owned...)
-	var shared []string
-	_ = s.db.SelectContext(ctx, &shared, s.db.Rebind(
-		`SELECT apiary_id FROM apiary_share WHERE benutzer_id = ?`), userID)
-	return append(scopes, shared...)
 }
 
 func cursorToSeq(c string) int64 {

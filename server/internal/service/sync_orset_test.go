@@ -88,3 +88,23 @@ func TestPushORSetLegacyRemove(t *testing.T) {
 		t.Fatalf("legacy remove must clear all observed tags: %v", got)
 	}
 }
+
+// TestPushORSetEmptyRemovedTagsRemovesNothing: a delta that carries
+// removed_tags, but lists no tag for the element, says "I observed none of
+// its adds". It must not fall back to the legacy remove-everything form.
+func TestPushORSetEmptyRemovedTagsRemovesNothing(t *testing.T) {
+	svc := newSyncFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+
+	if err := push(svc, ctx, orsetChange("insp-3",
+		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["p1","p2"]}}`, tagA)); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if err := push(svc, ctx, orsetChange("insp-3",
+		`{"photo_keys":{"remove":["p1","p2"],"removed_tags":{"p1":[]}}}`, tagC)); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if got := photoSet(t, svc, "insp-3"); len(got) != 2 {
+		t.Fatalf("nothing was observed, nothing may be removed: %v", got)
+	}
+}

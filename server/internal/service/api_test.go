@@ -469,7 +469,7 @@ func TestAPIWritesMergeWithDeviceWrites(t *testing.T) {
 		{Entity: "task", EntityId: cr.Task.Id, ScopeId: "apiary-a", Op: wv1.ChangeOp_CHANGE_OP_UPSERT,
 			Hlc: "000000000000001:00000:dev", AuthorId: "user-a", PayloadJson: `{"title":"stale device title"}`},
 		{Entity: "task", EntityId: cr.Task.Id, ScopeId: "apiary-a", Op: wv1.ChangeOp_CHANGE_OP_UPSERT,
-			Hlc: "999999999999999:00000:dev", AuthorId: "user-a", PayloadJson: `{"note":"device note"}`},
+			Hlc: wsync.Format(time.Now().Add(time.Minute).UnixMilli(), 0, "dev"), AuthorId: "user-a", PayloadJson: `{"note":"device note"}`},
 	}})
 	if err != nil {
 		t.Fatal(err)
