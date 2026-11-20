@@ -24,6 +24,9 @@ import { migrateLocal } from './schema';
 import { get } from 'svelte/store';
 import { storageState } from './live';
 import { claimTab, takeoverRequested } from './tablock';
+import { openOwnStore } from './owner';
+
+const API = (import.meta.env?.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 
 // Worker reply: a query result, or an unsolicited volatile-store notice.
 type Reply = { id?: number; ok?: boolean; rows?: unknown; error?: string; volatile?: boolean };
@@ -32,6 +35,21 @@ type Method = 'open' | 'exec' | 'all' | 'batch' | 'wipe';
 let dbPromise: Promise<LocalDB> | null = null;
 // Set once the database is open; see wipeLocalDB.
 let wipe: (() => Promise<unknown>) | null = null;
+// The workspace and account the open store belongs to, and its key.
+let opened: { org: string; user: string } | null = null;
+let storeKey = '';
+
+/**
+ * The workspace and account the local store was opened for, or null while
+ * none is open. The layout reloads when the server reports another one.
+ */
+export const openedFor = (): { org: string; user: string } | null => opened;
+
+/** Key of the open local store; other stores on the device (photo images) use the same. */
+export async function localStoreKey(): Promise<string> {
+  await getDB();
+  return storeKey;
+}
 
 /**
  * Deletes the open workspace's database from this device, including changes
@@ -113,17 +131,6 @@ async function init(): Promise<LocalDB> {
     });
   }
 
-  // Per-tenant local store: open a database file keyed to the active tenant so
-  // switching tenants never mixes data on the same device. Falls back to the
-  // single-user "local" store when no tenant is set.
-  const orgId =
-    (typeof localStorage !== 'undefined' && localStorage.getItem('obh.orgId')) || 'local';
-  const dbFile = `openbeehive-${orgId.replace(/[^a-zA-Z0-9_-]/g, '_')}.sqlite3`;
-  // After a takeover the previous tab's worker may still be letting go of
-  // its file handles; give the open a little longer before giving up.
-  await call('open', { name: dbFile, attempts: stolen ? 12 : 3 });
-  wipe = () => call('wipe');
-
   const impl: LocalDB = {
     async exec(sql, params = []) {
       await call('exec', { sql, params });
@@ -140,6 +147,47 @@ async function init(): Promise<LocalDB> {
     }
   };
 
-  await migrateLocal(impl);
+  // One local store per workspace and account (see owner.ts), so people who
+  // share a device never see or upload each other's unsent changes.
+  const org = localStorage.getItem('obh.orgId') || 'local';
+  const { user, confirmed } = await whoIsSignedIn();
+  opened = { org, user };
+  storeKey = await openOwnStore(
+    async (key) => {
+      // After a takeover the previous tab's worker may still be letting go
+      // of its file handles; give the open a little longer before giving up.
+      await call('open', { name: `openbeehive-${key}.sqlite3`, attempts: stolen ? 12 : 3 });
+      await migrateLocal(impl);
+      return impl;
+    },
+    org,
+    user,
+    confirmed
+  );
+  wipe = () => call('wipe');
   return impl;
+}
+
+// The account the store is opened for. Normally a sign-in left it on the
+// device; after a sign-in that only set a cookie (single sign-on) it is asked
+// from the server. Without an answer the device is treated as single-user,
+// which never claims a store (owner.ts).
+async function whoIsSignedIn(): Promise<{ user: string; confirmed: boolean }> {
+  const stored = localStorage.getItem('obh.userId');
+  if (stored) return { user: stored, confirmed: true };
+  try {
+    const token = localStorage.getItem('session');
+    const r = await fetch(`${API}/auth/me`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    const me = r.ok ? ((await r.json()) as { user_id?: string; active_org?: string }) : {};
+    if (me.user_id) {
+      localStorage.setItem('obh.userId', me.user_id);
+      return { user: me.user_id, confirmed: true };
+    }
+  } catch {
+    /* offline or no server: fall through */
+  }
+  return { user: 'local', confirmed: false };
 }

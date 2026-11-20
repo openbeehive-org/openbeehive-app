@@ -10,6 +10,7 @@ import { photoRecords, type PhotoOwner, type PhotoRow } from '../local/repo';
 import { onServerReset, syncStatus } from '../local/sync';
 import type { PreparedPhoto } from '../image';
 import { onDeviceDataRemoval } from '../device-data';
+import { localStoreKey } from '../local/db';
 import { openFileStore, removeFileStore, type FileStore } from './files';
 import { httpTransport } from './http';
 import { PhotoTransfers, type Unavailable, type UploadState } from './transfer';
@@ -23,16 +24,27 @@ const API_URL =
 const workspace = () => localStorage.getItem('obh.orgId') ?? 'local';
 
 let instance: PhotoTransfers | null = null;
-let files: FileStore | null = null;
-let filesOf = '';
+let files: Promise<FileStore> | null = null;
 
-// One per page load: switching the workspace reloads the app.
+// The images live next to the local database and are named like it: one
+// store per workspace and account (lib/local/owner.ts). Which one that is is
+// known once the database is open, so the store is reached through a promise.
+function deferred(store: Promise<FileStore>): FileStore {
+  return {
+    put: (meta, data) => store.then((s) => s.put(meta, data)),
+    get: (id) => store.then((s) => s.get(id)),
+    list: () => store.then((s) => s.list()),
+    update: (id, patch) => store.then((s) => s.update(id, patch)),
+    delete: (id) => store.then((s) => s.delete(id))
+  };
+}
+
+// One per page load: switching the workspace or account reloads the app.
 function transfers(): PhotoTransfers {
   if (!instance) {
-    filesOf = workspace();
-    files = openFileStore(filesOf);
+    files = localStoreKey().then(openFileStore);
     instance = new PhotoTransfers(
-      files,
+      deferred(files),
       httpTransport({ baseUrl: API_URL, token: () => localStorage.getItem('session') }),
       { isLive: photoRecords.isLive, online: () => navigator.onLine }
     );
@@ -42,9 +54,10 @@ function transfers(): PhotoTransfers {
 
 // "Remove this workspace's data from the device" takes the photo images
 // along, including those that were never uploaded.
-onDeviceDataRemoval((orgId) =>
-  removeFileStore(orgId, orgId === filesOf ? (files ?? undefined) : undefined)
-);
+onDeviceDataRemoval(async (orgId) => {
+  if (orgId !== workspace()) return removeFileStore(orgId);
+  return removeFileStore(await localStoreKey(), files ? await files : undefined);
+});
 
 // A server restored from a backup may lack images this device has.
 onServerReset(() => transfers().uploadAllAgain());

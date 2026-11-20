@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { startSync, syncStatus } from '#lib/local/sync.js';
+  import { openedFor } from '#lib/local/db.js';
   import { dataVersion, initialSyncPending, readOnlyRefusals } from '#lib/local/live.js';
   import { reconcile } from '#lib/local/userSettings.js';
   import { recoverSession, takeNotice, takeResume } from '#lib/account.js';
@@ -119,6 +120,16 @@
           email = me.email;
         }
         isDemo = !!me.is_demo;
+        // The local store belongs to one account in one workspace: a page may
+        // have opened it for the previous one, so start over with the right one.
+        const o = openedFor();
+        if (
+          o &&
+          ((me.user_id && o.user !== me.user_id) || (me.active_org && o.org !== me.active_org))
+        ) {
+          location.reload();
+          return;
+        }
       } else {
         // Single-user self-host (no auth configured): fixed "local" identity so
         // pushed rows (organization_id = "local") are returned again on Pull.

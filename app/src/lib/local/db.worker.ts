@@ -2,10 +2,9 @@
 // a Worker context, so the database lives here and the main thread proxies
 // queries via postMessage (see db.ts).
 //
-// The database file is per-tenant: the main thread sends an `open` message with
-// the file name (derived from the active tenant) before any query, so each
-// tenant's data lives in its own local store and switching tenants never mixes
-// them on the same device.
+// The database file is per workspace and account: the main thread sends an
+// `open` message with the file name before any query, so switching
+// workspaces or accounts never mixes their data on the same device.
 import sqlite3InitModule, {
   type BindableValue,
   type Database,
@@ -111,7 +110,13 @@ self.onmessage = async (e: MessageEvent<Req>) => {
   const { id, method } = req;
   try {
     if (method === 'open') {
-      // must arrive before the first query
+      // Must arrive before the first query. Opening another file closes the
+      // one in use: the main thread may look at one store and then pick
+      // another (lib/local/owner.ts).
+      if (dbPromise && req.name && req.name !== dbName) {
+        (await dbPromise).close();
+        dbPromise = null;
+      }
       if (req.name) dbName = req.name;
       if (req.attempts) openAttempts = req.attempts;
       (self as unknown as Worker).postMessage({ id, ok: true });

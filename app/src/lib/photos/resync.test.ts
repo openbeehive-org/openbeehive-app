@@ -7,7 +7,8 @@ import { IDBFactory } from 'fake-indexeddb';
 
 // Looked up on every call: each test loads its modules afresh.
 vi.mock('../local/db', () => ({
-  getDB: async () => (await import('../../tests/localdb')).getCurrentDB()
+  getDB: async () => (await import('../../tests/localdb')).getCurrentDB(),
+  localStoreKey: async () => localStorage.getItem('obh.orgId') ?? 'local'
 }));
 const pullMock = vi.fn();
 const snapshotMock = vi.fn();

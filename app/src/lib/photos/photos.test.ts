@@ -9,7 +9,12 @@ import type { PreparedPhoto } from '../image';
 
 vi.mock('../local/db', async () => {
   const { getCurrentDB } = await import('../../tests/localdb');
-  return { getDB: async () => getCurrentDB(), wipeLocalDB: vi.fn(async () => {}) };
+  return {
+    getDB: async () => getCurrentDB(),
+    wipeLocalDB: vi.fn(async () => {}),
+    // The store key of a store from before accounts were recorded.
+    localStoreKey: async () => localStorage.getItem('obh.orgId') ?? 'local'
+  };
 });
 // Local writes nudge a sync; none runs here.
 vi.mock('../local/sync', () => ({
