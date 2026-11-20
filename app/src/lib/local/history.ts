@@ -4,7 +4,17 @@
 // for statistics (no joins, permanently correct).
 
 import { getDB } from './db';
-import { patch, type InspectionInput } from './repo';
+import {
+  patch,
+  remove,
+  inspections,
+  harvests,
+  treatments,
+  queens,
+  markingForYear,
+  InspectionSource,
+  type InspectionInput
+} from './repo';
 
 export const EventType = {
   CREATED: 1,
@@ -20,6 +30,13 @@ export const EventType = {
 
 const orgId = () => localStorage.getItem('obh.orgId') ?? 'local';
 const now = () => new Date().toISOString();
+
+// Event titles as stored in the fact table.
+const queenTitle = (year: number) => `Queen ${year}`;
+const harvestTitle = (kg: number, variety?: string | null) => `${kg} kg ${variety || 'Honey'}`;
+
+// The HiveStatus enum value for a colony that was given up.
+const HIVE_STATUS_DISSOLVED = 5;
 
 // Resolve the context for a (possibly back-dated!) point in time:
 // where the hive lived and which queen reigned at that time.
@@ -129,23 +146,32 @@ export async function createHive(b: { name: string; apiary_id: string; type?: nu
 }
 
 // Queen change: close the old (replaced_at), introduce the new, 2 events.
+// introduced_at back-dates the change; it defaults to now.
 export async function setQueen(
   hiveId: string,
   scopeApiaryId: string,
-  k: { year: number; origin?: string; marking?: number; breeder_number?: string; note?: string }
+  k: {
+    year: number;
+    origin?: string;
+    marking?: number;
+    breeder_number?: string;
+    note?: string;
+    introduced_at?: string;
+  }
 ) {
   const db = await getDB();
   const ts = now();
+  const since = k.introduced_at || ts;
   // Marking colour follows the year unless overridden (international scheme).
-  const marking = k.marking ?? (((k.year % 10) + 4) % 5) + 1;
+  const marking = k.marking ?? markingForYear(k.year);
   const alt = await db.get<any>(
     `SELECT id FROM queen WHERE hive_id = ? AND active = 1 AND deleted = 0 LIMIT 1`,
     [hiveId]
   );
   if (alt) {
-    await patch('queen', alt.id, scopeApiaryId, { active: 0, replaced_at: ts });
+    await patch('queen', alt.id, scopeApiaryId, { active: 0, replaced_at: since });
     await emit(EventType.QUEEN_REPLACED, scopeApiaryId, {
-      date: ts,
+      date: since,
       hive_id: hiveId,
       queen_id: alt.id
     });
@@ -159,7 +185,7 @@ export async function setQueen(
     origin: k.origin ?? '',
     breeder_number: k.breeder_number ?? '',
     note: k.note ?? '',
-    introduced_at: ts,
+    introduced_at: since,
     replaced_at: null,
     active: 1,
     created_at: ts,
@@ -167,10 +193,10 @@ export async function setQueen(
     deleted: 0
   });
   await emit(EventType.QUEEN_INTRODUCED, scopeApiaryId, {
-    date: ts,
+    date: since,
     hive_id: hiveId,
     queen_id: neu,
-    title: `Queen ${k.year}`
+    title: queenTitle(k.year)
   });
   return neu;
 }
@@ -237,7 +263,7 @@ export async function recordHarvest(input: {
     ref_entity: 'harvest',
     ref_id: harvestId,
     amount_kg: input.amount_kg,
-    title: `${input.amount_kg} kg ${input.variety ?? 'Honey'}`
+    title: harvestTitle(input.amount_kg, input.variety)
   });
   return harvestId;
 }
@@ -293,6 +319,7 @@ export async function recordInspection(hiveId: string, d: InspectionInput) {
   const id = crypto.randomUUID();
   await patch('inspection', id, ctx.apiaryId, {
     organization_id: orgId(),
+    source: InspectionSource.MANUAL,
     ...d,
     hive_id: hiveId,
     date,
@@ -311,10 +338,282 @@ export async function recordInspection(hiveId: string, d: InspectionInput) {
   return id;
 }
 
+// --- Corrections: edit and delete with the related events kept in step ---
+
+/** Restores exactly what the matching delete removed. */
+export type Undo = () => Promise<void>;
+
+type Target = { entity: string; id: string; scope: string };
+type EventRef = { id: string; scope_id: string | null };
+
+// The fields of `next` whose value differs from the stored row, so an edit
+// sends (and stamps) only what the user actually changed.
+function changedFields(row: Record<string, unknown>, next: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  // An unset text column and an empty string mean the same thing.
+  const norm = (v: unknown) => (v === '' ? null : (v ?? null));
+  for (const [k, v] of Object.entries(next)) {
+    if (v === undefined) continue;
+    if (norm(row[k]) !== norm(v)) out[k] = v;
+  }
+  return out;
+}
+
+async function getRow(entity: string, id: string) {
+  const db = await getDB();
+  return db.get<any>(`SELECT * FROM ${entity} WHERE id = ? AND deleted = 0`, [id]);
+}
+
+// The timeline / fact rows that describe one record.
+async function eventsOf(refEntity: string, refId: string) {
+  const db = await getDB();
+  return db.all<EventRef>(
+    `SELECT id, scope_id FROM event WHERE ref_entity = ? AND ref_id = ? AND deleted = 0`,
+    [refEntity, refId]
+  );
+}
+
+async function queenEvents(queenId: string, type: number) {
+  const db = await getDB();
+  return db.all<EventRef>(
+    `SELECT id, scope_id FROM event WHERE queen_id = ? AND type = ? AND deleted = 0`,
+    [queenId, type]
+  );
+}
+
+async function hiveApiary(hiveId: string): Promise<string> {
+  const db = await getDB();
+  const h = await db.get<any>(`SELECT apiary_id FROM hive WHERE id = ?`, [hiveId]);
+  return h?.apiary_id ?? '';
+}
+
+// Records sync in the scope they were created in: the one stored on the
+// record or on its event, else the hive's current apiary.
+async function scopeOf(row: any, events: EventRef[]): Promise<string> {
+  return row.apiary_id || events[0]?.scope_id || (await hiveApiary(row.hive_id));
+}
+
+async function patchEvents(events: EventRef[], scope: string, fields: Record<string, unknown>) {
+  if (Object.keys(fields).length === 0) return;
+  for (const e of events) await patch('event', e.id, e.scope_id || scope, fields);
+}
+
+async function tombstone(targets: Target[]): Promise<Undo> {
+  for (const t of targets) await remove(t.entity, t.id, t.scope);
+  return async () => {
+    for (const t of targets) await patch(t.entity, t.id, t.scope, { deleted: 0 });
+  };
+}
+
+const noUndo: Undo = async () => {};
+
+// Delete a record together with the events that reference it, so the
+// timeline and the honey totals no longer count it.
+async function deleteRecord(entity: 'inspection' | 'harvest' | 'treatment', id: string) {
+  const row = await getRow(entity, id);
+  if (!row) return noUndo;
+  const events = await eventsOf(entity, id);
+  const scope = await scopeOf(row, events);
+  return tombstone([
+    { entity, id, scope },
+    ...events.map((e) => ({ entity: 'event', id: e.id, scope: e.scope_id || scope }))
+  ]);
+}
+
+export const deleteInspection = (id: string) => deleteRecord('inspection', id);
+export const deleteHarvest = (id: string) => deleteRecord('harvest', id);
+export const deleteTreatment = (id: string) => deleteRecord('treatment', id);
+
+// A changed date moves the record to the apiary and queen of that day.
+async function contextChange(row: any, changes: Record<string, unknown>) {
+  if (typeof changes.date !== 'string') return {};
+  const ctx = await resolveContext(row.hive_id, changes.date);
+  return { date: changes.date, apiary_id: ctx.apiaryId, queen_id: ctx.queenId };
+}
+
+// Correct an inspection. Returns false when nothing differed.
+export async function editInspection(id: string, fields: InspectionInput) {
+  const row = await getRow('inspection', id);
+  if (!row) throw new Error('inspection not found');
+  const changes = changedFields(row, fields);
+  if (Object.keys(changes).length === 0) return false;
+  const events = await eventsOf('inspection', id);
+  const scope = await scopeOf(row, events);
+  await inspections.update(id, scope, changes);
+  await patchEvents(events, scope, await contextChange(row, changes));
+  return true;
+}
+
+export type HarvestFields = {
+  date?: string;
+  amount_kg?: number;
+  variety?: string;
+  water_content?: number | null;
+  batch_number?: string;
+  best_before?: string;
+  note?: string;
+};
+
+// Correct a harvest: the record is marked as amended and its fact row
+// follows the new date and amount. Returns false when nothing differed.
+export async function editHarvest(id: string, fields: HarvestFields) {
+  const row = await getRow('harvest', id);
+  if (!row) throw new Error('harvest not found');
+  const changes = changedFields(row, fields);
+  if (Object.keys(changes).length === 0) return false;
+  const events = await eventsOf('harvest', id);
+  const scope = await scopeOf(row, events);
+  const ctx = await contextChange(row, changes);
+  await harvests.update(id, scope, { ...changes, ...ctx, amended_at: now() });
+  const amount = (changes.amount_kg ?? row.amount_kg) as number;
+  const variety = (changes.variety ?? row.variety) as string | null;
+  await patchEvents(events, scope, {
+    ...ctx,
+    ...('amount_kg' in changes || 'variety' in changes
+      ? { amount_kg: amount, title: harvestTitle(amount, variety) }
+      : {})
+  });
+  return true;
+}
+
+export type TreatmentFields = {
+  date?: string;
+  product?: string;
+  active_ingredient?: string;
+  dose?: string;
+  method?: string;
+  batch_number?: string;
+  withdrawal_until?: string;
+  reason?: string;
+  note?: string;
+};
+
+// Correct a treatment: the record is marked as amended and its timeline
+// entry follows the new date and product. Returns false when nothing differed.
+export async function editTreatment(id: string, fields: TreatmentFields) {
+  const row = await getRow('treatment', id);
+  if (!row) throw new Error('treatment not found');
+  const changes = changedFields(row, fields);
+  if (Object.keys(changes).length === 0) return false;
+  const events = await eventsOf('treatment', id);
+  const scope = await scopeOf(row, events);
+  const ctx = await contextChange(row, changes);
+  await treatments.update(id, scope, { ...changes, ...ctx, amended_at: now() });
+  await patchEvents(events, scope, {
+    ...ctx,
+    ...('product' in changes ? { title: changes.product } : {})
+  });
+  return true;
+}
+
+export type QueenFields = {
+  year?: number;
+  marking?: number;
+  origin?: string;
+  breeder_number?: string;
+  note?: string;
+  introduced_at?: string;
+};
+
+// The queen whose reign ended when `q` was introduced.
+async function predecessorOf(q: any) {
+  const db = await getDB();
+  return db.get<any>(
+    `SELECT * FROM queen WHERE hive_id = ? AND deleted = 0 AND id != ? AND replaced_at = ?
+     ORDER BY introduced_at DESC LIMIT 1`,
+    [q.hive_id, q.id, q.introduced_at]
+  );
+}
+
+// Correct a queen's details. This is not a re-queening: no replacement event
+// is written, the existing events only follow the corrected year and date.
+export async function editQueen(id: string, fields: QueenFields) {
+  const row = await getRow('queen', id);
+  if (!row) throw new Error('queen not found');
+  const changes = changedFields(row, fields);
+  if (Object.keys(changes).length === 0) return false;
+  const introduced = await queenEvents(id, EventType.QUEEN_INTRODUCED);
+  const scope = await scopeOf(row, introduced);
+  // Read before the queen row changes: the lookup matches on its old date.
+  const before = 'introduced_at' in changes ? await predecessorOf(row) : undefined;
+  await queens.update(id, scope, changes);
+  await patchEvents(introduced, scope, {
+    ...('year' in changes ? { title: queenTitle(changes.year as number) } : {}),
+    ...('introduced_at' in changes ? { date: changes.introduced_at } : {})
+  });
+  if (before) {
+    // The previous queen reigned until this one arrived.
+    await queens.update(before.id, scope, { replaced_at: changes.introduced_at });
+    await patchEvents(await queenEvents(before.id, EventType.QUEEN_REPLACED), scope, {
+      date: changes.introduced_at
+    });
+  }
+  return true;
+}
+
+// Delete a queen recorded by mistake, with her introduction / replacement
+// events. Removing the current queen puts her predecessor back in charge.
+export async function deleteQueen(id: string): Promise<Undo> {
+  const row = await getRow('queen', id);
+  if (!row) return noUndo;
+  const own = [
+    ...(await queenEvents(id, EventType.QUEEN_INTRODUCED)),
+    ...(await queenEvents(id, EventType.QUEEN_REPLACED))
+  ];
+  const scope = await scopeOf(row, own);
+  const targets: Target[] = [
+    { entity: 'queen', id, scope },
+    ...own.map((e) => ({ entity: 'event', id: e.id, scope: e.scope_id || scope }))
+  ];
+  const before = row.active ? await predecessorOf(row) : undefined;
+  if (before) {
+    const replaced = await queenEvents(before.id, EventType.QUEEN_REPLACED);
+    targets.push(
+      ...replaced.map((e) => ({ entity: 'event', id: e.id, scope: e.scope_id || scope }))
+    );
+  }
+  const restore = await tombstone(targets);
+  if (!before) return restore;
+  await patch('queen', before.id, scope, { active: 1, replaced_at: null });
+  return async () => {
+    await patch('queen', before.id, scope, { active: 0, replaced_at: before.replaced_at });
+    await restore();
+  };
+}
+
+// Edit a hive's name, type or status. A status change is part of the hive's
+// history, so it also writes an event (DISSOLVED when the colony is given up).
+export async function updateHive(
+  id: string,
+  apiaryId: string,
+  fields: { name?: string; type?: number; status?: number }
+) {
+  const row = await getRow('hive', id);
+  if (!row) throw new Error('hive not found');
+  const changes = changedFields(row, fields);
+  if (Object.keys(changes).length === 0) return false;
+  const ts = now();
+  await patch('hive', id, apiaryId, { ...changes, updated_at: ts });
+  if ('status' in changes) {
+    const dissolved = changes.status === HIVE_STATUS_DISSOLVED;
+    await emit(dissolved ? EventType.DISSOLVED : EventType.STATUS, apiaryId, {
+      date: ts,
+      apiary_id: apiaryId,
+      hive_id: id,
+      detail: { from: row.status ?? 0, to: changes.status }
+    });
+  }
+  return true;
+}
+
 // --- Statistics straight from the fact table (type = HARVEST) ---
 
+// Honey per year. Harvests of deleted hives no longer count.
 export async function honeyByYear() {
   const db = await getDB();
-  return db.all(`SELECT substr(date,1,4) AS year, SUM(amount_kg) AS kg
-                 FROM event WHERE type = 7 AND deleted = 0 GROUP BY year ORDER BY year`);
+  return db.all(`SELECT substr(e.date,1,4) AS year, SUM(e.amount_kg) AS kg
+                 FROM event e
+                 WHERE e.type = ${EventType.HARVEST} AND e.deleted = 0
+                   AND NOT EXISTS (SELECT 1 FROM hive h WHERE h.id = e.hive_id AND h.deleted = 1)
+                 GROUP BY year ORDER BY year`);
 }

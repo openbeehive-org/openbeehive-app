@@ -159,11 +159,18 @@ export const apiaries = {
 // Inspection fields as entered by the UI (hive_id and date may be filled by the caller).
 export type InspectionInput = Record<string, unknown> & { date?: string };
 
+// Who recorded an inspection (the InspectionSource enum). Rows written before
+// the column existed carry 0 and count as manual.
+export const InspectionSource = { UNSPECIFIED: 0, MANUAL: 1, SENSOR: 2 } as const;
+
 export const inspections = {
-  async listByHive(hiveId: string) {
+  // Visits a person recorded, newest first. Sensor readings are left out
+  // unless asked for: they are measurements, not inspections of the hive.
+  async listByHive(hiveId: string, opts: { sensors?: boolean } = {}) {
     const db = await getDB();
+    const manualOnly = opts.sensors ? '' : `AND COALESCE(source, 0) != ${InspectionSource.SENSOR}`;
     const rows = await db.all<any>(
-      `SELECT * FROM inspection WHERE deleted = 0 AND hive_id = ? ORDER BY date DESC`,
+      `SELECT * FROM inspection WHERE deleted = 0 AND hive_id = ? ${manualOnly} ORDER BY date DESC`,
       [hiveId]
     );
     // Resolve the OR-Set column to the list of visible photos.
@@ -178,6 +185,10 @@ export const inspections = {
     });
     return id;
   },
+  // edit = only the changed scalar fields (per-field LWW). scope = apiary id.
+  update: (id: string, scopeApiaryId: string, fields: Record<string, unknown>) =>
+    patch('inspection', id, scopeApiaryId, fields),
+  remove: (id: string, scopeApiaryId: string) => remove('inspection', id, scopeApiaryId),
   addPhoto: (id: string, scope: string, key: string) =>
     setAdd('inspection', id, scope, 'photo_keys', key),
   removePhoto: (id: string, scope: string, key: string) =>
@@ -243,6 +254,8 @@ export const harvests = {
     );
     return r?.kg ?? 0;
   },
+  update: (id: string, apiaryId: string, fields: Record<string, unknown>) =>
+    patch('harvest', id, apiaryId, fields),
   remove: (id: string, apiaryId: string) => remove('harvest', id, apiaryId)
 };
 
@@ -256,6 +269,8 @@ export const treatments = {
       [hiveId]
     );
   },
+  update: (id: string, apiaryId: string, fields: Record<string, unknown>) =>
+    patch('treatment', id, apiaryId, fields),
   remove: (id: string, apiaryId: string) => remove('treatment', id, apiaryId)
 };
 

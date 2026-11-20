@@ -70,6 +70,8 @@ export type InspectionRow = {
   temp_outside: number | null;
   humidity_hive: number | null;
   humidity_outside: number | null;
+  // 0/1 recorded by a person, 2 a sensor reading.
+  source: number | null;
   created_at: string;
   // Resolved from the photo_keys OR-Set by inspections.listByHive.
   photos: string[];
@@ -107,6 +109,7 @@ export type HarvestRow = {
   batch_number: string | null;
   best_before: string | null;
   note: string | null;
+  amended_at: string | null;
 };
 
 export type TreatmentRow = {
@@ -121,4 +124,5 @@ export type TreatmentRow = {
   withdrawal_until: string | null;
   reason: string | null;
   note: string | null;
+  amended_at: string | null;
 };
