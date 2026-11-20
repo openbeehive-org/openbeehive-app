@@ -75,12 +75,16 @@ type Photos struct {
 	wakeDelay time.Duration
 	// now is the wall clock, replaceable in tests.
 	now func() time.Time
+	// OrphanGrace is how long a blob that no photo row knows is kept (see
+	// photo_sweep.go).
+	OrphanGrace time.Duration
 }
 
 func NewPhotos(db *sqlx.DB, hlc *wsync.HLC, blobs blob.Store) *Photos {
 	return &Photos{
 		db: db, hlc: hlc, blobs: blobs,
 		wake: make(chan struct{}, 1), wakeDelay: 2 * time.Second, now: time.Now,
+		OrphanGrace: DefaultOrphanGrace,
 	}
 }
 

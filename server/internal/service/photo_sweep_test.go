@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -17,8 +18,9 @@ func (f *photoFixture) putBlob(t *testing.T, key string) {
 	}
 }
 
-// The sweep removes blobs that no live photo names, but not one that is
-// young enough to belong to an upload still in flight.
+// The sweep removes blobs of deleted photos after a short grace, blobs no
+// photo row knows only after a long one, and never anything that is not a
+// photo key.
 func TestSweepRemovesBlobsWithoutAPhoto(t *testing.T) {
 	f := newPhotoFixture(t)
 	ctx := context.Background()
@@ -27,33 +29,78 @@ func TestSweepRemovesBlobsWithoutAPhoto(t *testing.T) {
 	live := f.photo(t, "photo-1").BlobKey
 	orphan := blob.PhotoKey("org-a", "never-recorded")
 	gone := blob.PhotoKey("org-deleted", "p")
+	foreign := "org-a/notes/readme"
 	f.putBlob(t, orphan)
 	f.putBlob(t, gone)
+	f.putBlob(t, foreign)
 
 	// Just written: an upload stores the blob before it names it on the row.
-	if n, err := f.photos.sweepBlobs(ctx); err != nil || n != 0 {
+	if n, err := f.photos.sweepBlobs(ctx, true); err != nil || n != 0 {
 		t.Fatalf("sweep of fresh blobs removed %d (%v)", n, err)
 	}
-	if len(f.blobKeys(t)) != 3 {
-		t.Fatal("a fresh blob was removed")
+	// Past the upload grace, a blob no row knows may still be the image of
+	// a photo whose record a device has yet to send again.
+	f.photos.now = func() time.Time { return time.Now().Add(blobGrace + time.Minute) }
+	if n, err := f.photos.sweepBlobs(ctx, true); err != nil || n != 0 {
+		t.Fatalf("sweep within the orphan grace removed %d (%v)", n, err)
+	}
+	if len(f.blobKeys(t)) != 4 {
+		t.Fatal("a blob was removed too early")
 	}
 
-	f.photos.now = func() time.Time { return time.Now().Add(blobGrace + time.Minute) }
-	n, err := f.photos.sweepBlobs(ctx)
+	f.photos.now = func() time.Time { return time.Now().Add(f.photos.OrphanGrace + time.Minute) }
+	if n, err := f.photos.sweepBlobs(ctx, false); err != nil || n != 0 {
+		t.Fatalf("sweep that only adopts removed %d (%v)", n, err)
+	}
+	n, err := f.photos.sweepBlobs(ctx, true)
 	if err != nil || n != 2 {
 		t.Fatalf("sweep removed %d (%v), want 2", n, err)
 	}
-	if keys := f.blobKeys(t); len(keys) != 1 || keys[0] != live {
-		t.Fatalf("blobs after the sweep: %v, want only %s", keys, live)
+	if keys := f.blobKeys(t); len(keys) != 2 || !slices.Contains(keys, live) || !slices.Contains(keys, foreign) {
+		t.Fatalf("blobs after the sweep: %v, want %s and %s", keys, live, foreign)
 	}
 
-	// A deleted photo's blob is removed by the sweep as well, should the
-	// prompt removal have failed.
+	// A deleted photo's blob is removed by the sweep after the short grace,
+	// should the prompt removal have failed.
+	f.photos.now = func() time.Time { return time.Now().Add(blobGrace + time.Minute) }
 	if err := push(f.sync, ctxA, photoDeletion("photo-1")); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := f.photos.sweepBlobs(ctx); err != nil || n != 1 {
+	if n, err := f.photos.sweepBlobs(ctx, false); err != nil || n != 1 {
 		t.Fatalf("sweep after the delete removed %d (%v)", n, err)
+	}
+}
+
+// The database is restored from a backup taken before a photo existed; the
+// blob store is not rolled back. The sweep at start must not remove the
+// image before a device has sent the record again.
+func TestBootSweepAfterRestoreKeepsBlob(t *testing.T) {
+	f := newPhotoFixture(t)
+	ctx := context.Background()
+	f.newPhoto(t, "photo-r")
+	f.upload(t, "photo-r", jpegBytes(t, 64, 64, 2))
+	key := f.photo(t, "photo-r").BlobKey
+	payload := photoPayload(t, ownerInspection, f.newVisit(t))
+
+	// The restore: the photo row and its log entries are gone.
+	if _, err := f.db.Exec(`DELETE FROM photo WHERE id = 'photo-r'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`DELETE FROM change_log WHERE entity_id = 'photo-r'`); err != nil {
+		t.Fatal(err)
+	}
+	// The start, a while after the upload, then the regular sweeps.
+	f.photos.now = func() time.Time { return time.Now().Add(blobGrace + time.Minute) }
+	f.photos.sweep(ctx, false)
+	f.photos.Sweep(ctx)
+
+	// A device sends the record again.
+	if err := push(f.sync, ctxA, change("photo", "photo-r", "apiary-a", payload)); err != nil {
+		t.Fatal(err)
+	}
+	f.photos.Sweep(ctx)
+	if row := f.photo(t, "photo-r"); row.BlobKey != key {
+		t.Fatalf("image lost after the restore: blob_key %q, blobs %v", row.BlobKey, f.blobKeys(t))
 	}
 }
 
@@ -77,9 +124,9 @@ func TestSweepGivesABlobBackToItsPhoto(t *testing.T) {
 	}
 
 	f.photos.now = func() time.Time { return time.Now().Add(blobGrace + time.Minute) }
-	n, err := f.photos.sweepBlobs(ctx)
-	if err != nil || n != 1 {
-		t.Fatalf("sweep removed %d (%v), want only the blob that is no image", n, err)
+	n, err := f.photos.sweepBlobs(ctx, true)
+	if err != nil || n != 0 {
+		t.Fatalf("sweep removed %d (%v), want nothing", n, err)
 	}
 	row := f.photo(t, "photo-1")
 	if row.BlobKey != key || row.BlobType != "image/png" || row.BlobSize != int64(len(full)) {

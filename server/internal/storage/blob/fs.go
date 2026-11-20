@@ -3,6 +3,7 @@ package blob
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -32,10 +33,41 @@ func newFS(cfg *config.Config) (Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.DB.Driver == config.DriverSQLite {
+		if db := sqliteFile(cfg.DB.DSN); db != "" && within(base, db) {
+			return nil, fmt.Errorf("BEEHIVE_BLOB_DIR (%s) contains the database file %s: "+
+				"give the blob store a directory of its own, e.g. BEEHIVE_BLOB_DIR=%s",
+				base, db, filepath.Join(filepath.Dir(db), "blobs"))
+		}
+	}
 	if err := os.MkdirAll(base, 0o750); err != nil {
 		return nil, err
 	}
 	return &fsStore{base: base}, nil
+}
+
+// sqliteFile returns the absolute path of the database file a SQLite DSN
+// names ("file:x.db?..." or a plain path), or "" for an in-memory database.
+func sqliteFile(dsn string) string {
+	path := strings.TrimPrefix(dsn, "file:")
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	if path == "" || path == ":memory:" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	return abs
+}
+
+// within reports whether path lies inside dir. The store's clean-up lists
+// and deletes below its base directory, so it must not hold other files.
+func within(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // path maps a key to its file. Only valid keys get a path: their segments

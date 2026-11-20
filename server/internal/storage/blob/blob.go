@@ -107,6 +107,16 @@ func WorkspacePrefix(orgID string) string {
 	return "x" + hashed(orgID)[:40] + "/"
 }
 
+// photoKey matches the keys PhotoKey builds.
+var photoKey = regexp.MustCompile(`^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}/photos/[0-9a-f]{64}$`)
+
+// IsPhotoKey reports whether key has the form of a key PhotoKey builds.
+// Clean-up passes over the whole store touch nothing else, in case the
+// store is shared with other files.
+func IsPhotoKey(key string) bool {
+	return photoKey.MatchString(key)
+}
+
 // PhotoKey is the key of a photo's full-size image. Photo ids are chosen by
 // devices, so the key carries their hash instead of the id itself.
 func PhotoKey(orgID, photoID string) string {

@@ -174,7 +174,7 @@ func TestSweepKeepsImagesOfCompactedPhotos(t *testing.T) {
 	f.upload(t, "photo-1", jpegBytes(t, 64, 48, 3))
 	f.compactAll(t)
 	f.photos.now = func() time.Time { return time.Now().Add(2 * blobGrace) }
-	if _, err := f.photos.sweepBlobs(t.Context()); err != nil {
+	if _, err := f.photos.sweepBlobs(t.Context(), true); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := f.blobs.Get(t.Context(), blob.PhotoKey("org-a", "photo-1")); errors.Is(err, blob.ErrNotFound) {

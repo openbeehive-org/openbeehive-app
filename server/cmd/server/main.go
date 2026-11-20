@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
@@ -52,7 +53,7 @@ func main() {
 	}
 	// One clock for every server-side write, shared with the sync endpoint.
 	hlc := wsync.NewHLC(cfg.Sync.NodeID)
-	photos := startPhotos(ctx, store, hlc, blobs)
+	photos := startPhotos(ctx, cfg, store, hlc, blobs)
 
 	mux := http.NewServeMux()
 	interceptors := setupAuth(ctx, cfg, store, blobs, photos, mux)
@@ -64,8 +65,13 @@ func main() {
 
 // startPhotos prepares photo storage: inline photos left by 0.4.x are
 // converted once, before any request is served, and the upkeep loop starts.
-func startPhotos(ctx context.Context, store *sqlstore.Store, hlc *wsync.HLC, blobs blob.Store) *service.Photos {
+func startPhotos(ctx context.Context, cfg *config.Config, store *sqlstore.Store, hlc *wsync.HLC, blobs blob.Store) *service.Photos {
 	photos := service.NewPhotos(store.DB(), hlc, blobs)
+	// Blobs no record knows are kept at least as long as the change log, so
+	// that devices can send their records again after a database restore.
+	if keep := time.Duration(cfg.Sync.ChangeLogRetentionDays) * 24 * time.Hour; keep > photos.OrphanGrace {
+		photos.OrphanGrace = keep
+	}
 	if err := photos.ConvertInlinePhotos(ctx); err != nil {
 		log.Printf("photos: converting inline photos: %v (continued at the next start)", err)
 	}

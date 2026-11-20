@@ -332,3 +332,53 @@ func TestUnknownBackend(t *testing.T) {
 		t.Fatal("an unknown backend must be refused")
 	}
 }
+
+// The blob directory must not hold the SQLite database: the photo sweep
+// lists and deletes below it.
+func TestFSRefusesTheDatabaseDirectory(t *testing.T) {
+	dir := t.TempDir()
+	for dsn, refused := range map[string]bool{
+		"file:" + filepath.Join(dir, "openbeehive.db") + "?_pragma=busy_timeout(5000)": true,
+		filepath.Join(dir, "sub", "x.db"):                                              true,
+		"file:" + filepath.Join(dir, "..", "elsewhere.db"):                             false,
+		"file::memory:?cache=shared":                                                   false,
+	} {
+		cfg := &config.Config{}
+		cfg.Blob.Backend = config.BlobFS
+		cfg.Blob.BaseDir = dir
+		cfg.DB.Driver = config.DriverSQLite
+		cfg.DB.DSN = dsn
+		_, err := New(cfg)
+		if refused != (err != nil) {
+			t.Errorf("DSN %s: err %v, want refused %v", dsn, err, refused)
+		}
+		if err != nil && !strings.Contains(err.Error(), "BEEHIVE_BLOB_DIR") {
+			t.Errorf("error does not name the setting: %v", err)
+		}
+	}
+	// A database elsewhere, or not SQLite, is fine.
+	cfg := &config.Config{}
+	cfg.Blob.Backend = config.BlobFS
+	cfg.Blob.BaseDir = filepath.Join(dir, "blobs")
+	cfg.DB.Driver = config.DriverSQLite
+	cfg.DB.DSN = "file:" + filepath.Join(dir, "openbeehive.db")
+	if _, err := New(cfg); err != nil {
+		t.Fatalf("blobs next to the database: %v", err)
+	}
+}
+
+func TestIsPhotoKey(t *testing.T) {
+	for key, want := range map[string]bool{
+		PhotoKey("org-a", "p1"):                   true,
+		PhotoKey("weird id with spaces", "p"):     true,
+		"openbeehive.db":                          false,
+		"org-a/photos/abc":                        false,
+		"org-a/photos/" + strings.Repeat("A", 64): false,
+		"org-a/other/" + strings.Repeat("a", 64):  false,
+		"a/b/photos/" + strings.Repeat("a", 64):   false,
+	} {
+		if got := IsPhotoKey(key); got != want {
+			t.Errorf("IsPhotoKey(%q) = %v, want %v", key, got, want)
+		}
+	}
+}
