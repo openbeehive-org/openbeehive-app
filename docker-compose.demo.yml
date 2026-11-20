@@ -74,10 +74,10 @@ services:
       BEEHIVE_ADMIN_EMAIL: ${BEEHIVE_ADMIN_EMAIL:?set BEEHIVE_ADMIN_EMAIL in .env}
       BEEHIVE_ADMIN_PASSWORD: ${BEEHIVE_ADMIN_PASSWORD:?set BEEHIVE_ADMIN_PASSWORD in .env}
       # Public demo tenant: read-only sessions, seed data reset every hour.
-      # Anonymous visitors are signed into the demo automatically (showcase
-      # behavior); they can still sign in normally via /login.
+      # Visitors see the sign-in page with a "Try the demo" button; members
+      # of the instance sign in as usual.
       BEEHIVE_DEMO: "true"
-      BEEHIVE_DEMO_AUTOLOGIN: "true"
+      BEEHIVE_DEMO_AUTOLOGIN: "false"
       BEEHIVE_DEMO_PASSWORD: ${BEEHIVE_DEMO_PASSWORD:?set BEEHIVE_DEMO_PASSWORD in .env}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
