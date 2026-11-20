@@ -271,6 +271,36 @@ func TestDemoSessionIsMarkedReadOnly(t *testing.T) {
 	}
 }
 
+// With the demo turned off, its account keeps a public password until the
+// start locks it; until then, and for any session it already holds, it is
+// still the read-only demo, and its email is still reserved.
+func TestDemoAccountStaysReadOnlyWhenDemoIsOff(t *testing.T) {
+	cfg := &config.Config{Profile: "selfhost"}
+	cfg.Auth.PasswordEnabled = true
+	cfg.Auth.RegistrationOpen = true
+	cfg.Demo = config.DemoConfig{Enabled: false, Email: "demo@test.dev", Password: "demo"}
+	srv, store, sessions := newAuthFixture(t, cfg)
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte("demo1234"), bcrypt.DefaultCost)
+	u := &storage.User{ID: "demo-user", Email: "demo@test.dev", Name: "Demo",
+		Role: "user", PasswordHash: string(hash), EmailVerified: true, CreatedAt: time.Now().UTC()}
+	if err := store.Users().Create(context.Background(), u); err != nil {
+		t.Fatalf("user create: %v", err)
+	}
+	code, j := postJSON(t, srv.URL+"/auth/signin", map[string]string{"email": "demo@test.dev", "password": "demo1234"})
+	if code != http.StatusOK {
+		t.Fatalf("signin: code=%d resp=%v", code, j)
+	}
+	tok, _ := j["token"].(string)
+	if id, err := sessions.Verify(context.Background(), tok); err != nil || id.Role != "demo" {
+		t.Fatalf("session of the demo account: %+v, %v; want role demo", id, err)
+	}
+	if code, j := postJSON(t, srv.URL+"/auth/signup",
+		map[string]string{"email": "Demo@test.dev", "password": "password123"}); code != http.StatusForbidden {
+		t.Fatalf("demo email signup: code=%d resp=%v", code, j)
+	}
+}
+
 func TestReadOnlyMethodAllowList(t *testing.T) {
 	reads := []string{
 		"/openbeehive.v1.SyncService/Pull",

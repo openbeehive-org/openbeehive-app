@@ -4,6 +4,7 @@ import (
 	"context"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
@@ -178,5 +179,43 @@ func TestInstallAndReseed(t *testing.T) {
 	}
 	if m, err := store.Members().Get(ctx, OrgID, UserID); err != nil || m.Role != "owner" {
 		t.Fatalf("demo membership: %+v, %v", m, err)
+	}
+}
+
+// With the demo turned off, the account an earlier run created must not be
+// usable: its password is public.
+func TestLockDisablesTheDemoAccount(t *testing.T) {
+	s, store := newSeeder(t)
+	ctx := context.Background()
+	if err := s.ensureAccount(ctx); err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	if _, err := store.DB().Exec(store.DB().Rebind(`INSERT INTO api_key (id, user_id, organization_id, name, key_prefix, key_hash, scope, created_at)
+		VALUES ('k1', ?, ?, 'x', 'obh_x', 'h', 'write', CURRENT_TIMESTAMP)`), UserID, OrgID); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UnixMilli()
+	for range 2 { // every start
+		if err := Lock(ctx, store.DB()); err != nil {
+			t.Fatalf("lock: %v", err)
+		}
+	}
+	u, err := store.Users().GetByID(ctx, UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.PasswordHash != "" || u.SessionsValidAfter < before {
+		t.Fatalf("demo account after Lock: password set %v, sessions valid after %d", u.PasswordHash != "", u.SessionsValidAfter)
+	}
+	var keys int
+	if err := store.DB().Get(&keys, store.DB().Rebind(`SELECT COUNT(*) FROM api_key WHERE user_id = ?`), UserID); err != nil || keys != 0 {
+		t.Fatalf("api keys left: %d (%v)", keys, err)
+	}
+	// Turning the demo on again restores the account.
+	if err := s.ensureAccount(ctx); err != nil {
+		t.Fatalf("account: %v", err)
+	}
+	if u, err := store.Users().GetByID(ctx, UserID); err != nil || u.PasswordHash == "" {
+		t.Fatalf("demo account after it is turned on again: %+v, %v", u, err)
 	}
 }

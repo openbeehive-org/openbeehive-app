@@ -192,6 +192,8 @@ func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 		if err := demo.New(store.DB(), wsync.NewHLC("demo"), cfg).Install(ctx); err != nil {
 			log.Printf("demo: install failed: %v", err)
 		}
+	} else if err := demo.Lock(ctx, store.DB()); err != nil {
+		log.Fatalf("demo: %v", err)
 	}
 	return store
 }

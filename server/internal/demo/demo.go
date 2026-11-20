@@ -60,6 +60,35 @@ func (s *Seeder) Install(ctx context.Context) error {
 	return nil
 }
 
+// Lock disables the demo account of an earlier run while the demo is off:
+// it keeps its well-known password otherwise, and would be a normal account
+// with write access past the invite-only rule. Its password, sessions, API
+// keys and passkeys are removed; turning the demo on again recreates it.
+// Lock can run at every start.
+func Lock(ctx context.Context, db *sqlx.DB) error {
+	var locked int64
+	for _, st := range []struct {
+		q    string
+		args []any
+	}{
+		{`UPDATE users SET password_hash = '', sessions_valid_after = ? WHERE id = ? AND password_hash <> ''`,
+			[]any{time.Now().UnixMilli(), UserID}},
+		{`DELETE FROM api_key WHERE user_id = ?`, []any{UserID}},
+		{`DELETE FROM user_passkey WHERE user_id = ?`, []any{UserID}},
+	} {
+		res, err := db.ExecContext(ctx, db.Rebind(st.q), st.args...)
+		if err != nil {
+			return fmt.Errorf("lock demo account: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		locked += n
+	}
+	if locked > 0 {
+		log.Printf("demo: off (BEEHIVE_DEMO): the demo account of an earlier run is locked")
+	}
+	return nil
+}
+
 func (s *Seeder) resetLoop(ctx context.Context) {
 	t := time.NewTicker(time.Hour)
 	defer t.Stop()

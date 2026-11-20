@@ -202,9 +202,10 @@ const (
 )
 
 // isDemoAccount reports whether the address is the shared, read-only demo
-// account of this instance.
+// account of this instance. It stays reserved and read-only while the demo
+// is off: its password is public.
 func isDemoAccount(cfg *config.Config, email string) bool {
-	return cfg.Demo.Enabled && storage.NormalizeEmail(email) == storage.NormalizeEmail(cfg.Demo.Email)
+	return cfg.Demo.Email != "" && storage.NormalizeEmail(email) == storage.NormalizeEmail(cfg.Demo.Email)
 }
 
 // isEnvAdmin reports whether the address is the instance admin whose
