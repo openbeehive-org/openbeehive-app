@@ -7,11 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-20
+
+Security and dependency release. No schema migration, no configuration
+change and no change to the API on the wire.
+
 ### Security
 
 - Go 1.27.4 fixes GO-2026-6859, an HTTP/1 server crash caused by a header race
   in `net/http`'s `MaxBytesReader`; the server binary and the image are built
   with it.
+- `golang.org/x/net` 0.62.0 fixes two flaws of its HTML parser and renderer
+  (GO-2026-6860, GO-2026-6866).
+- `golang.org/x/crypto` 0.59.0 (GO-2026-5932, the unmaintained `openpgp`
+  package). The server uses `bcrypt` from this module only.
+
+### Changed
+
+- The server speaks Connect through connect-go v2. Handlers, clients and the
+  auth interceptors are ported, all services share one `connect.Server`, and
+  the read limit stays unbounded so large sync pushes keep working.
+- SQLite driver `modernc.org/sqlite` 1.61.0.
+- The image is based on Alpine 3.24 and built with Node 26.13; the web app
+  ships the current patch releases of SvelteKit, Svelte and Vite.
+- Renovate completes `go.sum` without the generated Connect stubs and holds
+  TypeScript at 6.x until SvelteKit, svelte-check and typescript-eslint
+  accept 7.
 
 ## [0.4.0] - 2026-10-19
 
@@ -255,7 +276,8 @@ First public release. 🐝
   Docker image for the cloud profile.
 - **Multi-language UI:** English, German, French, Spanish, Italian.
 
-[Unreleased]: https://github.com/openbeehive-org/openbeehive-app/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/openbeehive-org/openbeehive-app/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.4.1
 [0.3.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.3.1
 [0.3.0]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.3.0
 [0.2.3]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.2.3
