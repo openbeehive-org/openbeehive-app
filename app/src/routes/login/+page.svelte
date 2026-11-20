@@ -7,6 +7,8 @@
   import { authErrorKey, GENERIC_AUTH_ERROR, NETWORK_AUTH_ERROR } from '#lib/auth-errors.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
   import { fetchInstance } from '#lib/instance.js';
+  import { resetMode, type ResetMode } from '#lib/account.js';
+  import '#lib/components/auth/auth.css';
   import {
     isPasskeyCancelled,
     passkeyLogin,
@@ -42,6 +44,15 @@
   let heading = $state<HTMLHeadingElement>();
 
   const justVerified = $derived(page.url.searchParams.get('verified') === '1');
+  // Set by the pages that send the user back here after finishing.
+  const noticeKey = $derived(
+    page.url.searchParams.get('reset') === '1'
+      ? 'auth.reset_done'
+      : page.url.searchParams.get('deleted') === '1'
+        ? 'account.deleted'
+        : ''
+  );
+  let forgot = $state<ResetMode>('off');
   // Invite links land here as /login?invite=<token> (see server tenant.go).
   const inviteToken = $derived(page.url.searchParams.get('invite') ?? '');
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -59,6 +70,11 @@
     providers = j.oidc_providers ?? [];
     webauthn = !!j.webauthn;
     demoEnabled = !!j.demo;
+    forgot = resetMode(j);
+    // A link the browser opened (email verification, the return from a
+    // sign-in provider) failed; the server sent the reason along.
+    const failure = page.url.searchParams.get('error');
+    if (failure) errorKey = authErrorKey({ code: failure });
     // Nothing to log into (single-user self-host): go straight to the app.
     if (!hasPassword && !providers.length && !webauthn && !demoEnabled) {
       mode = 'single';
@@ -193,8 +209,8 @@
   }
 </script>
 
-<div class="top"><UpdatePrompt /></div>
-<div class="wrap">
+<div class="auth-top"><UpdatePrompt /></div>
+<div class="auth-page">
   <main class="card">
     <span class="mark" aria-hidden="true">⬡</span>
 
@@ -221,6 +237,9 @@
 
       {#if justVerified}
         <p class="ok" role="status">{$_('auth.verified_ok')}</p>
+      {/if}
+      {#if noticeKey}
+        <p class="ok" role="status">{$_(noticeKey)}</p>
       {/if}
 
       {#if errorKey}
@@ -277,6 +296,9 @@
               required
             />
           </label>
+          {#if !isSignup && forgot !== 'off'}
+            <a class="link forgot" href="/forgot-password">{$_('auth.forgot_link')}</a>
+          {/if}
           <button class="primary" type="submit" disabled={busy}>
             {#if mode === 'signup'}{$_('auth.signup')}
             {:else}{$_('auth.signin')}{/if}
@@ -307,195 +329,3 @@
     {/if}
   </main>
 </div>
-
-<style>
-  .top {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-  }
-  .wrap {
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    padding: 24px;
-  }
-  .card {
-    width: 100%;
-    max-width: 360px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 30px 26px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    text-align: center;
-  }
-  .mark {
-    font-size: 2.6rem;
-    color: var(--accent);
-    line-height: 1;
-  }
-  h1 {
-    font-family: 'Fraunces', serif;
-    font-size: 1.5rem;
-    margin: 6px 0 0;
-  }
-  h1:focus {
-    outline: none;
-  }
-  .muted {
-    color: var(--text-soft);
-    font-size: 0.9rem;
-    margin: 0 0 8px;
-  }
-  .ok {
-    color: var(--ok);
-    font-weight: 600;
-    font-size: 0.88rem;
-  }
-  .wrap :global(.lucide-icon) {
-    vertical-align: -0.15em;
-  }
-  .notice {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    border-radius: 10px;
-    padding: 10px 12px;
-    color: var(--text-soft);
-    font-size: 0.85rem;
-    margin: 4px 0;
-    text-align: left;
-    align-self: stretch;
-  }
-  .demo {
-    align-self: stretch;
-    background: var(--warn-bg);
-    color: var(--warn-text);
-    border-radius: 14px;
-    padding: 14px;
-    margin-top: 4px;
-  }
-  .demo p {
-    font-size: 0.88rem;
-    font-weight: 600;
-    margin-bottom: 8px;
-  }
-  form {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-top: 4px;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    text-align: left;
-  }
-  label span {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-soft);
-  }
-  /* 16px at least: iOS zooms the page when a smaller field gets focus. */
-  input {
-    font: inherit;
-    font-size: 1rem;
-    padding: 11px 13px;
-    border: 1px solid var(--border-strong);
-    border-radius: 11px;
-    background: var(--bg);
-    color: var(--text);
-  }
-  input:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-  .err {
-    color: var(--danger);
-    font-size: 0.88rem;
-    font-weight: 600;
-    margin: 0;
-    text-align: left;
-    align-self: stretch;
-  }
-  .primary {
-    font: inherit;
-    font-weight: 700;
-    cursor: pointer;
-    border: none;
-    border-radius: 12px;
-    padding: 12px;
-    background: var(--accent);
-    color: var(--on-accent);
-    margin-top: 4px;
-    width: 100%;
-  }
-  .primary:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-  .or {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--text-soft);
-    font-size: 0.8rem;
-    margin: 14px 0 2px;
-  }
-  .or::before,
-  .or::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-  }
-  .providers {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .provider {
-    display: block;
-    padding: 11px;
-    border: 1px solid var(--border-strong);
-    border-radius: 12px;
-    text-decoration: none;
-    color: var(--text);
-    font-weight: 600;
-    background: var(--bg);
-  }
-  .provider:hover {
-    border-color: var(--accent);
-  }
-  .provider.pk {
-    font: inherit;
-    font-weight: 600;
-    width: 100%;
-    cursor: pointer;
-    margin-top: 2px;
-  }
-  .provider.pk:disabled {
-    opacity: 0.6;
-    cursor: default;
-  }
-  .link {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--accent-text);
-    font: inherit;
-    font-weight: 600;
-    font-size: 0.88rem;
-    margin-top: 12px;
-  }
-</style>

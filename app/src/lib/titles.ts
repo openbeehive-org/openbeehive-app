@@ -15,8 +15,10 @@ const TITLE_KEYS: Record<string, string> = {
   '/(app)/scan': 'nav.scan',
   '/(app)/settings': 'nav.settings',
   '/(app)/tasks': 'nav.tasks',
+  '/forgot-password': 'auth.forgot_title',
   '/h/[id]': 'nav.hives',
-  '/login': 'auth.signin_title'
+  '/login': 'auth.signin_title',
+  '/reset-password': 'auth.reset_title'
 };
 
 /** Translation key for a route's page name; null for routes without one. */
