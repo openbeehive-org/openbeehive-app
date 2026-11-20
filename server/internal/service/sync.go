@@ -61,10 +61,10 @@ var entityCols = map[string]entitySpec{
 	},
 	"inspection": {
 		table:   "inspection",
-		cols:    []string{"id", "organization_id", "hive_id", "date", "weather", "queen_seen", "eggs_seen", "temperament", "frames", "stores", "queen_cells", "varroa", "honey_kg", "note", "brood_frames", "calmness", "fed_kg", "frames_added", "frames_removed", "drone_frame_cut", "super_added", "weight_kg", "youngest_larva", "covered_larva", "temp_hive", "temp_outside", "humidity_hive", "humidity_outside", "created_at", "deleted"},
+		cols:    []string{"id", "organization_id", "hive_id", "date", "weather", "queen_seen", "eggs_seen", "temperament", "frames", "stores", "queen_cells", "varroa", "honey_kg", "note", "brood_frames", "calmness", "fed_kg", "frames_added", "frames_removed", "drone_frame_cut", "super_added", "weight_kg", "youngest_larva", "covered_larva", "temp_hive", "temp_outside", "humidity_hive", "humidity_outside", "source", "created_at", "deleted"},
 		setCols: []string{"photo_keys"},
 		bools:   []string{"queen_seen", "eggs_seen", "drone_frame_cut", "super_added", "covered_larva", "deleted"},
-		ints:    []string{"temperament", "frames", "stores", "queen_cells", "brood_frames", "calmness", "frames_added", "frames_removed", "youngest_larva"},
+		ints:    []string{"temperament", "frames", "stores", "queen_cells", "brood_frames", "calmness", "frames_added", "frames_removed", "youngest_larva", "source"},
 		times:   []string{"date", "created_at"},
 	},
 	"task": {
@@ -82,15 +82,15 @@ var entityCols = map[string]entitySpec{
 	},
 	"harvest": {
 		table: "harvest",
-		cols:  []string{"id", "organization_id", "apiary_id", "hive_id", "queen_id", "date", "variety", "amount_kg", "water_content", "batch_number", "best_before", "note", "deleted"},
+		cols:  []string{"id", "organization_id", "apiary_id", "hive_id", "queen_id", "date", "variety", "amount_kg", "water_content", "batch_number", "best_before", "note", "amended_at", "deleted"},
 		bools: []string{"deleted"},
-		times: []string{"date", "best_before"},
+		times: []string{"date", "best_before", "amended_at"},
 	},
 	"treatment": {
 		table: "treatment",
-		cols:  []string{"id", "organization_id", "apiary_id", "hive_id", "queen_id", "date", "product", "active_ingredient", "dose", "method", "batch_number", "withdrawal_until", "reason", "note", "deleted"},
+		cols:  []string{"id", "organization_id", "apiary_id", "hive_id", "queen_id", "date", "product", "active_ingredient", "dose", "method", "batch_number", "withdrawal_until", "reason", "note", "amended_at", "deleted"},
 		bools: []string{"deleted"},
-		times: []string{"date", "withdrawal_until"},
+		times: []string{"date", "withdrawal_until", "amended_at"},
 	},
 	"event": {
 		table: "event",
