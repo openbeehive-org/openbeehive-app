@@ -149,18 +149,8 @@ func visibleRows(entity string, id auth.Identity) (string, []any) {
 func (s *SyncService) snapshotRows(ctx context.Context, id auth.Identity, tok snapshotToken, budget int) (out []*wv1.SnapshotRow, more bool, err error) {
 	spec := entityCols[tok.Entity]
 	kinds := kindsOf(tok.Entity)
-	driver := s.db.DriverName()
 	cols := append(append([]string{}, spec.cols...), spec.setCols...)
-	selected := make([]string, len(cols))
-	for i, c := range cols {
-		selected[i] = c
-		// SQLite holds timestamps as the text the devices sent. Read as text
-		// they come back unchanged; read as a timestamp column the driver
-		// would parse and reformat them.
-		if driver == "sqlite" && kinds[c] == kindTime {
-			selected[i] = "CAST(" + c + " AS TEXT) AS " + c
-		}
-	}
+	selected := selectList(s.db.DriverName(), kinds, cols)
 	visible, args := visibleRows(tok.Entity, id)
 	owner, ownerArg := "organization_id", id.OrgID
 	if spec.perUser {
@@ -206,6 +196,21 @@ func (s *SyncService) snapshotRows(ctx context.Context, id auth.Identity, tok sn
 		}
 	}
 	return out, read == snapshotBatch, rows.Err()
+}
+
+// selectList is the SELECT list that reads cols as sync payloads carry
+// them. SQLite holds timestamps as the text the devices sent. Read as text
+// they come back unchanged; read as a timestamp column the driver would
+// parse and reformat them.
+func selectList(driver string, kinds map[string]colKind, cols []string) []string {
+	selected := make([]string, len(cols))
+	for i, c := range cols {
+		selected[i] = c
+		if driver == "sqlite" && kinds[c] == kindTime {
+			selected[i] = "CAST(" + c + " AS TEXT) AS " + c
+		}
+	}
+	return selected
 }
 
 // wireValue turns a stored column value into the form sync payloads carry
