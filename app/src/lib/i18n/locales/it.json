@@ -676,6 +676,7 @@
     "entity_harvest": "Raccolto",
     "entity_treatment": "Trattamento",
     "entity_event": "Voce della cronologia",
+    "entity_user_settings": "Impostazioni dell'account",
     "entity_other": "Dato"
   },
   "photo": {

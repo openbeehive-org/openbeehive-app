@@ -76,6 +76,7 @@ describe('problem texts', () => {
     expect(codeKey('something_new')).toBe('sync.code_other');
     expect(entityKey('inspection')).toBe('sync.entity_inspection');
     expect(entityKey('gadget')).toBe('sync.entity_other');
+    expect(entityKey('user_settings')).toBe('sync.entity_user_settings');
   });
 
   it('every key the helpers can return exists in every language', async () => {
@@ -99,6 +100,7 @@ describe('problem texts', () => {
         'harvest',
         'treatment',
         'event',
+        'user_settings',
         'x'
       ].map(entityKey),
       ...[

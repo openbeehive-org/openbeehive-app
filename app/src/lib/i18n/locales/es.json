@@ -676,6 +676,7 @@
     "entity_harvest": "Cosecha",
     "entity_treatment": "Tratamiento",
     "entity_event": "Entrada del historial",
+    "entity_user_settings": "Ajustes de la cuenta",
     "entity_other": "Registro"
   },
   "photo": {

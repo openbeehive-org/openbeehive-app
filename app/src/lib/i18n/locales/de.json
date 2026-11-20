@@ -676,6 +676,7 @@
     "entity_harvest": "Ernte",
     "entity_treatment": "Behandlung",
     "entity_event": "Verlaufseintrag",
+    "entity_user_settings": "Kontoeinstellungen",
     "entity_other": "Eintrag"
   },
   "photo": {

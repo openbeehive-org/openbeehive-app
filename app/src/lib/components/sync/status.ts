@@ -60,7 +60,8 @@ const ENTITIES = [
   'placement',
   'harvest',
   'treatment',
-  'event'
+  'event',
+  'user_settings'
 ];
 
 // Translation key explaining a rejection code; codes this app version does
