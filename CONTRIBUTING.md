@@ -144,6 +144,17 @@ These keep the offline-first design coherent — please follow them:
 3. Make sure `make check` is green; add a `CHANGELOG.md` entry under `[Unreleased]`.
 4. Reference any related issue (`Closes #123`).
 
+## Releasing
+
+Maintainers only. For version `X.Y.Z`:
+
+1. Set `"version"` in `app/package.json` to `X.Y.Z` and move the `[Unreleased]` entries of
+   `CHANGELOG.md` under `## [X.Y.Z]`.
+2. On `main`, run `make release V=vX.Y.Z` (it refuses a dirty tree, a missing changelog section or a
+   package version that does not match, runs `make check`, and signs the tag), then push the tag.
+3. Once the release workflow has published the image, pin its tag and digest in all three compose
+   files: `docker-compose.selfhost.yml`, `docker-compose.prod.yml` and `docker-compose.demo.yml`.
+
 ## Commit messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/) (e.g.

@@ -52,9 +52,10 @@ services:
       retries: 10
 
   server:
-    # Published by .github/workflows/release.yml on each v* tag; Renovate
-    # keeps tag and digest current.
-    image: ghcr.io/openbeehive-org/openbeehive-app:0.4.0@sha256:281bed902f1285dfac1bff24257ec3a653e1bb744ce6f98f8a1d851e7bdb18b4
+    # Published by .github/workflows/release.yml on each v* tag. The three
+    # compose files pin the latest release and are bumped together once its
+    # image is published (CONTRIBUTING.md, "Releasing").
+    image: ghcr.io/openbeehive-org/openbeehive-app:0.4.1@sha256:f297a5d9e787147df2a1f2c3874314c09be45c6509a4c7b9e5e1184084d95d3a
     restart: unless-stopped
     depends_on:
       postgres:
