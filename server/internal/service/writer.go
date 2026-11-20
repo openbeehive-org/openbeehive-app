@@ -126,6 +126,16 @@ func (t *txWriter) apply(ch *wv1.Change) error {
 	if !ok {
 		return errors.New("unknown entity " + ch.Entity)
 	}
+	// A device may stamp a field up to the allowed skew ahead of the server
+	// clock. Receive the row's stored stamps first so this write is stamped
+	// after them and wins, instead of reporting success and losing the merge.
+	if stored, exists, org, err := loadMergeState(t.ctx, t.tx, spec, ch.EntityId); err != nil {
+		return err
+	} else if exists && (spec.perUser || org == t.id.OrgID) {
+		for _, stamp := range stored.Clock {
+			_ = t.w.hlc.Recv(stamp)
+		}
+	}
 	ch.Hlc = t.w.hlc.Now()
 	ch.AuthorId = t.id.UserID
 	return applyLogged(t.ctx, t.tx, spec, ch, t.id.OrgID)

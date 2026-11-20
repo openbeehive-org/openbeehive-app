@@ -282,7 +282,6 @@ func (s *InspectionService) RemoveInspectionPhoto(ctx context.Context, req *wv1.
 // stays. Folding the photo's stamp into the clock first makes the delete
 // win, the way the server's own photo deletes do (Photos.stampAfter).
 func (t *txWriter) delPhoto(row *photoRow, scope string) error {
-	_ = t.w.hlc.Recv(row.Clock["deleted"])
 	return t.del("photo", row.ID, scope)
 }
 

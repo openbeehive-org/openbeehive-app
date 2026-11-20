@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 func mask(paths ...string) *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{Paths: paths} }
@@ -307,4 +308,30 @@ func TestUpdateInspectionAndTask(t *testing.T) {
 	}
 	_, err = f.task.UpdateTask(identityCtx("user-a2", "org-a"), &wv1.UpdateTaskRequest{Task: &wv1.Task{Id: mine.Task.Id, Title: "x"}})
 	wantCode(t, err, connect.CodeNotFound)
+}
+
+// A device may stamp a field a few minutes ahead of the server clock. An API
+// update made after it must still win, not report success and lose the merge.
+func TestUpdateWinsOverADeviceStampAheadOfTheServer(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	ahead := wsync.Format(time.Now().Add(5*time.Minute).UnixMilli(), 0, "fastdevice")
+	if err := push(f.sync, ctx, &wv1.Change{
+		Entity: "apiary", EntityId: "apiary-a", ScopeId: "apiary-a",
+		Op: wv1.ChangeOp_CHANGE_OP_UPSERT, PayloadJson: `{"name":"From the fast device"}`,
+		Hlc: ahead, AuthorId: "user-a",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	up, err := f.apiary.UpdateApiary(ctx, &wv1.UpdateApiaryRequest{Id: "apiary-a", Name: "From the API", UpdateMask: mask("name")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if up.Apiary.Name != "From the API" {
+		t.Fatalf("the later API update lost to an earlier device write: %q", up.Apiary.Name)
+	}
+	got, err := f.apiary.GetApiary(ctx, &wv1.GetApiaryRequest{Id: "apiary-a"})
+	if err != nil || got.Apiary.Name != "From the API" {
+		t.Fatalf("stored name: %v, %+v", err, got)
+	}
 }
