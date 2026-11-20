@@ -87,8 +87,13 @@ export async function migrateLocal(db: LocalDB) {
     ['temp_hive', 'REAL'],
     ['temp_outside', 'REAL'],
     ['humidity_hive', 'REAL'],
-    ['humidity_outside', 'REAL']
+    ['humidity_outside', 'REAL'],
+    // Who recorded it: 0/1 a person, 2 a sensor (the InspectionSource enum).
+    ['source', 'INTEGER DEFAULT 0']
   ]);
+  // Set whenever a saved record is edited; shown as "Amended on <date>".
+  await ensureColumns(db, 'treatment', [['amended_at', 'TEXT']]);
+  await ensureColumns(db, 'harvest', [['amended_at', 'TEXT']]);
 }
 
 // Add any missing columns to an existing table (idempotent; SQLite ALTER TABLE
