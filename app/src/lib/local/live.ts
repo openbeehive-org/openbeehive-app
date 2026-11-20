@@ -33,3 +33,8 @@ export const storageState = writable<StorageState>('ok');
 // server had been restored from a backup or replaced, until the user
 // dismisses the notice about it. Set by the sync engine (sync.ts).
 export const resyncNotice = writable(false);
+
+// Counts the uploads the server refused because this session may only read
+// (the demo, a read-only key). The layout tells the user each time it grows.
+// Set by the sync engine (sync.ts).
+export const readOnlyRefusals = writable(0);

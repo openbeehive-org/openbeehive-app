@@ -54,16 +54,14 @@ test('"Try the demo" opens the sample data; a refused change does not stay queue
   await expect(page.getByRole('heading', { name: 'Delete account' })).toHaveCount(0);
 });
 
-// BUG (app): a change made in the demo is refused by the server (Push answers
-// 403 "the demo account is read-only"), but the app says nothing. The record
-// stays on screen as if saved, the refused upload is dropped silently
-// (lib/local/sync.ts, pushFailure "drop") and the status chip reads "Synced".
-// The visitor only learns from the banner that data "resets every hour", not
-// that this change was never stored.
-test.fail('the demo says clearly that a change was refused', async ({ startServer, device }) => {
+// Push answers a change made in the demo with 403 ("the demo account is
+// read-only"). The visitor is told, and the change is undone on screen.
+test('the demo says clearly that a change was refused', async ({ startServer, device }) => {
   const server = await startServer(DEMO_ON);
   const { page } = await device({ server });
   await enterDemo(page);
   expect(await tryToAddTask(page, 'Change the demo')).toBe(403);
   await expect(page.getByRole('alert').filter({ hasText: /demo/i })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText('Change the demo')).toHaveCount(0);
+  await expectSynced(page);
 });

@@ -617,6 +617,8 @@
   },
   "sync": {
     "chip_synced": "Sincronizzato",
+    "read_only_demo": "Questa è una demo di sola lettura: la modifica non è stata salvata ed è stata annullata.",
+    "read_only": "Hai accesso in sola lettura: la modifica non è stata salvata ed è stata annullata.",
     "chip_syncing": "Sincronizzazione…",
     "chip_pending": "In attesa di invio: {n}",
     "chip_offline": "Offline",

@@ -35,7 +35,7 @@ import { UpgradeRequiredSchema } from '../proto/openbeehive/v1/sync_pb';
 import { patch, setAdd, setRemove } from './repo';
 import { hlc, formatHLC, parseHLC, MAX_DRIFT_MS } from './hlc';
 import { parseFieldClock, parseORSet, orValues } from './merge';
-import { resyncNotice, storageState } from './live';
+import { readOnlyRefusals, resyncNotice, storageState } from './live';
 
 const t = (ms: number, node = 'remote') => `${String(ms).padStart(15, '0')}:00000:${node}`;
 
@@ -115,13 +115,52 @@ describe('push', () => {
   it('drops the batch when the session is read-only (demo, read-only key)', async () => {
     await queueOutbox('apiary', 'a1', { name: 'X' }, t(1, 'local'));
     pushMock.mockRejectedValue(new ConnectError('read-only', Code.PermissionDenied));
+    const refusals = get(readOnlyRefusals);
 
     await push(); // must not throw
 
     expect(await outbox()).toHaveLength(0);
-    // The local row itself is untouched; only the upload intent is dropped,
-    // and a read-only session has nothing to fix in a problems list.
+    // Retrying cannot help and a read-only session has nothing to fix in a
+    // problems list; the user is told instead.
     expect(await listFailed()).toHaveLength(0);
+    expect(get(readOnlyRefusals)).toBe(refusals + 1);
+  });
+
+  it('undoes a refused read-only change: the next pull restores what the server holds', async () => {
+    await getCurrentDB().exec(`INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:40:aa')`);
+    // A server row edited here and a task created here; neither may be stored.
+    await withoutBackgroundSync(async () => {
+      await patch('apiary', 'a1', 'a1', {
+        organization_id: 'org1',
+        name: 'Server name',
+        deleted: 0
+      });
+      await getCurrentDB().exec(`DELETE FROM outbox`);
+      await patch('apiary', 'a1', 'a1', { name: 'Renamed in the demo' });
+      await patch('task', 't1', '', { organization_id: 'org1', title: 'New', deleted: 0 });
+    });
+    pushMock.mockRejectedValue(new ConnectError('read-only', Code.PermissionDenied));
+    snapshotMock.mockResolvedValueOnce({
+      rows: [
+        snapRow(
+          'apiary',
+          'a1',
+          { organization_id: 'org1', name: 'Server name', deleted: 0 },
+          { name: t(5), deleted: t(5) }
+        )
+      ],
+      nextPageToken: '',
+      cursor: '9:50:bb'
+    });
+
+    await syncOnce();
+
+    expect(snapshotMock).toHaveBeenCalledOnce();
+    const a = await getCurrentDB().get<any>(`SELECT name FROM apiary WHERE id = 'a1'`);
+    expect(a?.name).toBe('Server name');
+    expect(await getCurrentDB().all(`SELECT id FROM task`)).toHaveLength(0);
+    expect(await outbox()).toHaveLength(0);
+    expect(get(syncStatus)).toMatchObject({ state: 'idle', pending: 0, failed: 0 });
   });
 
   it('does nothing when the outbox is empty', async () => {

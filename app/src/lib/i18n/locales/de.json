@@ -617,6 +617,8 @@
   },
   "sync": {
     "chip_synced": "Synchronisiert",
+    "read_only_demo": "Dies ist eine schreibgeschützte Demo: Deine Änderung wurde nicht gespeichert und rückgängig gemacht.",
+    "read_only": "Du hast nur Lesezugriff: Deine Änderung wurde nicht gespeichert und rückgängig gemacht.",
     "chip_syncing": "Synchronisiere…",
     "chip_pending": "Warten auf Upload: {n}",
     "chip_offline": "Offline",

@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { startSync, syncStatus } from '#lib/local/sync.js';
+  import { readOnlyRefusals } from '#lib/local/live.js';
   import { recoverSession, takeNotice, takeResume } from '#lib/account.js';
   import { startPhotoTransfers } from '#lib/photos/index.js';
   import NavIcon from '#lib/components/NavIcon.svelte';
@@ -143,6 +144,15 @@
     void recoverSession().then((outcome) => {
       if (outcome === 'recovered') location.reload();
     });
+  });
+
+  // The server refused a change because this session may only read; sync
+  // has undone it on this device. Say so each time, not only once.
+  let refusalsSeen = get(readOnlyRefusals);
+  $effect(() => {
+    if ($readOnlyRefusals <= refusalsSeen) return;
+    refusalsSeen = $readOnlyRefusals;
+    toast(get(_)(isDemo ? 'sync.read_only_demo' : 'sync.read_only'));
   });
 
   // Main navigation. Settings lives separately, as the account block at the

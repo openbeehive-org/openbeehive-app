@@ -28,12 +28,13 @@ import {
   SYNCED_TABLES,
   columnsOf,
   isInlinePhoto,
+  isSynced,
   setColsOf,
   toScalar,
   withoutInlineElements,
   withoutInlinePhotos
 } from './tables';
-import { bumpData, initialSyncPending, resyncNotice, storageState } from './live';
+import { bumpData, initialSyncPending, readOnlyRefusals, resyncNotice, storageState } from './live';
 import { syncClient } from '#lib/client.js'; // generated Connect client (SyncService)
 import {
   ChangeOp,
@@ -211,9 +212,30 @@ const parkStmts = (p: OutboxRow, code: string, reason: string): Statement[] => [
   dropStmt(p)
 ];
 
+// Undoes a batch the server refused because the session may only read.
+// Retrying can never succeed, so the upload intent is dropped. The simplest
+// way back to what the server holds is to forget the rows the batch touched
+// and clear the pull position: the pull of the same sync run then loads the
+// server's rows again (from a snapshot), so an edited or deleted row comes
+// back as the server has it and a row created here disappears. The sync
+// status stays "syncing" until that is done, so it never reports "synced"
+// while the screen shows a change the server refused.
+async function undoRefused(db: LocalDB, batch: OutboxRow[]) {
+  const stmts: Statement[] = batch.map(dropStmt);
+  for (const p of batch) {
+    if (isSynced(p.entity)) {
+      stmts.push({ sql: `DELETE FROM ${p.entity} WHERE id = ?`, params: [p.entity_id] });
+    }
+  }
+  stmts.push(setMetaStmt('cursor', ''));
+  await db.batch(stmts);
+  bumpData();
+  readOnlyRefusals.update((n) => n + 1);
+}
+
 // What a failed Push request means for its batch.
 //   drop     read-only session: the server takes no uploads at all, so the
-//            intent is discarded (the data stays in the local tables)
+//            batch is undone on this device (undoRefused)
 //   isolate  the request itself was refused (too large, malformed): one of
 //            its changes is at fault; halve the batch until it stands alone
 //   retry    everything else (offline, 5xx, signed out): keep and retry later
@@ -250,8 +272,8 @@ export async function push() {
       const failure = pushFailure(e);
       if (failure === 'retry') throw e;
       if (failure === 'drop') {
-        console.warn('push rejected as read-only, keeping changes locally:', e);
-        await db.batch(batch.map(dropStmt));
+        console.warn('push rejected as read-only, undoing the changes locally:', e);
+        await undoRefused(db, batch);
       } else if (batch.length > 1) {
         limit = Math.floor(batch.length / 2);
       } else {

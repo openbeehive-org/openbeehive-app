@@ -617,6 +617,8 @@
   },
   "sync": {
     "chip_synced": "Synced",
+    "read_only_demo": "This is a read-only demo: your change was not saved and has been undone.",
+    "read_only": "You have read-only access: your change was not saved and has been undone.",
     "chip_syncing": "Syncing…",
     "chip_pending": "Waiting to upload: {n}",
     "chip_offline": "Offline",

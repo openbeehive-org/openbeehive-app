@@ -617,6 +617,8 @@
   },
   "sync": {
     "chip_synced": "Sincronizado",
+    "read_only_demo": "Esta es una demo de solo lectura: tu cambio no se ha guardado y se ha deshecho.",
+    "read_only": "Tienes acceso de solo lectura: tu cambio no se ha guardado y se ha deshecho.",
     "chip_syncing": "Sincronizando…",
     "chip_pending": "Pendientes de subir: {n}",
     "chip_offline": "Sin conexión",
