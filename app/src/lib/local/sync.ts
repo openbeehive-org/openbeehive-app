@@ -104,13 +104,29 @@ const getCursor = async () => (await getMeta('cursor')) ?? '';
 // that only fills gaps).
 //   1: the cursor used to be overwritten with a counter returned by Push,
 //      so a device that pushed skipped what others had written before.
-const LOCAL_REPAIR = 1;
+//   2: Pull used to return a user's personal tasks in every workspace, so
+//      tasks of other workspaces ended up in this one's database. They are
+//      removed here; nothing of this workspace is.
+const LOCAL_REPAIR = 2;
 
+const workspaceId = () => localStorage.getItem('obh.orgId') ?? 'local';
 const userId = () => localStorage.getItem('obh.userId') ?? 'local';
 
 async function repairLocal(db: LocalDB) {
   if (Number((await getMeta('sync_epoch')) ?? 0) >= LOCAL_REPAIR) return;
-  await db.batch([setMetaStmt('cursor', ''), setMetaStmt('sync_epoch', String(LOCAL_REPAIR))]);
+  await db.batch([
+    {
+      // A personal task (no apiary) that names another workspace was pulled
+      // from there. One that still waits in the outbox was written here.
+      sql: `DELETE FROM task
+            WHERE COALESCE(apiary_id, '') = ''
+              AND COALESCE(organization_id, '') NOT IN ('', ?)
+              AND id NOT IN (SELECT entity_id FROM outbox WHERE entity = 'task')`,
+      params: [workspaceId()]
+    },
+    setMetaStmt('cursor', ''),
+    setMetaStmt('sync_epoch', String(LOCAL_REPAIR))
+  ]);
 }
 
 // Every response carries the server's wall clock; the middle of the round

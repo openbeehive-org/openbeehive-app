@@ -629,6 +629,32 @@ describe('pull / applyRemote', () => {
     expect(pullMock.mock.calls[1]![0]).toMatchObject({ cursor: '50' });
   });
 
+  // Until 0.5 the server returned a user's personal tasks in every workspace
+  // the user belongs to, so they were stored in each workspace's database.
+  it('removes personal tasks of other workspaces once, and nothing else', async () => {
+    const db = getCurrentDB();
+    const task = (id: string, org: string | null, apiary: string) =>
+      db.exec(
+        `INSERT INTO task (id, organization_id, apiary_id, title, deleted) VALUES (?, ?, ?, 't', 0)`,
+        [id, org, apiary]
+      );
+    await task('mine', 'org1', '');
+    await task('leaked', 'org2', '');
+    await task('leaked-unsent', 'org2', ''); // written here: it waits in the outbox
+    await task('shared-elsewhere', 'org2', 'ap9'); // tied to an apiary: not a personal task
+    await task('no-workspace', null, '');
+    await queueOutbox('task', 'leaked-unsent', { title: 't' }, t(1, 'local'));
+
+    await pull();
+
+    const left = (await db.all<{ id: string }>(`SELECT id FROM task ORDER BY id`)).map((r) => r.id);
+    expect(left).toEqual(['leaked-unsent', 'mine', 'no-workspace', 'shared-elsewhere']);
+
+    await task('later', 'org2', '');
+    await pull(); // the repair does not run again
+    expect(await db.get(`SELECT id FROM task WHERE id = 'later'`)).toBeTruthy();
+  });
+
   // A remote change and a local edit of the same row both read the field
   // clock, merge and write it back. Side by side, the later write erased
   // the other's stamp.
@@ -856,7 +882,7 @@ describe('snapshot bootstrap', () => {
 
   it('loads a snapshot when its cursor is behind the compacted log, and re-sends nothing', async () => {
     await getCurrentDB().exec(
-      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:3:aa'), ('sync_epoch', '1')`
+      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:3:aa'), ('sync_epoch', '2')`
     );
     await getCurrentDB().exec(
       `INSERT INTO apiary (id, name, deleted, field_hlc) VALUES ('a1', 'Mine', 0, ?)`,
@@ -893,7 +919,7 @@ describe('reset: the server is not the database this device synced with', () => 
   async function seedSyncedDevice() {
     const db = getCurrentDB();
     await db.exec(
-      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:150:aa'), ('sync_epoch', '1')`
+      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:150:aa'), ('sync_epoch', '2')`
     );
     const s = {
       made: t(100, 'devA'),
