@@ -8,7 +8,7 @@ vi.mock('./db', async () => {
 // repo fires a background sync after every write; irrelevant here.
 vi.mock('./sync', () => ({ syncOnce: vi.fn(async () => {}) }));
 
-import { apiaries, hives, patch, remove } from './repo';
+import { apiaries, hives, tasks, patch, remove } from './repo';
 
 beforeEach(async () => {
   setCurrentDB(await makeLocalDB());
@@ -150,5 +150,33 @@ describe('natural name order in the repo lists', () => {
       await apiaries.create({ organization_id: 'org1', name });
     }
     expect((await apiaries.list()).map((a) => a.name)).toEqual(['Site 1', 'site 3', 'Site 12']);
+  });
+});
+
+describe('personal tasks and workspaces', () => {
+  it('shows a personal task only in the workspace it was created in', async () => {
+    await tasks.create({ title: 'buy jars' });
+    await tasks.create({ title: 'mow the orchard', apiary_id: 'a1' });
+    expect((await tasks.list()).map((t) => t.title).sort()).toEqual([
+      'buy jars',
+      'mow the orchard'
+    ]);
+    expect(await tasks.openCount()).toBe(2);
+
+    // The same user's personal task arrives in another workspace's database.
+    setCurrentDB(await makeLocalDB());
+    localStorage.setItem('obh.orgId', 'org2');
+    await getCurrentDB().exec(
+      `INSERT INTO task (id, organization_id, title, apiary_id, due_at, done, deleted)
+       VALUES ('t1', 'org1', 'buy jars', '', '', 0, 0)`
+    );
+    await tasks.create({ title: 'club meeting' });
+    await tasks.create({ title: 'club apiary fence', apiary_id: 'a7' });
+
+    expect((await tasks.list()).map((t) => t.title).sort()).toEqual([
+      'club apiary fence',
+      'club meeting'
+    ]);
+    expect(await tasks.openCount()).toBe(2);
   });
 });

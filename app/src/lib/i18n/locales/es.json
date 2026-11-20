@@ -220,7 +220,17 @@
     "title_ph": "¿Qué hay que hacer?",
     "due": "Vencimiento",
     "add": "Añadir",
-    "edit": "Editar tarea"
+    "edit": "Editar tarea",
+    "title_label": "Tarea",
+    "new_label": "Nueva tarea",
+    "mark_done": "Marcar «{title}» como hecha",
+    "mark_open": "Reabrir «{title}»",
+    "edit_named": "Editar la tarea «{title}»",
+    "delete_named": "Eliminar la tarea «{title}»",
+    "completed": "Completadas ({n})",
+    "deleted": "Tarea «{title}» eliminada",
+    "undo": "Deshacer",
+    "overdue": "Vencida"
   },
   "hivetype": {
     "0": "Sin especificar",

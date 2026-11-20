@@ -220,7 +220,17 @@
     "title_ph": "Cosa c'è da fare?",
     "due": "Scadenza",
     "add": "Aggiungi",
-    "edit": "Modifica attività"
+    "edit": "Modifica attività",
+    "title_label": "Attività",
+    "new_label": "Nuova attività",
+    "mark_done": "Segna «{title}» come completata",
+    "mark_open": "Riapri «{title}»",
+    "edit_named": "Modifica l'attività «{title}»",
+    "delete_named": "Elimina l'attività «{title}»",
+    "completed": "Completate ({n})",
+    "deleted": "Attività «{title}» eliminata",
+    "undo": "Annulla",
+    "overdue": "Scaduta"
   },
   "hivetype": {
     "0": "Non specificato",

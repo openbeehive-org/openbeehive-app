@@ -348,15 +348,25 @@ export const queens = {
 const taskScope = (apiaryId?: string) =>
   apiaryId || 'user:' + (localStorage.getItem('obh.userId') ?? 'local');
 
+// Personal tasks (no apiary) follow the user to every device, so they are
+// shown only in the workspace they were created in; apiary tasks belong to
+// their apiary's workspace anyway.
+const IN_WORKSPACE = `(COALESCE(apiary_id, '') <> '' OR organization_id = ?)`;
+const workspaceId = () => localStorage.getItem('obh.orgId') ?? 'local';
+
 export const tasks = {
   async list() {
     const db = await getDB();
-    return db.all<any>(`SELECT * FROM task WHERE deleted = 0 ORDER BY done ASC, due_at ASC`);
+    return db.all<any>(
+      `SELECT * FROM task WHERE deleted = 0 AND ${IN_WORKSPACE} ORDER BY done ASC, due_at ASC`,
+      [workspaceId()]
+    );
   },
   async openCount() {
     const db = await getDB();
     const r = await db.get<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM task WHERE deleted = 0 AND done = 0`
+      `SELECT COUNT(*) AS n FROM task WHERE deleted = 0 AND done = 0 AND ${IN_WORKSPACE}`,
+      [workspaceId()]
     );
     return r?.n ?? 0;
   },
@@ -369,7 +379,7 @@ export const tasks = {
   }) {
     const id = crypto.randomUUID();
     await patch('task', id, taskScope(s.apiary_id), {
-      organization_id: localStorage.getItem('obh.orgId') ?? 'local',
+      organization_id: workspaceId(),
       title: s.title,
       apiary_id: s.apiary_id ?? '',
       hive_id: s.hive_id ?? '',

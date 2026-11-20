@@ -220,7 +220,17 @@
     "title_ph": "What needs doing?",
     "due": "Due",
     "add": "Add",
-    "edit": "Edit task"
+    "edit": "Edit task",
+    "title_label": "Task",
+    "new_label": "New task",
+    "mark_done": "Mark “{title}” as done",
+    "mark_open": "Reopen “{title}”",
+    "edit_named": "Edit task “{title}”",
+    "delete_named": "Delete task “{title}”",
+    "completed": "Completed ({n})",
+    "deleted": "Task “{title}” deleted",
+    "undo": "Undo",
+    "overdue": "Overdue"
   },
   "hivetype": {
     "0": "Unspecified",

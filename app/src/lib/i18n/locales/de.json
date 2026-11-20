@@ -220,7 +220,17 @@
     "title_ph": "Was ist zu tun?",
     "due": "Fällig",
     "add": "Hinzufügen",
-    "edit": "Aufgabe bearbeiten"
+    "edit": "Aufgabe bearbeiten",
+    "title_label": "Aufgabe",
+    "new_label": "Neue Aufgabe",
+    "mark_done": "„{title}“ als erledigt markieren",
+    "mark_open": "„{title}“ wieder öffnen",
+    "edit_named": "Aufgabe „{title}“ bearbeiten",
+    "delete_named": "Aufgabe „{title}“ löschen",
+    "completed": "Erledigt ({n})",
+    "deleted": "Aufgabe „{title}“ gelöscht",
+    "undo": "Rückgängig",
+    "overdue": "Überfällig"
   },
   "hivetype": {
     "0": "Unbestimmt",

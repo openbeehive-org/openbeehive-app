@@ -220,7 +220,17 @@
     "title_ph": "Que faut-il faire ?",
     "due": "Échéance",
     "add": "Ajouter",
-    "edit": "Modifier la tâche"
+    "edit": "Modifier la tâche",
+    "title_label": "Tâche",
+    "new_label": "Nouvelle tâche",
+    "mark_done": "Marquer « {title} » comme terminée",
+    "mark_open": "Rouvrir « {title} »",
+    "edit_named": "Modifier la tâche « {title} »",
+    "delete_named": "Supprimer la tâche « {title} »",
+    "completed": "Terminées ({n})",
+    "deleted": "Tâche « {title} » supprimée",
+    "undo": "Annuler",
+    "overdue": "En retard"
   },
   "hivetype": {
     "0": "Non précisé",
