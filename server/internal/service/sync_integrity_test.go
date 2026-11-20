@@ -109,3 +109,61 @@ func TestLegacyPushWithClockAheadFailsAsAWhole(t *testing.T) {
 	res = pushRes(t, svc, ctxA, ahead)
 	wantRejected(t, res, map[int32]string{0: rejClockAhead})
 }
+
+// An apiary with the id of a member's personal scope must not open that
+// scope to whoever created it.
+func TestPersonalScopeCannotBeOpenedByAnApiary(t *testing.T) {
+	svc := newSyncFixture(t)
+	att := identityCtx("attacker", "org-a")
+	res := pushRes(t, svc, att,
+		change("apiary", "user:victim", "user:victim", `{"name":"x","created_at":"2026-07-11","updated_at":"2026-07-11"}`),
+		change("task", "t-planted", "user:victim", `{"title":"planted","created_at":"2026-07-11"}`),
+	)
+	wantRejected(t, res, map[int32]string{0: rejForbiddenScope, 1: rejForbiddenScope})
+	// Not even in the attacker's own scope, and not under any other id.
+	res = pushRes(t, svc, att,
+		change("apiary", "user:victim", "apiary-x", `{"name":"x"}`),
+		change("hive", "user:victim", "apiary-a", `{"name":"x"}`))
+	wantRejected(t, res, map[int32]string{0: rejForbiddenScope, 1: rejInvalid})
+	for _, c := range pullAll(t, svc, identityCtx("victim", "org-a")) {
+		if isPersonal(c.EntityId) || c.EntityId == "t-planted" {
+			t.Fatalf("the victim pulls %s %s", c.Entity, c.EntityId)
+		}
+	}
+}
+
+// A shared row changed in the writer's personal scope would be stored for
+// the workspace but logged where only the writer pulls it.
+func TestSharedRowsAreNotWrittenInThePersonalScope(t *testing.T) {
+	svc := newSyncFixture(t)
+	a := identityCtx("user-a", "org-a")
+	if err := push(svc, a,
+		change("task", "task-shared", "apiary-a", `{"title":"varroa","apiary_id":"apiary-a","created_at":"2026-07-11","deleted":0}`),
+		change("event", "ev-shared", "apiary-a", `{"scope_id":"apiary-a","apiary_id":"apiary-a","type":1,"date":"2026-07-11","deleted":0}`),
+		change("task", "task-mine", "user:user-a", `{"title":"dentist","apiary_id":"","created_at":"2026-07-11","deleted":0}`),
+		change("event", "ev-mine", "user:user-a", `{"scope_id":"user:user-a","type":1,"date":"2026-07-11","deleted":0}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	del := change("task", "task-shared", "user:user-a", `{"deleted":1}`)
+	del.Op = wv1.ChangeOp_CHANGE_OP_DELETE
+	res := pushRes(t, svc, a,
+		change("hive", "hive-a", "user:user-a", `{"name":"renamed by A"}`),
+		change("apiary", "apiary-a", "user:user-a", `{"name":"renamed"}`),
+		change("task", "task-shared", "user:user-a", `{"title":"hidden"}`),
+		del,
+		change("task", "task-new", "user:user-a", `{"title":"t","apiary_id":"apiary-a"}`),
+		change("event", "ev-shared", "user:user-a", `{"title":"hidden"}`),
+		change("event", "ev-new", "user:user-a", `{"scope_id":"apiary-a","type":1}`),
+		change("inspection", "in-new", "user:user-a", `{"hive_id":"hive-a","date":"2026-07-11"}`),
+		// The caller's own personal rows stay writable there.
+		change("task", "task-mine", "user:user-a", `{"done":1}`),
+		change("event", "ev-mine", "user:user-a", `{"title":"note"}`),
+		change("task", "task-mine2", "user:user-a", `{"title":"t2","created_at":"2026-07-11","deleted":0}`),
+	)
+	wantRejected(t, res, map[int32]string{0: rejForbiddenScope, 1: rejForbiddenScope, 2: rejForbiddenScope,
+		3: rejForbiddenScope, 4: rejForbiddenScope, 5: rejForbiddenScope, 6: rejForbiddenScope, 7: rejForbiddenScope})
+	if got := hiveName(t, svc, "hive-a"); got != "H1" {
+		t.Fatalf("hive renamed to %q", got)
+	}
+}

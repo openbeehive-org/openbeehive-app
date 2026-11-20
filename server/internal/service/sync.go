@@ -473,19 +473,79 @@ func loadScopes(ctx context.Context, tx *sqlx.Tx, id auth.Identity) (*scopeSet, 
 	}
 	set := &scopeSet{personal: personalScope(id.UserID), apiaries: make(map[string]bool, len(ids))}
 	for _, a := range ids {
-		set.apiaries[a] = true
+		if !isPersonal(a) { // an apiary stored under such an id opens no scope
+			set.apiaries[a] = true
+		}
 	}
 	return set, nil
 }
 
+// isPersonal reports whether a scope or id has the form of a personal scope.
+func isPersonal(id string) bool { return strings.HasPrefix(id, "user:") }
+
 // allows reports whether the change's scope is writable. A new apiary opens
 // its own scope (scope id = apiary id); that the id is not another
-// workspace's apiary is enforced on the row in applyChange.
+// workspace's apiary is enforced on the row in applyChange. What may be
+// written in the personal scope is checked by checkPersonal.
 func (s *scopeSet) allows(ch *wv1.Change) bool {
 	if ch.ScopeId == s.personal || s.apiaries[ch.ScopeId] {
 		return true
 	}
-	return ch.Entity == "apiary" && ch.ScopeId == ch.EntityId
+	return ch.Entity == "apiary" && ch.ScopeId == ch.EntityId && !isPersonal(ch.EntityId)
+}
+
+// checkPersonal refuses what does not belong in the personal scope. Only
+// the caller pulls changes logged there, so a change to a row the workspace
+// shares would update the server's row while the other members never
+// receive it. The personal scope holds the account's settings, tasks
+// without an apiary and events that name the personal scope, as rows of
+// the caller's own; everything else is written in its apiary's scope.
+//
+// No row id may have the form of a personal scope either: an apiary with
+// the id "user:<someone>" would open that member's personal scope to
+// whoever created it.
+func checkPersonal(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, scopes *scopeSet) (*changeError, error) {
+	if isPersonal(ch.EntityId) {
+		return invalidChange("a row id must not start with \"user:\""), nil
+	}
+	if ch.ScopeId != scopes.personal || spec.perUser {
+		return nil, nil // perUser rows: checkOwnRow
+	}
+	refuse := &changeError{code: rejForbiddenScope, reason: fmt.Sprintf(
+		"%s %q is shared with the workspace and is written in its apiary's scope, not the personal one",
+		ch.Entity, clip(ch.EntityId))}
+	if ch.Entity != "task" && ch.Entity != "event" {
+		return refuse, nil
+	}
+	if ch.Op == wv1.ChangeOp_CHANGE_OP_UPSERT {
+		var p struct {
+			ApiaryID *string `json:"apiary_id"`
+			ScopeID  *string `json:"scope_id"`
+		}
+		_ = json.Unmarshal([]byte(ch.PayloadJson), &p) // a malformed payload is refused later
+		if (p.ApiaryID != nil && *p.ApiaryID != "") || (p.ScopeID != nil && *p.ScopeID != scopes.personal) {
+			return refuse, nil
+		}
+	}
+	// The stored row, if any, must already be the caller's personal one.
+	q := `SELECT apiary_id, owner_id AS mine FROM task WHERE id = ?`
+	if ch.Entity == "event" {
+		q = `SELECT apiary_id, scope_id AS mine FROM event WHERE id = ?`
+	}
+	rows, err := queryMaps(ctx, tx, q, ch.EntityId)
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	stored, mine := rs(rows[0]["apiary_id"]), rs(rows[0]["mine"])
+	owned := mine == scopes.personal // event.scope_id
+	if ch.Entity == "task" {
+		// owner_id is the bare user id; '' on a task never written personally.
+		owned = mine != "" && personalScope(mine) == scopes.personal
+	}
+	if stored != "" || !owned {
+		return refuse, nil
+	}
+	return nil, nil
 }
 
 // opened records the scope of an apiary that was just stored.
@@ -509,6 +569,9 @@ func pushOne(ctx context.Context, tx *sqlx.Tx, scopes *scopeSet, orgID string, c
 	}
 	if cerr := checkOwnRow(spec, ch, scopes); cerr != nil {
 		return cerr, nil
+	}
+	if cerr, err := checkPersonal(ctx, tx, spec, ch, scopes); cerr != nil || err != nil {
+		return cerr, err
 	}
 	if _, err := tx.ExecContext(ctx, "SAVEPOINT obh_change"); err != nil {
 		return nil, err

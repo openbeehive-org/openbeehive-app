@@ -29,10 +29,10 @@ func TestPersonalTaskOwnershipDoesNotNeedTheChangeLog(t *testing.T) {
 		owners[0] != "user-a" || owners[1] != "user-a" {
 		t.Fatalf("owners: %v %v", owners, err)
 	}
-	// A colleague writing the same id in their own scope does not take it over.
-	if err := push(f.sync, colleague, change("task", "task-dev", "user:user-a2", `{"note":"mine now"}`)); err != nil {
-		t.Fatal(err)
-	}
+	// A colleague writing the same id in their own scope is refused and does
+	// not take it over.
+	wantRejected(t, pushRes(t, f.sync, colleague, change("task", "task-dev", "user:user-a2", `{"note":"mine now"}`)),
+		map[int32]string{0: rejForbiddenScope})
 	if err := f.db.Get(&owners[0], `SELECT owner_id FROM task WHERE id = 'task-dev'`); err != nil || owners[0] != "user-a" {
 		t.Fatalf("owner after a foreign write: %q %v", owners[0], err)
 	}
