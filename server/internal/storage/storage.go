@@ -150,21 +150,18 @@ type InviteRepo interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// ApiaryRepo and HiveRepo are read-only: every write to a synced entity goes
+// through the service writer, which merges it and appends it to the change
+// log. List returns one page and the total number of matching rows.
 type ApiaryRepo interface {
-	Create(ctx context.Context, s *Apiary) error
 	Get(ctx context.Context, orgID, id string) (*Apiary, error)
 	List(ctx context.Context, orgID string, limit, offset int) ([]Apiary, int, error)
-	Update(ctx context.Context, s *Apiary) error
-	Delete(ctx context.Context, orgID, id string) error
 	HiveCount(ctx context.Context, orgID, apiaryID string) (int, error)
 }
 
 type HiveRepo interface {
-	Create(ctx context.Context, b *Hive) error
 	Get(ctx context.Context, orgID, id string) (*Hive, error)
 	List(ctx context.Context, orgID, apiaryID string, limit, offset int) ([]Hive, int, error)
-	Update(ctx context.Context, b *Hive) error
-	Delete(ctx context.Context, orgID, id string) error
 }
 
 // Store bundles all repositories plus migrations/lifecycle.
