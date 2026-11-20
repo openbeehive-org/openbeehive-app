@@ -123,7 +123,6 @@
           hive.type ? $_('hivetype.' + hive.type) : ''
         )}
       </p>
-      <Photos kind="hive-remove" {hive} onchange={reload} />
     </div>
   </div>
 

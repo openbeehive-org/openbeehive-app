@@ -1,5 +1,6 @@
 // Row shapes of the local store as the pages read them (columns of
 // lib/local/schema.ts; TEXT -> string, INTEGER/REAL -> number, unset -> null).
+import type { PhotoRow } from '#lib/local/repo.js';
 
 export type ApiaryRow = {
   id: string;
@@ -24,7 +25,6 @@ export type HiveRow = {
   colony_origin: string | null;
   note: string | null;
   qr_code: string | null;
-  photo: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -73,8 +73,8 @@ export type InspectionRow = {
   // 0/1 recorded by a person, 2 a sensor reading.
   source: number | null;
   created_at: string;
-  // Resolved from the photo_keys OR-Set by inspections.listByHive.
-  photos: string[];
+  // The visit's photo records, attached by inspections.listByHive.
+  photos: PhotoRow[];
 };
 
 export type TaskRow = {

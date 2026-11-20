@@ -1,10 +1,8 @@
 // Local-first repository. The UI uses only these functions.
 // Write = set only the changed fields locally, update the field clock
 // and put a partial delta into the outbox (per-field LWW).
-// List fields (e.g. photos) go through OR-Set operations.
 
 import { getDB } from './db';
-import { parseORSet, orValues } from './merge';
 import { unit } from './write';
 import { byName, type HiveOverview } from '../hivelist';
 
@@ -26,7 +24,7 @@ export async function remove(entity: string, id: string, scopeId: string) {
   await unit().remove(entity, id, scopeId).commit();
 }
 
-// --- OR-Set operations (list fields, e.g. inspection.photo_keys) ---
+// --- OR-Set operations (set columns) ---
 
 export async function setAdd(
   entity: string,
@@ -122,8 +120,8 @@ export const inspections = {
       `SELECT * FROM inspection WHERE deleted = 0 AND hive_id = ? ${manualOnly} ORDER BY date DESC`,
       [hiveId]
     );
-    // Resolve the OR-Set column to the list of visible photos.
-    return rows.map((r) => ({ ...r, photos: orValues(parseORSet(r.photo_keys)) }));
+    const photos = await photoRecords.ofVisits(hiveId);
+    return rows.map((r) => ({ ...r, photos: photos.get(r.id) ?? [] }));
   },
   async add(d: InspectionInput, scopeApiaryId: string) {
     const id = crypto.randomUUID();
@@ -137,11 +135,120 @@ export const inspections = {
   // edit = only the changed scalar fields (per-field LWW). scope = apiary id.
   update: (id: string, scopeApiaryId: string, fields: Record<string, unknown>) =>
     patch('inspection', id, scopeApiaryId, fields),
-  remove: (id: string, scopeApiaryId: string) => remove('inspection', id, scopeApiaryId),
-  addPhoto: (id: string, scope: string, key: string) =>
-    setAdd('inspection', id, scope, 'photo_keys', key),
-  removePhoto: (id: string, scope: string, key: string) =>
-    setRemove('inspection', id, scope, 'photo_keys', key)
+  remove: (id: string, scopeApiaryId: string) => remove('inspection', id, scopeApiaryId)
+};
+
+// --- Photos ---
+// A photo is a record of its own that belongs to an inspection or to a hive
+// (the hive's picture). The row holds a thumbnail; the full-size image is
+// kept and transferred by lib/photos, which is also what the UI calls to add
+// and delete photos.
+
+export type PhotoOwner = 'inspection' | 'hive';
+
+export type PhotoRow = {
+  id: string;
+  owner_entity: PhotoOwner;
+  owner_id: string;
+  /** Thumbnail as a data URL; null when the record came without one. */
+  thumb: string | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  created_at: string | null;
+};
+
+const PHOTO_COLS =
+  'p.id, p.owner_entity, p.owner_id, p.thumb, p.content_type, p.size_bytes, p.created_at';
+
+export const photoRecords = {
+  // The photos of one record, oldest first.
+  async of(owner: PhotoOwner, ownerId: string) {
+    const db = await getDB();
+    return db.all<PhotoRow>(
+      `SELECT ${PHOTO_COLS} FROM photo p
+       WHERE p.owner_id = ? AND p.owner_entity = ? AND p.deleted = 0
+       ORDER BY p.created_at, p.id`,
+      [ownerId, owner]
+    );
+  },
+  // The photos of every inspection of a hive, by inspection id, in one query.
+  async ofVisits(hiveId: string) {
+    const db = await getDB();
+    const rows = await db.all<PhotoRow>(
+      `SELECT ${PHOTO_COLS} FROM photo p JOIN inspection i ON i.id = p.owner_id
+       WHERE i.hive_id = ? AND p.owner_entity = 'inspection' AND p.deleted = 0
+       ORDER BY p.created_at, p.id`,
+      [hiveId]
+    );
+    const byVisit = new Map<string, PhotoRow[]>();
+    for (const r of rows) byVisit.set(r.owner_id, [...(byVisit.get(r.owner_id) ?? []), r]);
+    return byVisit;
+  },
+  // A hive's picture: the newest photo that belongs to the hive itself.
+  async hivePicture(hiveId: string) {
+    const db = await getDB();
+    return db.get<PhotoRow>(
+      `SELECT ${PHOTO_COLS} FROM photo p
+       WHERE p.owner_id = ? AND p.owner_entity = 'hive' AND p.deleted = 0
+       ORDER BY p.created_at DESC, p.id DESC LIMIT 1`,
+      [hiveId]
+    );
+  },
+  async isLive(id: string) {
+    const db = await getDB();
+    return !!(await db.get(`SELECT 1 AS ok FROM photo WHERE id = ? AND deleted = 0`, [id]));
+  },
+  // Photos sync in the scope of the record they belong to: the apiary of the
+  // hive (for an inspection: of its hive).
+  async scopeOf(owner: PhotoOwner, ownerId: string): Promise<string> {
+    const db = await getDB();
+    const r = await db.get<{ apiary_id: string | null }>(
+      owner === 'hive'
+        ? `SELECT apiary_id FROM hive WHERE id = ?`
+        : `SELECT h.apiary_id FROM inspection i JOIN hive h ON h.id = i.hive_id WHERE i.id = ?`,
+      [ownerId]
+    );
+    return r?.apiary_id ?? '';
+  },
+  // Stores the record of a new photo. With `replace` (a hive's picture) the
+  // owner's earlier photos are deleted in the same local transaction.
+  async create(
+    id: string,
+    owner: { entity: PhotoOwner; id: string },
+    fields: { thumb: string; content_type: string; size_bytes: number },
+    opts: { replace?: boolean } = {}
+  ) {
+    const scope = await photoRecords.scopeOf(owner.entity, owner.id);
+    const earlier = opts.replace ? await photoRecords.of(owner.entity, owner.id) : [];
+    const w = unit().patch('photo', id, scope, {
+      organization_id: workspaceId(),
+      owner_entity: owner.entity,
+      owner_id: owner.id,
+      ...fields,
+      created_at: new Date().toISOString(),
+      deleted: 0
+    });
+    for (const p of earlier) w.remove('photo', p.id, scope);
+    await w.commit();
+    return earlier.map((p) => p.id);
+  },
+  // Deletes a photo for good, on every device once synced.
+  async remove(id: string) {
+    const db = await getDB();
+    const row = await db.get<PhotoRow>(
+      `SELECT ${PHOTO_COLS} FROM photo p WHERE p.id = ? AND p.deleted = 0`,
+      [id]
+    );
+    if (!row) return;
+    const scope = await photoRecords.scopeOf(row.owner_entity, row.owner_id);
+    await unit().remove('photo', id, scope).commit();
+    await photoRecords.eraseDeleted();
+  },
+  // A deleted photo keeps its row (so the delete syncs) but not its picture.
+  async eraseDeleted() {
+    const db = await getDB();
+    await db.exec(`UPDATE photo SET thumb = NULL WHERE deleted = 1 AND thumb IS NOT NULL`);
+  }
 };
 
 export const hives = {
@@ -163,7 +270,10 @@ export const hives = {
   async overview(apiaryId?: string) {
     const db = await getDB();
     const rows = await db.all<HiveOverview>(
-      `SELECT h.id, h.apiary_id, h.name, h.status, h.photo,
+      `SELECT h.id, h.apiary_id, h.name, h.status,
+              (SELECT p.thumb FROM photo p
+               WHERE p.owner_id = h.id AND p.owner_entity = 'hive' AND p.deleted = 0
+               ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS photo,
               a.name AS apiary_name, li.date AS last_inspection,
               q.year AS queen_year, q.marking AS queen_marking
        FROM hive h
@@ -215,7 +325,6 @@ export const hives = {
   update: (id: string, apiaryId: string, fields: Record<string, unknown>) =>
     patch('hive', id, apiaryId, { ...fields, updated_at: new Date().toISOString() }),
   remove: (id: string, apiaryId: string) => remove('hive', id, apiaryId),
-  setPhoto: (id: string, apiaryId: string, photo: string) => patch('hive', id, apiaryId, { photo }),
   // Location history: every move appends a placement interval, so the full
   // residence timeline (which apiary, when) can be followed across the years.
   async locationHistory(hiveId: string) {

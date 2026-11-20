@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
   import { startSync, syncStatus } from '#lib/local/sync.js';
   import { recoverSession, takeNotice, takeResume } from '#lib/account.js';
+  import { startPhotoTransfers } from '#lib/photos/index.js';
   import NavIcon from '#lib/components/NavIcon.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
   import SyncChip from '#lib/components/sync/SyncChip.svelte';
@@ -124,6 +125,7 @@
       }
 
       startSync(); // start background sync once a session (or single-user identity) is established
+      startPhotoTransfers(); // and the uploads of photos taken while offline
     })();
 
     return () => {

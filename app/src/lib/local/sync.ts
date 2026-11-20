@@ -24,7 +24,14 @@ import {
   type RowState,
   type SetDelta
 } from './merge';
-import { SYNCED_TABLES, columnsOf, setColsOf, toScalar } from './tables';
+import {
+  SYNCED_TABLES,
+  columnsOf,
+  isInlinePhoto,
+  setColsOf,
+  toScalar,
+  withoutInlinePhotos
+} from './tables';
 import { bumpData, initialSyncPending, resyncNotice, storageState } from './live';
 import { syncClient } from '#lib/client.js'; // generated Connect client (SyncService)
 import {
@@ -704,11 +711,11 @@ function remoteFields(ch: Change, cols: Set<string>): Record<string, unknown> | 
     if (k === 'id' || k === 'field_hlc' || !cols.has(k)) continue;
     if (setCols.includes(k)) {
       const d: SetDelta | null = parseSetDelta(v);
-      if (d) fields[k] = d;
+      if (d) fields[k] = withoutInlinePhotos(ch.entity, k, d);
       continue;
     }
     const value = toScalar(v);
-    if (value !== undefined) fields[k] = value;
+    if (value !== undefined && !isInlinePhoto(ch.entity, k, value)) fields[k] = value;
   }
   return fields;
 }

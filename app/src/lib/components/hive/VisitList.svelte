@@ -56,7 +56,7 @@
         </div>
       {/if}
       {#if i.note}<p class="hv-note">{i.note}</p>{/if}
-      <Photos kind="gallery" photos={i.photos ?? []} />
+      <Photos kind="gallery" photos={i.photos ?? []} label={day(i)} onchange={reload} />
       <RecordActions
         name={`${$_('insp.visit')} ${day(i)}`}
         onedit={() => onedit(i)}

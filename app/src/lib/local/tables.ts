@@ -13,11 +13,39 @@ export const SYNCED_TABLES = [
   'placement',
   'harvest',
   'treatment',
-  'event'
+  'event',
+  'photo'
 ] as const;
 
 // Columns merged as OR-Sets (add-wins) instead of per-field last-writer-wins.
 const SET_COLS: Record<string, readonly string[]> = { inspection: ['photo_keys'] };
+
+// Up to 0.4.x a photo was stored inline, as a data URL: an element of
+// inspection.photo_keys, or the value of hive.photo. Apps of that version
+// still sync, and the server turns what they write into photo records. This
+// app shows the records, so the inline copies that keep arriving for those
+// columns are not stored (they are megabytes nobody reads).
+const isInlineImage = (v: unknown): boolean => typeof v === 'string' && v.startsWith('data:');
+
+/** A pulled scalar value that is an inline photo. */
+export function isInlinePhoto(entity: string, column: string, value: unknown): boolean {
+  return entity === 'hive' && column === 'photo' && isInlineImage(value);
+}
+
+/** A pulled set delta without the inline photos it adds or removes. */
+export function withoutInlinePhotos<
+  D extends { add?: string[]; remove?: string[]; removed_tags?: Record<string, string[]> }
+>(entity: string, column: string, delta: D): D {
+  if (entity !== 'inspection' || column !== 'photo_keys') return delta;
+  const keep = (list?: string[]) => list?.filter((e) => !isInlineImage(e));
+  const out: D = { ...delta, add: keep(delta.add), remove: keep(delta.remove) };
+  if (delta.removed_tags) {
+    out.removed_tags = Object.fromEntries(
+      Object.entries(delta.removed_tags).filter(([e]) => !isInlineImage(e))
+    );
+  }
+  return out;
+}
 
 export const isSynced = (entity: string): boolean =>
   (SYNCED_TABLES as readonly string[]).includes(entity);

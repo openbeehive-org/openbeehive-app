@@ -8,6 +8,7 @@
   import { InspectionSource } from '#lib/local/repo.js';
   import { formatDate, toDateInput, todayLocal } from '#lib/dates.js';
   import type { InspectionRow } from '../../../routes/(app)/rows.js';
+  import type { PreparedPhoto } from '#lib/image.js';
   import { carryOver, isSensor, level, reading, CLIMATE_KEYS } from './readings.js';
   import { createSaver } from './saver.js';
   import { storedDate } from './forms.js';
@@ -19,15 +20,12 @@
 
   let {
     hiveId,
-    scope,
     editing = null,
     last = null,
     onsaved,
     oncancel
   }: {
     hiveId: string;
-    /** The hive's apiary: sync scope for photos added here. */
-    scope: string;
     /** The visit being corrected; null records a new one. */
     editing?: InspectionRow | null;
     /** The previous visit, offered as a starting point for a new one. */
@@ -76,7 +74,8 @@
 
   // The parent remounts the form per visit, so the draft is built once.
   let v = $state(untrack(() => draft(editing)));
-  let photos = $state<string[]>([]);
+  // Photos chosen here; they are stored once the visit itself is saved.
+  let picked = $state<PreparedPhoto[]>([]);
   // Folded away unless the visit being edited has something in them.
   let climateOpen = $state(CLIMATE_KEYS.some((k) => v[k] !== null));
   let activitiesOpen = $state(
@@ -134,7 +133,7 @@
       } else {
         id = await recordInspection(hiveId, fields());
       }
-      if (id) await attachVisitPhotos(id, scope, photos);
+      if (id) await attachVisitPhotos(id, picked);
     });
     if (ok) onsaved();
   }
@@ -284,7 +283,12 @@
     <textarea bind:value={v.note} rows="3" placeholder={$_('insp.note_ph')}></textarea>
   </label>
 
-  <Photos kind="picker" bind:photos />
+  <Photos
+    kind="picker"
+    visitId={editing?.id}
+    label={editing ? formatDate(editing.date, $locale) : ''}
+    bind:picked
+  />
 
   <div class="savebar">
     <FormFooter busy={$busy} error={$error} invalid={!v.date} {oncancel} />

@@ -18,9 +18,10 @@ export const MSG = {
 } as const;
 
 // Paths the Go server answers itself: the Connect API, sign-in and workspace
-// endpoints, uploaded files and the health check. They are never cached and
-// never replaced by the offline app shell.
-const SERVER_PREFIXES = ['/openbeehive.v1.', '/auth/', '/tenants/', '/files/'];
+// endpoints, full-size photos and the health check. They are never cached
+// here and never replaced by the offline app shell. (Photos have their own
+// store on the device, lib/photos.)
+const SERVER_PREFIXES = ['/openbeehive.v1.', '/auth/', '/tenants/', '/photos/'];
 const SERVER_PATHS = ['/healthz'];
 
 /** `pathname` is relative to the app root (starts with "/"). */

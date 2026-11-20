@@ -109,11 +109,31 @@ app/        SvelteKit PWA
   entries: who owns a personal task, for example, is stored on the task (`task.owner_id`). The job
   runs in the server process and assumes it is the only one: run exactly one instance per database.
 
+## Photos
+
+A photo is two things. Its record (`photo`) syncs like every other row and carries a thumbnail of a
+few KB, so every device shows the photo at once and offline. Its full-size image (at most 2048 px and
+5 MiB) lives in the blob store under `<workspace>/photos/<hash of the photo id>` and never enters the
+sync feed.
+
+- The device that takes a photo stores the image locally first (IndexedDB, `app/src/lib/photos`),
+  then writes the record, and uploads the image to `POST /photos/<id>` whenever it is online. Other
+  devices fetch it with `GET /photos/<id>` the first time the photo is opened and keep a copy. Both
+  endpoints need the caller's session or API key and membership of the photo's workspace; the blob
+  store itself is never exposed.
+- Deleting a photo is final: the server erases the thumbnail from the row and from the change log
+  and removes the blob (`server/internal/service/photo_sync.go`, `photo_sweep.go`).
+- Apps up to 0.4.x store photos inline (data URLs in `inspection.photo_keys` and `hive.photo`). The
+  server keeps accepting and serving that format for them and converts it to photo records
+  (`photo_legacy.go`; existing data once at start-up, `photo_boot.go`).
+
+A backup is the database plus the blob directory or bucket.
+
 ## Deployment
 
 One binary: `make build` builds the SPA, embeds it into `server/internal/web` and compiles
-`server/bin/openbeehive`, which serves the app, the API (Connect-RPC over h2c) and, in self-host mode,
-the blob files. The container image (`Dockerfile`) does the same in stages and runs as a non-root user
+`server/bin/openbeehive`, which serves the app and the API (Connect-RPC over h2c, plus the photo
+endpoints). The container image (`Dockerfile`) does the same in stages and runs as a non-root user
 with `/data` for SQLite and blobs. Releases are tagged `vX.Y.Z`; `release.yml` publishes the signed,
 attested image to `ghcr.io/openbeehive-org/openbeehive-app`.
 

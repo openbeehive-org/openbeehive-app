@@ -153,7 +153,6 @@
           {#key visitForm === 'new' ? 'new' : visitForm.id}
             <VisitForm
               hiveId={id}
-              scope={hive.apiary_id}
               editing={visitForm === 'new' ? null : visitForm}
               last={latestVisit ?? null}
               onsaved={visitSaved}

@@ -39,13 +39,13 @@ describe('precacheList', () => {
 });
 
 describe('isServerPath', () => {
-  it('matches the API, auth, workspace, file and health endpoints', () => {
+  it('matches the API, auth, workspace, photo and health endpoints', () => {
     for (const p of [
       '/openbeehive.v1.SyncService/Pull',
       '/auth/instance',
       '/auth/callback',
       '/tenants/invite',
-      '/files/abc.jpg',
+      '/photos/0b7c6d5e-1111-4222-8333-444455556666',
       '/healthz'
     ]) {
       expect(isServerPath(p), p).toBe(true);
@@ -53,7 +53,15 @@ describe('isServerPath', () => {
   });
 
   it('leaves app routes and assets to the worker', () => {
-    for (const p of ['/', '/login', '/hives/123', '/h/abc', '/authors', '/_app/immutable/x.js']) {
+    for (const p of [
+      '/',
+      '/login',
+      '/hives/123',
+      '/h/abc',
+      '/authors',
+      '/photos',
+      '/_app/immutable/x.js'
+    ]) {
       expect(isServerPath(p), p).toBe(false);
     }
   });

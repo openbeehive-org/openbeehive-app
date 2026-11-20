@@ -70,13 +70,7 @@
     {#if editing}
       <div class="form-anchor" bind:this={formEl}>
         {#key editing.id}
-          <VisitForm
-            hiveId={id}
-            scope={hive.apiary_id}
-            {editing}
-            onsaved={saved}
-            oncancel={() => (editing = null)}
-          />
+          <VisitForm hiveId={id} {editing} onsaved={saved} oncancel={() => (editing = null)} />
         {/key}
       </div>
     {/if}

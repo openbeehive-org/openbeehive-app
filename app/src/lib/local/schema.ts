@@ -2,8 +2,8 @@
 // SQLite-WASM store (db.ts) and the node-side test database.
 import type { LocalDB } from './db';
 
-// Local mirror schema. field_hlc = field clock (per-field LWW),
-// photo_keys holds OR-Set JSON. outbox = changes not yet pushed.
+// Local mirror schema. field_hlc = field clock (per-field LWW).
+// outbox = changes not yet pushed.
 export async function migrateLocal(db: LocalDB) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS apiary (
@@ -60,6 +60,15 @@ export async function migrateLocal(db: LocalDB) {
     CREATE INDEX IF NOT EXISTS idx_event_hive ON event (hive_id, date);
     CREATE INDEX IF NOT EXISTS idx_event_apiary ON event (apiary_id, date);
 
+    -- Photos: owner_entity/owner_id name the inspection or hive they belong
+    -- to. The row carries a small thumbnail (a data URL); the full-size image
+    -- is kept outside the database (lib/photos).
+    CREATE TABLE IF NOT EXISTS photo (
+      id TEXT PRIMARY KEY, organization_id TEXT, owner_entity TEXT, owner_id TEXT,
+      content_type TEXT, size_bytes INTEGER, created_at TEXT,
+      field_hlc TEXT DEFAULT '{}', deleted INTEGER DEFAULT 0, thumb TEXT);
+    CREATE INDEX IF NOT EXISTS idx_photo_owner ON photo (owner_id, deleted);
+
     -- Outbox: local changes not yet pushed (partial field deltas).
     CREATE TABLE IF NOT EXISTS outbox (
       id TEXT PRIMARY KEY, entity TEXT, entity_id TEXT, scope_id TEXT,
@@ -95,8 +104,16 @@ export async function migrateLocal(db: LocalDB) {
   await ensureColumns(db, 'treatment', [['amended_at', 'TEXT']]);
   await ensureColumns(db, 'harvest', [['amended_at', 'TEXT']]);
 
+  // Up to 0.4.x photos were stored inline, as data URLs in these two columns.
+  // They are photo records now (the server converts what devices had synced),
+  // so the copies only take up space and slow down every read of the rows.
+  await db.exec(
+    `UPDATE inspection SET photo_keys = '{}' WHERE photo_keys IS NOT NULL AND photo_keys <> '{}'`
+  );
+  await db.exec(`UPDATE hive SET photo = NULL WHERE photo IS NOT NULL`);
+
   // "Last visit per hive" for the lists is answered from this index alone,
-  // without reading the inspection rows and the photos stored in them.
+  // without reading the inspection rows.
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_inspection_last ON inspection (hive_id, deleted, date, source)`
   );
