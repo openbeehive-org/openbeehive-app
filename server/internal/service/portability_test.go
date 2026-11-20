@@ -4,6 +4,7 @@ package service
 // although the three store and compare text and timestamps differently.
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +69,30 @@ func TestFrozenContextComparesInstants(t *testing.T) {
 		if want := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC); !q.ReplacedAt.AsTime().Equal(want) {
 			t.Errorf("replaced_at: got %s, want %s", q.ReplacedAt.AsTime(), want)
 		}
+	}
+}
+
+// TestPushStoresLargePhoto: a hive photo of about 1 MB (inline data URL)
+// is stored and comes back through Pull byte for byte.
+func TestPushStoresLargePhoto(t *testing.T) {
+	svc := newSyncFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	photo := "data:image/jpeg;base64," + strings.Repeat("A", 1<<20)
+	payload := `{"apiary_id":"apiary-a","name":"Photo hive","photo":"` + photo +
+		`","created_at":"2026-07-11T10:00:00Z","updated_at":"2026-07-11T10:00:00Z"}`
+	if err := push(svc, ctx, change("hive", "hive-photo", "apiary-a", payload)); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	var stored string
+	if err := svc.db.Get(&stored, `SELECT photo FROM hive WHERE id = 'hive-photo'`); err != nil || stored != photo {
+		t.Fatalf("stored photo: %d bytes, err %v; want %d bytes", len(stored), err, len(photo))
+	}
+	res, err := svc.Pull(ctx, &wv1.PullRequest{})
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if len(res.Changes) != 1 || !strings.Contains(res.Changes[0].PayloadJson, `"photo":"`+photo+`"`) {
+		t.Fatalf("pulled %d changes; the photo must come back unchanged", len(res.Changes))
 	}
 }
 
