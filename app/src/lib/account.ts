@@ -14,6 +14,7 @@ export const apiOrigin = (): string => API;
 
 const SESSION_KEYS = ['session', 'obh.userId', 'obh.orgId', 'obh.email'];
 const NOTICE_KEY = 'obh.notice';
+const RESUME_KEY = 'obh.resume';
 
 export type SessionPayload = { token?: string; user_id?: string; active_org?: string };
 
@@ -124,6 +125,47 @@ export function takeNotice(): string {
   }
 }
 
+// --- signing in again to confirm something ---
+
+/**
+ * Sends the user through sign-in and brings them back to `returnTo` (a path
+ * inside the app) afterwards. Used where an action needs a sign-in that has
+ * just happened. The current session is given up first, so the page that
+ * resumes works with the new one.
+ */
+export async function signInAgain(returnTo: string): Promise<void> {
+  try {
+    sessionStorage.setItem(RESUME_KEY, returnTo);
+  } catch {
+    // no session storage: the user finds the way back by hand
+  }
+  try {
+    await fetch(`${API}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: authHeaders()
+    });
+  } catch {
+    // offline: the sign-in page will say so
+  }
+  clearSession();
+  location.href = '/login?reauth=1';
+}
+
+/**
+ * Where to continue after the sign-in that signInAgain asked for, or ''.
+ * Reading removes it. Only paths inside the app are returned.
+ */
+export function takeResume(): string {
+  try {
+    const path = sessionStorage.getItem(RESUME_KEY) ?? '';
+    sessionStorage.removeItem(RESUME_KEY);
+    return path.startsWith('/') && !path.startsWith('//') ? path : '';
+  } catch {
+    return '';
+  }
+}
+
 // --- account ---
 
 export type WorkspaceRef = { id: string; name: string; members: number };
@@ -137,7 +179,8 @@ export type DeletionPlan = {
   blocked: WorkspaceRef[];
   /** Workspaces the account leaves; its records there stay. */
   leaves: WorkspaceRef[];
-  confirm: 'password' | 'passkey' | 'unavailable';
+  /** login: the account has neither, and confirms with a sign-in from the last five minutes. */
+  confirm: 'password' | 'passkey' | 'login';
 };
 
 export type AccountInfo = {
@@ -149,18 +192,34 @@ export type AccountInfo = {
   deletion: DeletionPlan;
 };
 
-export type DeletionState = 'instance_admin' | 'demo' | 'blocked' | 'unconfirmable' | 'ready';
+export type DeletionState = 'instance_admin' | 'demo' | 'blocked' | 'ready';
 
 /**
  * What the "Delete account" section offers. A protected account comes
  * first (nothing else matters for it), then the workspaces that have to be
- * handed over or deleted, then a missing way to confirm.
+ * handed over or deleted.
  */
 export function deletionState(plan: DeletionPlan): DeletionState {
   if (plan.protected === 'instance_admin' || plan.protected === 'demo') return plan.protected;
   if (plan.blocked.length > 0) return 'blocked';
-  if (plan.confirm === 'unavailable') return 'unconfirmable';
   return 'ready';
+}
+
+/** The hash that opens the "Delete account" dialog on the Settings page. */
+export const DELETE_ACCOUNT_HASH = '#delete-account';
+
+export type DeletionOutcome = 'deleted' | 'sign_in_again' | 'blocked' | 'error';
+
+/**
+ * What to do with the server's answer to "delete my account". An account
+ * that confirms by signing in is sent through sign-in when its session is
+ * not fresh enough; a workspace that gained a member meanwhile blocks.
+ */
+export function afterDeleteRequest(r: Result<unknown>): DeletionOutcome {
+  if (r.ok) return 'deleted';
+  if (r.code === 'login_required') return 'sign_in_again';
+  if (r.code === 'sole_owner') return 'blocked';
+  return 'error';
 }
 
 // --- passwords ---

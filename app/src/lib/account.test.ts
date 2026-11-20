@@ -2,18 +2,22 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { addMessages, init, locale, _ } from 'svelte-i18n';
 import { get } from 'svelte/store';
 import {
+  afterDeleteRequest,
   afterResetComplete,
   afterResetRequest,
   authHeaders,
   call,
   clearSession,
+  DELETE_ACCOUNT_HASH,
   deletionState,
   logoutWarning,
   newPasswordProblem,
   recoverSession,
   resetMode,
   saveSession,
+  signInAgain,
   takeNotice,
+  takeResume,
   type DeletionPlan,
   type Failure
 } from './account';
@@ -179,6 +183,49 @@ describe('recoverSession', () => {
   });
 });
 
+describe('signInAgain', () => {
+  function stubLocation() {
+    const location = { href: '/settings' };
+    vi.stubGlobal('location', location);
+    return location;
+  }
+
+  it('gives up the session, remembers the way back and opens the sign-in page', async () => {
+    saveSession({ token: 'old', user_id: 'u1', active_org: 'o1' });
+    const calls = stubFetch(json(204, {}));
+    const location = stubLocation();
+
+    await signInAgain(`/settings${DELETE_ACCOUNT_HASH}`);
+
+    expect(calls[0]!.url).toBe('/auth/logout');
+    // The old token must not outrank the session of the new sign-in.
+    expect(localStorage.getItem('session')).toBeNull();
+    expect(location.href).toBe('/login?reauth=1');
+    expect(takeResume()).toBe('/settings#delete-account');
+    expect(takeResume()).toBe('');
+  });
+
+  it('still leaves when the server cannot be reached', async () => {
+    saveSession({ token: 'old' });
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('offline');
+    });
+    const location = stubLocation();
+    await signInAgain('/settings');
+    expect(localStorage.getItem('session')).toBeNull();
+    expect(location.href).toBe('/login?reauth=1');
+  });
+
+  it('only resumes inside the app', () => {
+    for (const target of ['https://evil.example/', '//evil.example/', 'settings']) {
+      sessionStorage.setItem('obh.resume', target);
+      expect(takeResume(), target).toBe('');
+    }
+    sessionStorage.setItem('obh.resume', '/settings#delete-account');
+    expect(takeResume()).toBe('/settings#delete-account');
+  });
+});
+
 describe('deleting the account', () => {
   const plan = (over: Partial<DeletionPlan> = {}): DeletionPlan => ({
     protected: '',
@@ -194,16 +241,27 @@ describe('deleting the account', () => {
     expect(deletionState(plan())).toBe('ready');
     expect(deletionState(plan({ deletes: [club], leaves: [club] }))).toBe('ready');
     expect(deletionState(plan({ confirm: 'passkey' }))).toBe('ready');
+    // No password and no passkey: a recent sign-in confirms.
+    expect(deletionState(plan({ confirm: 'login' }))).toBe('ready');
   });
 
   it('is blocked while the account is the only admin of a shared workspace', () => {
     expect(deletionState(plan({ blocked: [club] }))).toBe('blocked');
-    // Handing the workspace over comes before finding a way to confirm.
-    expect(deletionState(plan({ blocked: [club], confirm: 'unavailable' }))).toBe('blocked');
+    expect(deletionState(plan({ blocked: [club], confirm: 'login' }))).toBe('blocked');
   });
 
-  it('needs a password or a passkey to confirm with', () => {
-    expect(deletionState(plan({ confirm: 'unavailable' }))).toBe('unconfirmable');
+  it('sends an account that confirms by signing in through sign-in when the session is old', () => {
+    expect(afterDeleteRequest(failure('login_required', 403))).toBe('sign_in_again');
+  });
+
+  it('shows the workspace someone joined meanwhile as a blocker', () => {
+    expect(afterDeleteRequest(failure('sole_owner', 409))).toBe('blocked');
+  });
+
+  it('finishes on success and reports everything else', () => {
+    expect(afterDeleteRequest({ ok: true, body: {} })).toBe('deleted');
+    expect(afterDeleteRequest(failure('wrong_password', 403))).toBe('error');
+    expect(afterDeleteRequest(failure('network', 0))).toBe('error');
   });
 
   it('is never offered for the instance admin and the demo account', () => {

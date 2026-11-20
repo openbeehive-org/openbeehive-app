@@ -122,11 +122,13 @@
     "delete_blocked": "Noch nicht möglich: Du bist der einzige Admin eines Arbeitsbereichs mit weiteren Mitgliedern. Mach dort zuerst jemand anderen zum Admin (unter Mitglieder) oder lösche den Arbeitsbereich.",
     "delete_blocked_item": "„{name}“: {n, plural, one {# weiteres Mitglied} other {# weitere Mitglieder}}",
     "delete_protected_admin": "Das ist das Konto des Instanz-Administrators aus der Serverkonfiguration (BEEHIVE_ADMIN_EMAIL). Es lässt sich in der App nicht löschen.",
-    "delete_unconfirmable": "Dieses Konto hat weder ein Passwort noch einen Passkey zum Bestätigen. Füge oben einen Passkey hinzu oder lege über „Passwort vergessen?“ auf der Anmeldeseite ein Passwort fest und komm dann zurück.",
     "delete_start": "Mein Konto löschen …",
     "delete_password": "Dein Passwort zur Bestätigung",
     "delete_passkey": "Du wirst gebeten, mit einem deiner Passkeys zu bestätigen.",
-    "delete_confirm": "Mein Konto endgültig löschen"
+    "delete_confirm": "Mein Konto endgültig löschen",
+    "delete_login": "Dieses Konto meldet sich ohne Passwort an. Zur Bestätigung darf deine Anmeldung höchstens 5 Minuten alt sein; ist sie älter, wirst du gebeten, dich noch einmal anzumelden.",
+    "delete_login_required": "Deine Anmeldung ist älter als 5 Minuten. Melde dich noch einmal an; du kommst hierher zurück und kannst dein Konto dann löschen.",
+    "delete_sign_in_again": "Noch einmal anmelden"
   },
   "auth": {
     "entering": "Openbeehive wird geöffnet…",
@@ -181,7 +183,8 @@
     "err_provider_expired": "Die Anmeldung hat zu lange gedauert oder wurde unterbrochen. Bitte starte sie noch einmal.",
     "err_provider_failed": "Der Anmeldedienst hat deine Identität nicht bestätigt. Bitte versuche es noch einmal.",
     "err_provider_no_email": "Der Anmeldedienst hat keine E-Mail-Adresse übermittelt. Erlaube den Zugriff auf deine E-Mail-Adresse und versuche es noch einmal.",
-    "err_account_exists": "Zu dieser E-Mail-Adresse gibt es bereits ein Konto. Melde dich so an wie bisher, zum Beispiel mit E-Mail und Passwort."
+    "err_account_exists": "Zu dieser E-Mail-Adresse gibt es bereits ein Konto. Melde dich so an wie bisher, zum Beispiel mit E-Mail und Passwort.",
+    "reauth_notice": "Melde dich zur Bestätigung noch einmal an. Danach geht es dort weiter, wo du warst."
   },
   "demo": {
     "banner": "Du erkundest die Openbeehive-Demo – die Daten werden stündlich zurückgesetzt."

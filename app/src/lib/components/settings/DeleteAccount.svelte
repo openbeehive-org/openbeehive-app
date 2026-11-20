@@ -2,14 +2,19 @@
   // Deleting the signed-in account: says exactly what goes and what stays,
   // names the workspaces that stand in the way, and asks for the password
   // (or a passkey, for accounts without one) before doing it.
+  import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
   import {
+    afterDeleteRequest,
     apiOrigin,
     authHeaders,
     call,
     clearSession,
+    DELETE_ACCOUNT_HASH,
     deletionState,
-    type AccountInfo
+    signInAgain,
+    type AccountInfo,
+    type WorkspaceRef
   } from '#lib/account.js';
   import { removeDeviceData } from '#lib/device-data.js';
   import { isPasskeyCancelled, passkeyReauth } from '#lib/webauthn.js';
@@ -17,13 +22,28 @@
 
   let { account, orgId }: { account: AccountInfo; orgId: string } = $props();
 
-  const plan = $derived(account.deletion);
+  // Workspaces that turned out to block the deletion when it was attempted
+  // (someone joined since the page loaded).
+  let joined = $state<WorkspaceRef[]>([]);
+  const plan = $derived(
+    joined.length ? { ...account.deletion, blocked: joined } : account.deletion
+  );
   const status = $derived(deletionState(plan));
 
   let open = $state(false);
   let password = $state('');
   let busy = $state(false);
   let errorKey = $state('');
+  // The server wants a sign-in from the last five minutes first.
+  let needsSignIn = $state(false);
+  let section = $state<HTMLElement>();
+
+  // Back from the sign-in this dialog asked for: open it again.
+  onMount(() => {
+    if (location.hash !== DELETE_ACCOUNT_HASH) return;
+    open = true;
+    section?.scrollIntoView();
+  });
 
   const names = (list: { name: string }[]) => list.map((w) => `“${w.name}”`).join(', ');
 
@@ -43,9 +63,18 @@
           return;
         }
       }
-      const r = await call('/auth/account/delete', { password, reauth });
+      const r = await call<{ workspaces?: WorkspaceRef[] }>('/auth/account/delete', {
+        password,
+        reauth
+      });
+      const outcome = afterDeleteRequest(r);
+      if (outcome === 'sign_in_again') {
+        needsSignIn = true;
+        return;
+      }
       if (!r.ok) {
-        errorKey = r.errorKey;
+        if (outcome === 'blocked') joined = (r.body.workspaces as WorkspaceRef[]) ?? [];
+        else errorKey = r.errorKey;
         return;
       }
       // The account is gone; do not leave its records on the device either.
@@ -58,7 +87,7 @@
   }
 </script>
 
-<section class="st-card">
+<section class="st-card" id="delete-account" bind:this={section}>
   <div class="st-danger-zone flush">
     <h2 class="st-sub">{$_('account.delete_title')}</h2>
 
@@ -87,8 +116,20 @@
             </li>
           {/each}
         </ul>
-      {:else if status === 'unconfirmable'}
-        <p class="st-warn" role="status">{$_('account.delete_unconfirmable')}</p>
+      {:else if needsSignIn}
+        <p class="st-warn" role="alert">{$_('account.delete_login_required')}</p>
+        <div class="st-row">
+          <button
+            type="button"
+            class="st-btn primary"
+            onclick={() => signInAgain(`/settings${DELETE_ACCOUNT_HASH}`)}
+          >
+            {$_('account.delete_sign_in_again')}
+          </button>
+          <button type="button" class="st-btn" onclick={() => (needsSignIn = false)}>
+            {$_('common.cancel')}
+          </button>
+        </div>
       {:else if !open}
         <button type="button" class="st-btn danger" onclick={() => (open = true)}>
           {$_('account.delete_start')}
@@ -105,8 +146,10 @@
                 required
               />
             </label>
-          {:else}
+          {:else if plan.confirm === 'passkey'}
             <p class="st-help">{$_('account.delete_passkey')}</p>
+          {:else}
+            <p class="st-help">{$_('account.delete_login')}</p>
           {/if}
           <div class="st-row">
             <button type="submit" class="st-btn danger-solid" disabled={busy}>

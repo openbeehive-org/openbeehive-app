@@ -122,11 +122,13 @@
     "delete_blocked": "Todavía no es posible: eres el único admin de un espacio que tiene otros miembros. Primero nombra allí admin a otra persona (en Miembros) o elimina el espacio.",
     "delete_blocked_item": "«{name}»: {n, plural, one {# miembro más} other {# miembros más}}",
     "delete_protected_admin": "Esta es la cuenta del administrador de la instancia, definida en la configuración del servidor (BEEHIVE_ADMIN_EMAIL). No se puede eliminar en la aplicación.",
-    "delete_unconfirmable": "Esta cuenta no tiene contraseña ni passkey con que confirmar. Añade una passkey arriba o crea una contraseña con «¿Olvidaste tu contraseña?» en la página de inicio de sesión y vuelve después.",
     "delete_start": "Eliminar mi cuenta…",
     "delete_password": "Tu contraseña, para confirmar",
     "delete_passkey": "Se te pedirá que confirmes con una de tus passkeys.",
-    "delete_confirm": "Eliminar mi cuenta definitivamente"
+    "delete_confirm": "Eliminar mi cuenta definitivamente",
+    "delete_login": "Esta cuenta inicia sesión sin contraseña. Para confirmar, tu inicio de sesión debe tener menos de 5 minutos; si es más antiguo, se te pedirá que vuelvas a iniciar sesión.",
+    "delete_login_required": "Tu inicio de sesión tiene más de 5 minutos. Vuelve a iniciar sesión; regresarás aquí y entonces podrás eliminar tu cuenta.",
+    "delete_sign_in_again": "Volver a iniciar sesión"
   },
   "auth": {
     "entering": "Abriendo Openbeehive…",
@@ -181,7 +183,8 @@
     "err_provider_expired": "El inicio de sesión tardó demasiado o se interrumpió. Empieza de nuevo.",
     "err_provider_failed": "El proveedor de inicio de sesión no confirmó tu identidad. Inténtalo de nuevo.",
     "err_provider_no_email": "El proveedor de inicio de sesión no compartió ningún correo electrónico. Permite el acceso a tu correo e inténtalo de nuevo.",
-    "err_account_exists": "Ya existe una cuenta con este correo electrónico. Inicia sesión como antes, por ejemplo con tu correo y contraseña."
+    "err_account_exists": "Ya existe una cuenta con este correo electrónico. Inicia sesión como antes, por ejemplo con tu correo y contraseña.",
+    "reauth_notice": "Vuelve a iniciar sesión para confirmar. Después volverás a donde estabas."
   },
   "demo": {
     "banner": "Estás explorando la demo de Openbeehive: los datos se reinician cada hora."

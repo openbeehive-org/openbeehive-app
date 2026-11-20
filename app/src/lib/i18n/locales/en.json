@@ -122,11 +122,13 @@
     "delete_blocked": "Not possible yet: you are the only admin of a workspace that has other members. Make someone else an admin there (under Members) or delete the workspace first.",
     "delete_blocked_item": "“{name}”: {n, plural, one {# other member} other {# other members}}",
     "delete_protected_admin": "This is the instance administrator account from the server configuration (BEEHIVE_ADMIN_EMAIL). It cannot be deleted in the app.",
-    "delete_unconfirmable": "This account has neither a password nor a passkey to confirm with. Add a passkey above, or set a password with “Forgot password?” on the sign-in page, then come back.",
     "delete_start": "Delete my account…",
     "delete_password": "Your password, to confirm",
     "delete_passkey": "You will be asked to confirm with one of your passkeys.",
-    "delete_confirm": "Delete my account permanently"
+    "delete_confirm": "Delete my account permanently",
+    "delete_login": "This account signs in without a password. To confirm, your sign-in must be less than 5 minutes old; if it is older, you will be asked to sign in again.",
+    "delete_login_required": "Your sign-in is more than 5 minutes old. Sign in again; you will come back here and can then delete your account.",
+    "delete_sign_in_again": "Sign in again"
   },
   "auth": {
     "entering": "Entering Openbeehive…",
@@ -181,7 +183,8 @@
     "err_provider_expired": "The sign-in took too long or was interrupted. Please start again.",
     "err_provider_failed": "The sign-in provider did not confirm your identity. Please try again.",
     "err_provider_no_email": "The sign-in provider did not share an email address. Allow access to your email address and try again.",
-    "err_account_exists": "An account with this email address already exists. Sign in the way you did before, for example with your email and password."
+    "err_account_exists": "An account with this email address already exists. Sign in the way you did before, for example with your email and password.",
+    "reauth_notice": "Sign in again to confirm. You will then return to where you were."
   },
   "demo": {
     "banner": "You're exploring the Openbeehive demo — data resets every hour."

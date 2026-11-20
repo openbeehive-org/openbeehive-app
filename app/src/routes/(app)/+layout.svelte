@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { startSync, syncStatus } from '#lib/local/sync.js';
-  import { recoverSession, takeNotice } from '#lib/account.js';
+  import { recoverSession, takeNotice, takeResume } from '#lib/account.js';
   import NavIcon from '#lib/components/NavIcon.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
   import SyncChip from '#lib/components/sync/SyncChip.svelte';
@@ -102,6 +102,9 @@
       sessionStorage.removeItem('obh.demoTried');
       const notice = takeNotice();
       if (notice) toast(get(_)(notice));
+      // A dialog asked for a fresh sign-in; take the user back to it.
+      const resume = takeResume();
+      if (resume) void goto(resume);
 
       if (me) {
         // Signed in: mirror the server identity into the local store keys.

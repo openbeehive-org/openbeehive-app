@@ -122,11 +122,13 @@
     "delete_blocked": "Non è ancora possibile: sei l’unico admin di uno spazio che ha altri membri. Nomina prima lì un altro admin (in Membri) oppure elimina lo spazio.",
     "delete_blocked_item": "«{name}»: {n, plural, one {# altro membro} other {# altri membri}}",
     "delete_protected_admin": "Questo è l’account dell’amministratore dell’istanza, definito nella configurazione del server (BEEHIVE_ADMIN_EMAIL). Non può essere eliminato nell’app.",
-    "delete_unconfirmable": "Questo account non ha né una password né una passkey con cui confermare. Aggiungi una passkey qui sopra oppure imposta una password con «Password dimenticata?» nella pagina di accesso, poi torna qui.",
     "delete_start": "Elimina il mio account…",
     "delete_password": "La tua password, per confermare",
     "delete_passkey": "Ti verrà chiesto di confermare con una delle tue passkey.",
-    "delete_confirm": "Elimina definitivamente il mio account"
+    "delete_confirm": "Elimina definitivamente il mio account",
+    "delete_login": "Questo account accede senza password. Per confermare, il tuo accesso deve risalire a meno di 5 minuti fa; se è più vecchio, ti verrà chiesto di accedere di nuovo.",
+    "delete_login_required": "Il tuo accesso risale a più di 5 minuti fa. Accedi di nuovo; tornerai qui e potrai eliminare il tuo account.",
+    "delete_sign_in_again": "Accedi di nuovo"
   },
   "auth": {
     "entering": "Apertura di Openbeehive…",
@@ -181,7 +183,8 @@
     "err_provider_expired": "L’accesso ha richiesto troppo tempo o è stato interrotto. Riprova dall’inizio.",
     "err_provider_failed": "Il provider di accesso non ha confermato la tua identità. Riprova.",
     "err_provider_no_email": "Il provider di accesso non ha condiviso un indirizzo e-mail. Consenti l’accesso al tuo indirizzo e-mail e riprova.",
-    "err_account_exists": "Esiste già un account con questo indirizzo e-mail. Accedi come prima, ad esempio con e-mail e password."
+    "err_account_exists": "Esiste già un account con questo indirizzo e-mail. Accedi come prima, ad esempio con e-mail e password.",
+    "reauth_notice": "Accedi di nuovo per confermare. Poi tornerai dove eri."
   },
   "demo": {
     "banner": "Stai esplorando la demo di Openbeehive: i dati si reimpostano ogni ora."

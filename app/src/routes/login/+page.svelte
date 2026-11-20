@@ -52,6 +52,8 @@
         ? 'account.deleted'
         : ''
   );
+  // Sent here to confirm something with a fresh sign-in (see signInAgain).
+  const reauth = $derived(page.url.searchParams.get('reauth') === '1');
   let forgot = $state<ResetMode>('off');
   // Invite links land here as /login?invite=<token> (see server tenant.go).
   const inviteToken = $derived(page.url.searchParams.get('invite') ?? '');
@@ -229,7 +231,9 @@
       </h1>
       <p class="muted">{$_('app.tagline')}</p>
 
-      {#if inviteToken}
+      {#if reauth}
+        <p class="notice" role="status">{$_('auth.reauth_notice')}</p>
+      {:else if inviteToken}
         <p class="notice"><Mail size={16} aria-hidden="true" /> {$_('auth.invited_banner')}</p>
       {:else if !registration}
         <p class="notice">{$_('auth.invite_only_banner')}</p>

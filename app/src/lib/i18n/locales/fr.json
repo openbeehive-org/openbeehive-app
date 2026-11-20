@@ -122,11 +122,13 @@
     "delete_blocked": "Pas encore possible : vous êtes le seul admin d’un espace qui a d’autres membres. Nommez-y d’abord un autre admin (sous Membres) ou supprimez l’espace.",
     "delete_blocked_item": "« {name} » : {n, plural, one {# autre membre} other {# autres membres}}",
     "delete_protected_admin": "C’est le compte de l’administrateur de l’instance, défini dans la configuration du serveur (BEEHIVE_ADMIN_EMAIL). Il ne peut pas être supprimé dans l’application.",
-    "delete_unconfirmable": "Ce compte n’a ni mot de passe ni passkey pour confirmer. Ajoutez une passkey ci-dessus ou définissez un mot de passe avec « Mot de passe oublié ? » sur la page de connexion, puis revenez.",
     "delete_start": "Supprimer mon compte…",
     "delete_password": "Votre mot de passe, pour confirmer",
     "delete_passkey": "Vous devrez confirmer avec l’une de vos passkeys.",
-    "delete_confirm": "Supprimer définitivement mon compte"
+    "delete_confirm": "Supprimer définitivement mon compte",
+    "delete_login": "Ce compte se connecte sans mot de passe. Pour confirmer, votre connexion doit dater de moins de 5 minutes ; sinon, il vous sera demandé de vous reconnecter.",
+    "delete_login_required": "Votre connexion date de plus de 5 minutes. Reconnectez-vous ; vous reviendrez ici et pourrez alors supprimer votre compte.",
+    "delete_sign_in_again": "Se reconnecter"
   },
   "auth": {
     "entering": "Ouverture d'Openbeehive…",
@@ -181,7 +183,8 @@
     "err_provider_expired": "La connexion a pris trop de temps ou a été interrompue. Veuillez recommencer.",
     "err_provider_failed": "Le fournisseur de connexion n’a pas confirmé votre identité. Veuillez réessayer.",
     "err_provider_no_email": "Le fournisseur de connexion n’a pas transmis d’adresse e-mail. Autorisez l’accès à votre adresse e-mail et réessayez.",
-    "err_account_exists": "Un compte existe déjà avec cette adresse e-mail. Connectez-vous comme auparavant, par exemple avec votre e-mail et votre mot de passe."
+    "err_account_exists": "Un compte existe déjà avec cette adresse e-mail. Connectez-vous comme auparavant, par exemple avec votre e-mail et votre mot de passe.",
+    "reauth_notice": "Reconnectez-vous pour confirmer. Vous reviendrez ensuite là où vous étiez."
   },
   "demo": {
     "banner": "Vous explorez la démo d'Openbeehive — les données sont réinitialisées chaque heure."
