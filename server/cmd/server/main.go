@@ -203,6 +203,8 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 		// local identity so the offline-first app works without login.
 		mux.Handle(service.PhotoPathPrefix, photos.Handler(
 			func(*http.Request) (auth.Identity, int) { return auth.LocalUser, 0 }, rt.SameSite))
+		mux.Handle(service.ExportPath, service.NewExporter(store.DB(), blobs).Handler(
+			func(*http.Request) (auth.Identity, int) { return auth.LocalUser, 0 }, rt.SameSite))
 		return []connect.ServerInterceptor{auth.DevInterceptor()}
 	}
 
@@ -261,6 +263,9 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 	// Full-size photos: the same credentials as the RPCs, and the router's
 	// cross-site rule for uploads.
 	mux.Handle(service.PhotoPathPrefix, photos.Handler(
+		func(r *http.Request) (auth.Identity, int) { return auth.RequestIdentity(r, keys) }, rt.SameSite))
+	// Download of the active workspace, same credentials, cross-site refused.
+	mux.Handle(service.ExportPath, service.NewExporter(store.DB(), blobs).Handler(
 		func(r *http.Request) (auth.Identity, int) { return auth.RequestIdentity(r, keys) }, rt.SameSite))
 	// Demo sessions and read-scoped API keys are read-only: reject mutating
 	// RPCs server-side.
