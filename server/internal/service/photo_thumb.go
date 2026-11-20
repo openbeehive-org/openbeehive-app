@@ -8,8 +8,8 @@ import (
 	"image/draw"
 	"image/jpeg"
 	_ "image/png" // PNG input
-	// WebP has no decoder in the standard library: such an image is stored
-	// as it is and gets no server-made thumbnail.
+
+	_ "golang.org/x/image/webp" // WebP input (lossy, lossless and with alpha)
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 )
 
 // makeThumb returns a small JPEG data URL of the image, or "" when the
-// image cannot be decoded here (WebP, damaged or oversized input). Devices
+// image cannot be decoded here (damaged or oversized input). Devices
 // make their own thumbnails; this is for images that reach the server
 // without one: inline photos of 0.4.x apps and photos added through the API.
 func makeThumb(data []byte) string {

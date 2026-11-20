@@ -83,6 +83,15 @@ func webpBytes() []byte {
 	return append([]byte("RIFF\x1a\x00\x00\x00WEBPVP8 "), bytes.Repeat([]byte{0}, 32)...)
 }
 
+func readTestdata(t testing.TB, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func dataURL(contentType string, data []byte) string {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data)
 }
@@ -400,7 +409,24 @@ func TestMakeThumb(t *testing.T) {
 	if thumb := makeThumb(jpegBytes(t, 2048, 1536, 1)); len(thumb) > maxThumbBytes {
 		t.Errorf("thumb of a full-size photo has %d bytes, above the %d the server accepts", len(thumb), maxThumbBytes)
 	}
-	for name, data := range map[string][]byte{"webp": webpBytes(), "garbage": []byte("not an image"), "empty": nil} {
+	// WebP as browsers write it: lossy, and lossless with transparency
+	// (testdata/photo-*.webp, made with cwebp).
+	lossy, alpha := readTestdata(t, "photo-lossy.webp"), readTestdata(t, "photo-alpha.webp")
+	if cfg := decode(makeThumb(lossy)); cfg.Width != 200 || cfg.Height != 100 {
+		t.Errorf("WebP thumb is %dx%d, want 200x100", cfg.Width, cfg.Height)
+	}
+	webpThumb, err := jpeg.Decode(bytes.NewReader(decodeDataURL(makeThumb(alpha), maxThumbBytes)))
+	if err != nil || webpThumb.Bounds().Dx() != 100 || webpThumb.Bounds().Dy() != 200 {
+		t.Fatalf("thumb of a WebP with alpha: %v %v", webpThumb.Bounds(), err)
+	}
+	if r, g, b, _ := webpThumb.At(20, 100).RGBA(); r>>8 > 40 || g>>8 < 90 || b>>8 > 40 {
+		t.Errorf("opaque WebP pixel became %d,%d,%d, want green", r>>8, g>>8, b>>8)
+	}
+	if r, g, b, _ := webpThumb.At(80, 100).RGBA(); r>>8 < 250 || g>>8 < 250 || b>>8 < 250 {
+		t.Errorf("transparent WebP pixel became %d,%d,%d, want white", r>>8, g>>8, b>>8)
+	}
+
+	for name, data := range map[string][]byte{"truncated webp": webpBytes(), "garbage": []byte("not an image"), "empty": nil} {
 		if thumb := makeThumb(data); thumb != "" {
 			t.Errorf("%s: want no thumbnail, got %.40s", name, thumb)
 		}

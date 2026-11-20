@@ -13,6 +13,7 @@ require (
 	github.com/minio/minio-go/v7 v7.4.1
 	github.com/rs/cors v1.11.1
 	golang.org/x/crypto v0.59.0
+	golang.org/x/image v0.48.0
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.61.0

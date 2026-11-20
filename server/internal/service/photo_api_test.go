@@ -60,6 +60,17 @@ func TestInspectionPhotoRPCs(t *testing.T) {
 	if err != nil || len(res.Inspection.Photos) != 2 || res.Inspection.Photos[0].Id != p.Id || res.Inspection.Photos[1].ContentType != "image/png" {
 		t.Fatalf("add png: %v, %+v", err, res.Inspection.Photos)
 	}
+	// A WebP gets a thumbnail like any other photo.
+	webp := dataURL("image/webp", readTestdata(t, "photo-lossy.webp"))
+	res, err = f.insp.AddInspectionPhoto(ctxA, &wv1.AddInspectionPhotoRequest{InspectionId: visit, Photo: webp})
+	if err != nil || len(res.Inspection.Photos) != 3 || res.Inspection.Photos[2].ContentType != "image/webp" ||
+		!strings.HasPrefix(res.Inspection.Photos[2].Thumbnail, "data:image/jpeg;base64,") {
+		t.Fatalf("add webp: %v, %+v", err, res.Inspection.Photos)
+	}
+	rm, err := f.insp.RemoveInspectionPhoto(ctxA, &wv1.RemoveInspectionPhotoRequest{InspectionId: visit, Photo: webp})
+	if err != nil || len(rm.Inspection.Photos) != 2 {
+		t.Fatalf("remove webp: %v, %+v", err, rm.Inspection.Photos)
+	}
 	list, err := f.insp.ListInspections(ctxA, &wv1.ListInspectionsRequest{HiveId: "hive-a"})
 	if err != nil || len(list.Inspections) != 1 || len(list.Inspections[0].Photos) != 2 {
 		t.Fatalf("list: %v, %+v", err, list.Inspections)
@@ -70,7 +81,7 @@ func TestInspectionPhotoRPCs(t *testing.T) {
 	}
 
 	// Remove by the value that was added, and by id.
-	rm, err := f.insp.RemoveInspectionPhoto(ctxA, &wv1.RemoveInspectionPhotoRequest{InspectionId: visit, Photo: photo})
+	rm, err = f.insp.RemoveInspectionPhoto(ctxA, &wv1.RemoveInspectionPhotoRequest{InspectionId: visit, Photo: photo})
 	if err != nil || len(rm.Inspection.Photos) != 1 {
 		t.Fatalf("remove by value: %v, %+v", err, rm.Inspection.Photos)
 	}
