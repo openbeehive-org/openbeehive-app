@@ -67,12 +67,10 @@ func TestSnapshotReturnsTheWorkspaceAsItIs(t *testing.T) {
 	create := change("inspection", "in-1", "apiary-a",
 		`{"hive_id":"hive-a","date":"`+at+`","queen_seen":1,"eggs_seen":0,"frames":9,"weight_kg":41.5,"note":"calm","temp_hive":null,"source":2,"created_at":"`+at+`","deleted":0}`)
 	edit := change("inspection", "in-1", "apiary-a", `{"note":"very calm"}`)
-	addP1 := change("inspection", "in-1", "apiary-a", `{"photo_keys":{"add":["p1","p2"]}}`)
-	rmP1 := change("inspection", "in-1", "apiary-a", `{"photo_keys":{"remove":["p1"],"removed_tags":{"p1":["`+addP1.Hlc+`"]}}}`)
 	gone := change("harvest", "ha-gone", "apiary-a", `{"hive_id":"hive-a","apiary_id":"apiary-a","date":"2026-07-11","amount_kg":3,"deleted":0}`)
 	tomb := change("harvest", "ha-gone", "apiary-a", `{"deleted":1}`)
 	tomb.Op = wv1.ChangeOp_CHANGE_OP_DELETE
-	if err := push(svc, a, create, edit, addP1, rmP1, gone, tomb,
+	if err := push(svc, a, create, edit, gone, tomb,
 		change("task", "task-mine", "user:user-a", `{"title":"dentist","apiary_id":"","done":0,"created_at":"`+at+`","deleted":0}`),
 		change("task", "task-shared", "apiary-a", `{"title":"varroa","apiary_id":"apiary-a","hive_id":"hive-a","due_at":"","done":1,"created_at":"`+at+`","deleted":0}`),
 		change("event", "ev-mine", "user:user-a", `{"scope_id":"user:user-a","type":1,"date":"`+at+`","deleted":0}`),
@@ -113,20 +111,16 @@ func TestSnapshotReturnsTheWorkspaceAsItIs(t *testing.T) {
 	if _, has := in.fields["id"]; has {
 		t.Error("the payload repeats the id")
 	}
-	if len(in.fields) != len(entityCols["inspection"].cols)-1+1 {
+	if len(in.fields) != len(entityCols["inspection"].cols)-1 {
 		t.Errorf("inspection payload has %d keys: %v", len(in.fields), in.fields)
 	}
 	// Field clocks: each column carries the stamp of the change that wrote it.
 	if in.clock["frames"] != create.Hlc || in.clock["note"] != edit.Hlc || in.clock["deleted"] != create.Hlc {
 		t.Errorf("inspection clock: %v", in.clock)
 	}
-	// The set column is the whole OR-Set: p1 added and removed, p2 added.
-	wantSet := map[string]any{
-		"p1": map[string]any{"a": []any{addP1.Hlc}, "r": []any{addP1.Hlc}},
-		"p2": map[string]any{"a": []any{addP1.Hlc}, "r": []any{}},
-	}
-	if !reflect.DeepEqual(in.fields["photo_keys"], wantSet) {
-		t.Errorf("photo_keys = %#v", in.fields["photo_keys"])
+	// The legacy photo set is for 0.4.x apps, which never take a snapshot.
+	if _, has := in.fields["photo_keys"]; has {
+		t.Error("the snapshot carries the legacy photo set")
 	}
 
 	// Tombstones are part of the snapshot.

@@ -276,7 +276,7 @@ func TestPushAppliesSQLiteClientPayload(t *testing.T) {
 		change("inspection", "insp-1", "apiary-a",
 			`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","queen_seen":1,"eggs_seen":0,`+
 				`"covered_larva":1,"frames":9,"brood_frames":4,"honey_kg":2.5,"temp_hive":34.8,`+
-				`"note":"","created_at":"2026-07-11T10:05:00Z","deleted":0,"photo_keys":{"add":["k1"]}}`),
+				`"note":"","created_at":"2026-07-11T10:05:00Z","deleted":0,"photo_keys":{"add":["data:k1"]}}`),
 		change("treatment", "treat-1", "apiary-a",
 			`{"hive_id":"hive-a","date":"2026-08-18T09:00:00Z","product":"Formic acid 60%",`+
 				`"withdrawal_until":"","deleted":0}`),
@@ -444,7 +444,7 @@ func TestChangeLogPayloadIsNormalised(t *testing.T) {
 	if err := push(svc, ctx, change("inspection", "insp-1", "apiary-a",
 		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00.000Z","created_at":"2026-07-11T10:05:00.000Z",`+
 			`"queen_seen":true,"eggs_seen":"0","frames":"9","honey_kg":"2.5","varroa":3,"temp_hive":"",`+
-			`"photo_keys":{"add":["k1"],"remove":["k0"],"removed_tags":{},"junk":1}}`)); err != nil {
+			`"photo_keys":{"add":["data:k1"],"remove":["data:k0"],"removed_tags":{},"junk":1}}`)); err != nil {
 		t.Fatal(err)
 	}
 	del := change("inspection", "insp-1", "apiary-a", `{"anything":"ignored"}`)
@@ -452,10 +452,11 @@ func TestChangeLogPayloadIsNormalised(t *testing.T) {
 	if err := push(svc, ctx, del); err != nil {
 		t.Fatal(err)
 	}
-	got := pullAll(t, svc, ctx)
+	// A 0.4.x app is sent the photo set, which a current app is not.
+	got := pullAll(t, svc, legacyCtx("user-a", "org-a"))
 	want := `{"created_at":"2026-07-11T10:05:00.000Z","date":"2026-07-11T10:00:00.000Z","eggs_seen":0,"frames":9,` +
 		`"hive_id":"hive-a","honey_kg":2.5,"organization_id":"org-a",` +
-		`"photo_keys":{"add":["k1"],"remove":["k0"],"removed_tags":{}},"queen_seen":1,"temp_hive":null,"varroa":"3"}`
+		`"photo_keys":{"add":["data:k1"],"remove":["data:k0"],"removed_tags":{}},"queen_seen":1,"temp_hive":null,"varroa":"3"}`
 	if len(got) != 2 || got[0].PayloadJson != want {
 		t.Fatalf("normalised payload =\n%s\nwant\n%s", got[0].PayloadJson, want)
 	}
@@ -734,7 +735,7 @@ func TestConcurrentPushesToOneRowLoseNothing(t *testing.T) {
 			defer wg.Done()
 			for r := 1; r <= rounds; r++ {
 				errs <- push(svc, ctx, change("inspection", "insp-1", "apiary-a",
-					fmt.Sprintf(`{"%s":%d,"photo_keys":{"add":["p-%d-%d"]}}`, col, r, w, r)))
+					fmt.Sprintf(`{"%s":%d,"photo_keys":{"add":["data:p-%d-%d"]}}`, col, r, w, r)))
 			}
 		}()
 		go func() { // the API writing the same row
@@ -742,7 +743,7 @@ func TestConcurrentPushesToOneRowLoseNothing(t *testing.T) {
 			for r := 1; r <= rounds; r++ {
 				errs <- writer.Run(ctx, auth.Identity{UserID: "user-a", OrgID: "org-a"}, func(tw *txWriter) error {
 					return tw.upsert("inspection", "insp-1", "apiary-a",
-						map[string]any{"photo_keys": map[string]any{"add": []string{fmt.Sprintf("api-%d-%d", w, r)}}})
+						map[string]any{"photo_keys": map[string]any{"add": []string{fmt.Sprintf("data:api-%d-%d", w, r)}}})
 				})
 			}
 		}()

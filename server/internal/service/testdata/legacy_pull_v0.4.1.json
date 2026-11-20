@@ -108,7 +108,7 @@
     "entityId": "inspection-1",
     "scopeId": "apiary-a",
     "op": 1,
-    "payloadJson": "{\"brood_frames\":3,\"calmness\":3,\"covered_larva\":1,\"created_at\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"drone_frame_cut\":1,\"eggs_seen\":1,\"fed_kg\":1.5,\"frames\":3,\"frames_added\":3,\"frames_removed\":3,\"hive_id\":\"hive-a\",\"honey_kg\":1.5,\"humidity_hive\":1.5,\"humidity_outside\":1.5,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo_keys\":{\"add\":[\"k1\",\"k2\"]},\"queen_cells\":3,\"queen_seen\":1,\"stores\":3,\"super_added\":1,\"temp_hive\":1.5,\"temp_outside\":1.5,\"temperament\":3,\"varroa\":\"s-varroa\",\"weather\":\"s-weather\",\"weight_kg\":1.5,\"youngest_larva\":3}",
+    "payloadJson": "{\"brood_frames\":3,\"calmness\":3,\"covered_larva\":1,\"created_at\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"drone_frame_cut\":1,\"eggs_seen\":1,\"fed_kg\":1.5,\"frames\":3,\"frames_added\":3,\"frames_removed\":3,\"hive_id\":\"hive-a\",\"honey_kg\":1.5,\"humidity_hive\":1.5,\"humidity_outside\":1.5,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo_keys\":{\"add\":[\"data:k2\"]},\"queen_cells\":3,\"queen_seen\":1,\"stores\":3,\"super_added\":1,\"temp_hive\":1.5,\"temp_outside\":1.5,\"temperament\":3,\"varroa\":\"s-varroa\",\"weather\":\"s-weather\",\"weight_kg\":1.5,\"youngest_larva\":3}",
     "hlc": "001767225600015:00000:new"
   },
   {
@@ -116,7 +116,7 @@
     "entityId": "inspection-2",
     "scopeId": "apiary-a",
     "op": 1,
-    "payloadJson": "{\"brood_frames\":3,\"calmness\":3,\"covered_larva\":1,\"created_at\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"drone_frame_cut\":1,\"eggs_seen\":1,\"fed_kg\":1.5,\"frames\":3,\"frames_added\":3,\"frames_removed\":3,\"hive_id\":\"hive-a\",\"honey_kg\":1.5,\"humidity_hive\":1.5,\"humidity_outside\":1.5,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo_keys\":{\"add\":[\"k1\",\"k2\"]},\"queen_cells\":3,\"queen_seen\":1,\"stores\":3,\"super_added\":1,\"temp_hive\":1.5,\"temp_outside\":1.5,\"temperament\":3,\"varroa\":\"s-varroa\",\"weather\":\"s-weather\",\"weight_kg\":1.5,\"youngest_larva\":3}",
+    "payloadJson": "{\"brood_frames\":3,\"calmness\":3,\"covered_larva\":1,\"created_at\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"drone_frame_cut\":1,\"eggs_seen\":1,\"fed_kg\":1.5,\"frames\":3,\"frames_added\":3,\"frames_removed\":3,\"hive_id\":\"hive-a\",\"honey_kg\":1.5,\"humidity_hive\":1.5,\"humidity_outside\":1.5,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo_keys\":{\"add\":[\"data:k1\",\"data:k2\"]},\"queen_cells\":3,\"queen_seen\":1,\"stores\":3,\"super_added\":1,\"temp_hive\":1.5,\"temp_outside\":1.5,\"temperament\":3,\"varroa\":\"s-varroa\",\"weather\":\"s-weather\",\"weight_kg\":1.5,\"youngest_larva\":3}",
     "hlc": "001767225600016:00000:new"
   },
   {
@@ -132,7 +132,7 @@
     "entityId": "inspection-1",
     "scopeId": "apiary-a",
     "op": 1,
-    "payloadJson": "{\"photo_keys\":{\"remove\":[\"k1\"],\"removed_tags\":{\"k1\":[\"001767225600015:00000:new\"]}}}",
+    "payloadJson": "{\"photo_keys\":{\"remove\":[\"data:k1\"],\"removed_tags\":{\"data:k1\":[\"001767225600015:00000:new\"]}}}",
     "hlc": "001767225600019:00000:new"
   },
   {

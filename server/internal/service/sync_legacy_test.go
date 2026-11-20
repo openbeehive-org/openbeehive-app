@@ -84,7 +84,7 @@ func everyColumn(t *testing.T, entity, id string, n int) *wv1.Change {
 		}
 	}
 	for _, col := range spec.setCols {
-		fields[col] = map[string]any{"add": []string{"k1", "k2"}}
+		fields[col] = map[string]any{"add": []string{"data:k1", "data:k2"}}
 	}
 	payload, err := json.Marshal(fields)
 	if err != nil {
@@ -156,7 +156,7 @@ func writeLikeACurrentApp(t *testing.T, svc *SyncService, ctx context.Context) {
 		}
 		for _, col := range spec.setCols {
 			upsert(map[string]any{col: map[string]any{
-				"remove": []string{"k1"}, "removed_tags": map[string][]string{"k1": {changes[0].Hlc}},
+				"remove": []string{"data:k1"}, "removed_tags": map[string][]string{"data:k1": {changes[0].Hlc}},
 			}})
 		}
 		changes = append(changes, &wv1.Change{

@@ -73,6 +73,9 @@ func forLegacy(ch *wv1.Change) bool {
 			dropped = true
 		}
 	}
+	if ch.Entity == "inspection" && legacyPhotoKeys(fields) {
+		dropped = true
+	}
 	if len(fields) == 0 {
 		return false
 	}

@@ -186,16 +186,37 @@ func wireSetDelta(col string, v any) (wsync.SetDelta, *changeError) {
 			if len(e) > maxValueBytes {
 				return d, invalidChange("%s: element has %d bytes, limit is %d", col, len(e), maxValueBytes)
 			}
+			if cerr := checkSetElement(col, e); cerr != nil {
+				return d, cerr
+			}
 		}
 	}
-	for _, tags := range d.RemovedTags {
+	now := time.Now()
+	for elem, tags := range d.RemovedTags {
+		if cerr := checkSetElement(col, elem); cerr != nil {
+			return d, cerr
+		}
 		for _, tag := range tags {
-			if !wsync.Valid(tag) {
-				return d, invalidChange("%s: removed_tags must hold hlc stamps", col)
+			// A removed tag names an add this or another device made, and
+			// every add was checked against the same limit when it arrived.
+			if ahead, ok := wsync.AheadBy(tag, now); !ok || ahead > wsync.MaxDrift {
+				return d, invalidChange("%s: removed_tags must hold hlc stamps that are not ahead of the server clock", col)
 			}
 		}
 	}
 	return d, nil
+}
+
+// checkSetElement applies what a set column may hold. The only set column,
+// inspection.photo_keys, is the inline photo list of 0.4.x apps: data URLs
+// and nothing else. Anything else has no use, and an element named like a
+// built-in property of a JavaScript object ("constructor", "__proto__")
+// breaks the merge of apps that keep their sets in plain objects.
+func checkSetElement(col, elem string) *changeError {
+	if col == "photo_keys" && !isDataURL(elem) {
+		return invalidChange("%s: elements must be data URLs", col)
+	}
+	return nil
 }
 
 // wireScalar checks one value against its column kind and returns it in

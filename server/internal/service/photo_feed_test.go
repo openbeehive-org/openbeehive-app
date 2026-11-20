@@ -17,8 +17,8 @@ func TestInlinePhotosReachOnlyLegacyClients(t *testing.T) {
 	visit := f.newVisit(t)
 	inline, picture := inlineJPEG(t, 1), inlineJPEG(t, 2)
 	if err := push(f.sync, legacyA,
-		legacyAdd(visit, inline, "plain-key"), // an image and a set element that is none
-		legacyAdd(visit, inlineJPEG(t, 3)),    // a change that is nothing but an image
+		legacyAdd(visit, inline),
+		legacyAdd(visit, inlineJPEG(t, 3)),
 		legacyHivePhoto(picture),
 		change("hive", "hive-a", "apiary-a", `{"note":"moved","photo":"`+picture+`"}`),
 	); err != nil {
@@ -61,12 +61,15 @@ func TestInlinePhotosReachOnlyLegacyClients(t *testing.T) {
 			hiveChanges = append(hiveChanges, c.PayloadJson)
 		}
 	}
-	// What is not an image passes; a change that was only an image is not sent.
-	if !anyContains(visitChanges, "plain-key") || !anyContains(hiveChanges, `"note":"moved"`) {
+	// The rest of a change arrives; a change that was only images is not sent.
+	if !anyContains(hiveChanges, `"note":"moved"`) {
 		t.Fatalf("the rest of the changes must arrive: %v %v", visitChanges, hiveChanges)
 	}
-	if got, want := len(changesFor(current, "inspection")), len(changesFor(old, "inspection"))-1; got != want {
-		t.Fatalf("a current app was sent %d inspection changes, want %d (the image-only one left out)", got, want)
+	if anyContains(visitChanges, "photo_keys") {
+		t.Fatalf("a current app was sent the legacy photo set: %v", visitChanges)
+	}
+	if got, want := len(changesFor(current, "inspection")), len(changesFor(old, "inspection"))-2; got != want {
+		t.Fatalf("a current app was sent %d inspection changes, want %d (the image-only ones left out)", got, want)
 	}
 	if anyContains(hiveChanges, `"photo"`) {
 		t.Fatalf("hive changes for a current app still name the inline column: %v", hiveChanges)
@@ -89,15 +92,8 @@ func TestInlinePhotosReachOnlyLegacyClients(t *testing.T) {
 				t.Errorf("%s: snapshot carries inline image data in %s", key, col)
 			}
 		}
-		if set, ok := row.fields["photo_keys"].(map[string]any); ok {
-			for elem := range set {
-				if isDataURL(elem) {
-					t.Errorf("%s: snapshot carries an inline image in photo_keys", key)
-				}
-			}
-			if entity == "inspection" && strings.HasSuffix(key, visit) && set["plain-key"] == nil {
-				t.Errorf("%s: the plain set element is missing from the snapshot", key)
-			}
+		if _, ok := row.fields["photo_keys"]; ok {
+			t.Errorf("%s: snapshot carries the legacy photo set", key)
 		}
 	}
 	if photos != 3 {
@@ -116,7 +112,6 @@ func TestForCurrentLeavesOtherChangesAlone(t *testing.T) {
 		"delete":           {Entity: "hive", Op: wv1.ChangeOp_CHANGE_OP_DELETE, PayloadJson: `{"deleted":1}`},
 		"hive without":     {Entity: "hive", Op: wv1.ChangeOp_CHANGE_OP_UPSERT, PayloadJson: `{"name":"data: not a photo"}`},
 		"cleared picture":  {Entity: "hive", Op: wv1.ChangeOp_CHANGE_OP_UPSERT, PayloadJson: `{"photo":""}`},
-		"plain set change": {Entity: "inspection", Op: wv1.ChangeOp_CHANGE_OP_UPSERT, PayloadJson: `{"photo_keys":{"add":["k1"]}}`},
 		"note with a link": {Entity: "inspection", Op: wv1.ChangeOp_CHANGE_OP_UPSERT, PayloadJson: `{"note":"see \"data:x\""}`},
 		"not JSON":         {Entity: "inspection", Op: wv1.ChangeOp_CHANGE_OP_UPSERT, PayloadJson: `"data:`},
 	} {
@@ -125,7 +120,7 @@ func TestForCurrentLeavesOtherChangesAlone(t *testing.T) {
 			t.Errorf("%s: changed to %q (kept: %v)", name, ch.PayloadJson, forCurrent(ch))
 		}
 	}
-	// An image-only remove is dropped with its tags; a mixed one keeps the rest.
+	// A change of nothing but the photo set is dropped; a mixed one keeps the rest.
 	only := &wv1.Change{Entity: "inspection", Op: wv1.ChangeOp_CHANGE_OP_UPSERT,
 		PayloadJson: `{"photo_keys":{"remove":["data:image/jpeg;base64,AA"],"removed_tags":{"data:image/jpeg;base64,AA":["t"]}}}`}
 	if forCurrent(only) {
@@ -133,8 +128,7 @@ func TestForCurrentLeavesOtherChangesAlone(t *testing.T) {
 	}
 	mixed := &wv1.Change{Entity: "inspection", Op: wv1.ChangeOp_CHANGE_OP_UPSERT,
 		PayloadJson: `{"note":"n","photo_keys":{"add":["data:image/jpeg;base64,AA"],"remove":["k1"],"removed_tags":{"k1":["t"]}}}`}
-	if !forCurrent(mixed) || strings.Contains(mixed.PayloadJson, "data:") || !strings.Contains(mixed.PayloadJson, `"remove":["k1"]`) ||
-		!strings.Contains(mixed.PayloadJson, `"note":"n"`) {
+	if !forCurrent(mixed) || mixed.PayloadJson != `{"note":"n"}` {
 		t.Errorf("mixed change became %q", mixed.PayloadJson)
 	}
 }

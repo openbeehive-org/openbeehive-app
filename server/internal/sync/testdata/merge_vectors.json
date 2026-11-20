@@ -758,6 +758,98 @@
           ]
         }
       }
+    },
+    {
+      "name": "set: element names that are built-in object properties are ordinary elements",
+      "set_cols": [
+        "photo_keys"
+      ],
+      "row": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": {
+            "constructor": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            }
+          }
+        }
+      },
+      "changes": [
+        {
+          "op": "upsert",
+          "hlc": "000000000002000:00000:devB",
+          "payload": {
+            "photo_keys": {
+              "add": [
+                "__proto__",
+                "toString"
+              ]
+            }
+          }
+        },
+        {
+          "op": "upsert",
+          "hlc": "000000000003000:00000:devA",
+          "payload": {
+            "photo_keys": {
+              "remove": [
+                "toString",
+                "valueOf"
+              ],
+              "removed_tags": {
+                "toString": [
+                  "000000000002000:00000:devB"
+                ],
+                "hasOwnProperty": [
+                  "000000000001000:00000:devA"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "want": {
+        "fields": {},
+        "field_hlc": {},
+        "sets": {
+          "photo_keys": [
+            "__proto__",
+            "constructor"
+          ]
+        },
+        "tags": {
+          "photo_keys": {
+            "__proto__": {
+              "a": [
+                "000000000002000:00000:devB"
+              ],
+              "r": []
+            },
+            "constructor": {
+              "a": [
+                "000000000001000:00000:devA"
+              ],
+              "r": []
+            },
+            "toString": {
+              "a": [
+                "000000000002000:00000:devB"
+              ],
+              "r": [
+                "000000000002000:00000:devB"
+              ]
+            },
+            "valueOf": {
+              "a": [],
+              "r": []
+            }
+          }
+        }
+      }
     }
   ]
 }

@@ -41,27 +41,27 @@ func TestPushORSetRemoveCarriesObservedTags(t *testing.T) {
 
 	// A creates the inspection with photo p1 (tag = A's change HLC).
 	if err := push(svc, ctx, orsetChange("insp-1",
-		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["p1"]}}`, tagA)); err != nil {
+		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["data:p1"]}}`, tagA)); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 	// B re-adds p1 concurrently (tag unobserved by A).
 	if err := push(svc, ctx, orsetChange("insp-1",
-		`{"photo_keys":{"add":["p1"]}}`, tagB)); err != nil {
+		`{"photo_keys":{"add":["data:p1"]}}`, tagB)); err != nil {
 		t.Fatalf("concurrent add: %v", err)
 	}
 	// A removes p1, listing only its own observed tag.
 	if err := push(svc, ctx, orsetChange("insp-1",
-		`{"photo_keys":{"remove":["p1"],"removed_tags":{"p1":["`+tagA+`"]}}}`, tagC)); err != nil {
+		`{"photo_keys":{"remove":["data:p1"],"removed_tags":{"data:p1":["`+tagA+`"]}}}`, tagC)); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 
-	if got := photoSet(t, svc, "insp-1"); len(got) != 1 || got[0] != "p1" {
+	if got := photoSet(t, svc, "insp-1"); len(got) != 1 || got[0] != "data:p1" {
 		t.Fatalf("add-wins violated: B's unobserved add must survive, got %v", got)
 	}
 
 	// Once B's tag is also tombstoned, the element disappears.
 	if err := push(svc, ctx, orsetChange("insp-1",
-		`{"photo_keys":{"remove":["p1"],"removed_tags":{"p1":["`+tagB+`"]}}}`, tagD)); err != nil {
+		`{"photo_keys":{"remove":["data:p1"],"removed_tags":{"data:p1":["`+tagB+`"]}}}`, tagD)); err != nil {
 		t.Fatalf("second remove: %v", err)
 	}
 	if got := photoSet(t, svc, "insp-1"); len(got) != 0 {
@@ -77,11 +77,11 @@ func TestPushORSetLegacyRemove(t *testing.T) {
 	ctx := identityCtx("user-a", "org-a")
 
 	if err := push(svc, ctx, orsetChange("insp-2",
-		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["p1"]}}`, tagA)); err != nil {
+		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["data:p1"]}}`, tagA)); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 	if err := push(svc, ctx, orsetChange("insp-2",
-		`{"photo_keys":{"remove":["p1"]}}`, tagC)); err != nil {
+		`{"photo_keys":{"remove":["data:p1"]}}`, tagC)); err != nil {
 		t.Fatalf("legacy remove: %v", err)
 	}
 	if got := photoSet(t, svc, "insp-2"); len(got) != 0 {
@@ -97,11 +97,11 @@ func TestPushORSetEmptyRemovedTagsRemovesNothing(t *testing.T) {
 	ctx := identityCtx("user-a", "org-a")
 
 	if err := push(svc, ctx, orsetChange("insp-3",
-		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["p1","p2"]}}`, tagA)); err != nil {
+		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["data:p1","data:p2"]}}`, tagA)); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 	if err := push(svc, ctx, orsetChange("insp-3",
-		`{"photo_keys":{"remove":["p1","p2"],"removed_tags":{"p1":[]}}}`, tagC)); err != nil {
+		`{"photo_keys":{"remove":["data:p1","data:p2"],"removed_tags":{"data:p1":[]}}}`, tagC)); err != nil {
 		t.Fatalf("remove: %v", err)
 	}
 	if got := photoSet(t, svc, "insp-3"); len(got) != 2 {

@@ -289,21 +289,19 @@ func TestReplayedLegacyAddDoesNotResurrect(t *testing.T) {
 	}
 }
 
-// Set elements that are not images keep the plain OR-Set behaviour.
+// Data URLs that are not images stay in the set as they are.
 func TestNonImageElementsAreNotConverted(t *testing.T) {
 	f := newPhotoFixture(t)
 	visit := f.newVisit(t)
 	notImage := dataURL("image/jpeg", []byte("not really a jpeg"))
-	add := legacyAdd(visit, "p1", notImage)
-	if err := push(f.sync, ctxA, add, legacyRemove(visit, "p1", add.Hlc)); err != nil {
+	if err := push(f.sync, ctxA, legacyAdd(visit, notImage)); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(f.photosOf(t, visit)); n != 0 || len(f.blobKeys(t)) != 0 {
 		t.Fatalf("converted %d photos from values that are no images", n)
 	}
-	set := f.inlineSet(t, visit)
-	if e, ok := set["p1"]; !ok || len(e.R) != 1 || !visible(set, notImage) {
-		t.Fatalf("plain elements must keep their tags and tombstones: %v", set)
+	if set := f.inlineSet(t, visit); !visible(set, notImage) {
+		t.Fatalf("the value must stay in the set: %v", set)
 	}
 	// The API removes such a value the old way.
 	res, err := f.insp.RemoveInspectionPhoto(ctxA, &wv1.RemoveInspectionPhotoRequest{InspectionId: visit, Photo: notImage})
