@@ -331,6 +331,33 @@ describe('CSV import', () => {
     expect(await count('inspection')).toBe(2);
   });
 
+  it('leaves a recorded visit as it is, also with overwrite', async () => {
+    const a = await apiaries.create({ organization_id: 'org1', name: 'Orchard' });
+    await patch('hive', 'h1', a, {
+      organization_id: 'org1',
+      apiary_id: a,
+      name: 'Hive 1',
+      deleted: 0
+    });
+    const v = await inspections.add(
+      {
+        hive_id: 'h1',
+        date: '2026-05-01T08:00:00.000Z',
+        note: 'Calm',
+        varroa: '3',
+        weight_kg: 40.5
+      },
+      a
+    );
+    const plan = await planImport(await readImportFile(new Blob([CSV])), { overwrite: true });
+    expect(plan.counts.inspection).toMatchObject({ skip: 1, update: 0 });
+    await applyImport(plan);
+    expect(await row('inspection', v)).toMatchObject({
+      date: '2026-05-01T08:00:00.000Z',
+      note: 'Calm'
+    });
+  });
+
   it('records a visit again when its values differ', async () => {
     await applyImport(await planImport(await readImportFile(new Blob([CSV]))));
     const changed = CSV.replace('calm,3', 'calm,4');

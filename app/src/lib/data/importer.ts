@@ -455,8 +455,9 @@ export async function parseBeekeepingCSV(text: string): Promise<ParsedImport> {
     if (!any) continue;
     const known = (await visits(hiveId)).find((row) => sameVisit(insp, row));
     if (known) {
-      // Listed under its own id: the preview counts it as already there.
-      list('inspection', { ...insp, id: known.id });
+      // Listed under its own id and without values: the preview counts it
+      // as already there, and even "overwrite" leaves it as recorded.
+      list('inspection', { id: known.id, hive_id: known.hive_id });
       continue;
     }
     const row = { ...insp, id: crypto.randomUUID() };
