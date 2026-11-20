@@ -128,11 +128,14 @@ func dashboardHoney(ctx context.Context, q dashboardQuery, res *wv1.DashboardRes
 }
 
 // dashboardDue: days since the last visit per hive (never = -1), hives at or
-// past the threshold. Sensor readings are not visits and do not count.
+// past the threshold. Sensor readings are not visits and do not count. Lost
+// and dissolved colonies cannot be inspected any more and are left out, as
+// in the app's own list.
 func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
 	hives, err := queryMaps(ctx, q.db, `SELECT h.id, h.name, a.name AS apiary_name
 		FROM hive h LEFT JOIN apiary a ON a.id = h.apiary_id AND a.organization_id = h.organization_id
-		WHERE h.organization_id = ? AND h.deleted = FALSE ORDER BY h.name, h.id`, q.org)
+		WHERE h.organization_id = ? AND h.deleted = FALSE AND h.status NOT IN (?, ?) ORDER BY h.name, h.id`,
+		q.org, int32(wv1.HiveStatus_HIVE_STATUS_LOST), int32(wv1.HiveStatus_HIVE_STATUS_DISSOLVED))
 	if err != nil {
 		return err
 	}

@@ -460,6 +460,57 @@ func TestDashboardAndHoneyStats(t *testing.T) {
 	}
 }
 
+// The due list is for colonies that can still be visited: lost and dissolved
+// ones are left out, as on the app's dashboard, whether or not they were
+// ever inspected.
+func TestDashboardDueListSkipsLostAndDissolvedColonies(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	old := timestamppb.New(time.Now().Add(-40 * 24 * time.Hour))
+	hive := func(name string, status wv1.HiveStatus, inspected bool) string {
+		t.Helper()
+		h, err := f.hive.CreateHive(ctx, &wv1.CreateHiveRequest{ApiaryId: "apiary-a", Name: name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if inspected {
+			if _, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{HiveId: h.Hive.Id, Date: old}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if status != wv1.HiveStatus_HIVE_STATUS_ACTIVE {
+			if _, err := f.hive.UpdateHive(ctx, &wv1.UpdateHiveRequest{
+				Hive:       &wv1.Hive{Id: h.Hive.Id, Status: status},
+				UpdateMask: mask("status"),
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return h.Hive.Id
+	}
+	queenless := hive("Queenless", wv1.HiveStatus_HIVE_STATUS_QUEENLESS, true)
+	hive("Lost, visited long ago", wv1.HiveStatus_HIVE_STATUS_LOST, true)
+	hive("Lost, never visited", wv1.HiveStatus_HIVE_STATUS_LOST, false)
+	hive("Dissolved", wv1.HiveStatus_HIVE_STATUS_DISSOLVED, true)
+
+	d, err := f.stats.GetDashboard(ctx, &wv1.DashboardRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	due := map[string]bool{}
+	for _, h := range d.DueInspections {
+		due[h.HiveId] = true
+	}
+	// hive-a comes with the fixture and was never visited.
+	if len(due) != 2 || !due[queenless] || !due["hive-a"] {
+		t.Fatalf("due list: %+v", d.DueInspections)
+	}
+	// They are still hives of the workspace.
+	if d.Hives != 5 {
+		t.Fatalf("hive count: %d, want 5", d.Hives)
+	}
+}
+
 // TestAPIWritesMergeWithDeviceWrites: a device's later edit of a field wins
 // over the API's earlier value and vice versa, per field, like any two devices.
 func TestAPIWritesMergeWithDeviceWrites(t *testing.T) {
