@@ -111,7 +111,7 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListIn
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY `+tsSort(s.w.db.DriverName(), "date")+` DESC, id DESC LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY `+visitOrder(s.w.db.DriverName())+` LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)
@@ -321,4 +321,11 @@ func (t *txWriter) removeInlineElement(inspection map[string]any, scope, elem st
 		}
 	}
 	return nil
+}
+
+// visitOrder lists visits newest first. Visits recorded in the app all carry
+// noon of their day, so several on one day are told apart by when they were
+// recorded, and the id keeps the order stable beyond that.
+func visitOrder(driver string) string {
+	return tsSort(driver, "date") + ` DESC, ` + tsSort(driver, "created_at") + ` DESC, id DESC`
 }

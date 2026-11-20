@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -559,4 +560,47 @@ func TestHarvestFeedsHoneyStats(t *testing.T) {
 	}
 	_, err = f.harv.DeleteHarvest(identityCtx("user-b", "org-b"), &wv1.DeleteHarvestRequest{Id: h.Id})
 	wantCode(t, err, connect.CodeNotFound)
+}
+
+// Visits on the same day are listed newest recorded first, the same way on
+// every backend and every call, whatever their ids.
+func TestSameDayVisitsAreListedNewestRecordedFirst(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	day := timestamppb.New(time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC))
+	var ids []string
+	for i := 0; i < 2; i++ {
+		res, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{HiveId: "hive-a", Date: day})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, res.Inspection.Id)
+	}
+	// The visit with the larger id was recorded first.
+	sort.Strings(ids)
+	earlier, later := ids[1], ids[0]
+	base := time.Now().UTC().Add(-time.Hour)
+	for id, at := range map[string]time.Time{earlier: base, later: base.Add(10 * time.Minute)} {
+		// SQLite keeps timestamps as the ISO strings clients send.
+		var arg any = at
+		if f.db.DriverName() == "sqlite" {
+			arg = at.Format(time.RFC3339Nano)
+		}
+		f.db.MustExec(f.db.Rebind(`UPDATE inspection SET created_at = ? WHERE id = ?`), arg, id)
+	}
+
+	list, err := f.insp.ListInspections(ctx, &wv1.ListInspectionsRequest{HiveId: "hive-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Inspections) != 2 || list.Inspections[0].Id != later {
+		t.Fatalf("list: want %s first, got %+v", later, list.Inspections)
+	}
+	dash, err := f.stats.GetDashboard(ctx, &wv1.DashboardRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dash.RecentInspections) != 2 || dash.RecentInspections[0].Id != later {
+		t.Fatalf("dashboard: want %s first, got %+v", later, dash.RecentInspections)
+	}
 }

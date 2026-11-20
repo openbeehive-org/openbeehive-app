@@ -176,7 +176,7 @@ func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardRespo
 func dashboardRecent(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
 	recent, err := queryMaps(ctx, q.db, `SELECT * FROM inspection
 		WHERE organization_id = ? AND deleted = FALSE AND source <> ?
-		ORDER BY `+tsSort(q.db.DriverName(), "date")+` DESC, id DESC LIMIT 10`, q.org, sourceSensor)
+		ORDER BY `+visitOrder(q.db.DriverName())+` LIMIT 10`, q.org, sourceSensor)
 	if err != nil {
 		return err
 	}
