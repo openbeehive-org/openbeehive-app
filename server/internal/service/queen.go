@@ -67,7 +67,7 @@ func (s *QueenService) ListQueens(ctx context.Context, req *wv1.ListQueensReques
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+latestFirst("introduced_at")+` LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+latestFirst(s.w.db.DriverName(), "introduced_at")+` LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)

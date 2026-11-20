@@ -40,7 +40,9 @@ const visibleTasks = ` AND (COALESCE(apiary_id, '') <> '' OR id IN
 
 // tasksInOrder: open tasks first, then by due date with undated tasks last.
 // The dialects disagree on where NULL sorts, so the order spells it out.
-const tasksInOrder = ` ORDER BY done ASC, CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at ASC, id ASC`
+func tasksInOrder(driver string) string {
+	return ` ORDER BY done ASC, CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, ` + tsSort(driver, "due_at") + ` ASC, id ASC`
+}
 
 func (s *TaskService) CreateTask(ctx context.Context, req *wv1.CreateTaskRequest) (*wv1.CreateTaskResponse, error) {
 	id, ok := auth.FromContext(ctx)
@@ -90,7 +92,7 @@ func (s *TaskService) ListTasks(ctx context.Context, req *wv1.ListTasksRequest) 
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+tasksInOrder+` LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+tasksInOrder(s.w.db.DriverName())+` LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)

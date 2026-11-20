@@ -32,7 +32,16 @@ func (s *EventService) ListEvents(ctx context.Context, req *wv1.ListEventsReques
 			args = append(args, v)
 		}
 	}
-	rows, err := queryMaps(ctx, s.w.db, q+` ORDER BY date DESC LIMIT ?`, append(args, limit)...)
+	driver := s.w.db.DriverName()
+	order := ` ORDER BY ` + tsSort(driver, "date") + ` DESC`
+	if driver == "sqlite" {
+		// One operation can write several events with the same timestamp (a
+		// queen replaced and her successor introduced). SQLite returns such
+		// ties in no particular order once the sort key is an expression;
+		// rowid keeps them in the order they were written, latest first.
+		order += `, rowid DESC`
+	}
+	rows, err := queryMaps(ctx, s.w.db, q+order+` LIMIT ?`, append(args, limit)...)
 	if err != nil {
 		return nil, writeErr(err)
 	}

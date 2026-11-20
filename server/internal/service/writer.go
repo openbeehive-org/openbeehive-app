@@ -203,8 +203,8 @@ func (t *txWriter) tsArg(iso string) any {
 // Two devices that moved or requeened a hive while offline leave two open
 // placements or two active queens; every reader must then agree on which one
 // counts instead of trusting "end_at IS NULL" or the active flag to be unique.
-func latestFirst(col string) string {
-	return " ORDER BY CASE WHEN " + col + " IS NULL THEN 1 ELSE 0 END, " + col + " DESC, id DESC"
+func latestFirst(driver, col string) string {
+	return " ORDER BY CASE WHEN " + col + " IS NULL THEN 1 ELSE 0 END, " + tsSort(driver, col) + " DESC, id DESC"
 }
 
 // tsCmp renders "col op ?" for a timestamp column, to be bound with tsArg.
@@ -225,7 +225,7 @@ func (t *txWriter) tsCmp(col, op string) string {
 func (t *txWriter) resolveContext(hiveID, date string) (apiaryID, queenID string, err error) {
 	rows, err := queryMaps(t.ctx, t.tx, `SELECT apiary_id FROM placement
 		WHERE hive_id = ? AND organization_id = ? AND deleted = FALSE AND `+t.tsCmp("start_at", "<=")+`
-		  AND (end_at IS NULL OR `+t.tsCmp("end_at", ">")+`)`+latestFirst("start_at")+` LIMIT 1`,
+		  AND (end_at IS NULL OR `+t.tsCmp("end_at", ">")+`)`+latestFirst(t.tx.DriverName(), "start_at")+` LIMIT 1`,
 		hiveID, t.id.OrgID, t.tsArg(date), t.tsArg(date))
 	if err != nil {
 		return "", "", err
@@ -243,7 +243,7 @@ func (t *txWriter) resolveContext(hiveID, date string) (apiaryID, queenID string
 
 	rows, err = queryMaps(t.ctx, t.tx, `SELECT id FROM queen
 		WHERE hive_id = ? AND organization_id = ? AND deleted = FALSE AND `+t.tsCmp("introduced_at", "<=")+`
-		  AND (replaced_at IS NULL OR `+t.tsCmp("replaced_at", ">")+`)`+latestFirst("introduced_at")+` LIMIT 1`,
+		  AND (replaced_at IS NULL OR `+t.tsCmp("replaced_at", ">")+`)`+latestFirst(t.tx.DriverName(), "introduced_at")+` LIMIT 1`,
 		hiveID, t.id.OrgID, t.tsArg(date), t.tsArg(date))
 	if err != nil {
 		return "", "", err
@@ -266,7 +266,7 @@ func (t *txWriter) resolveContext(hiveID, date string) (apiaryID, queenID string
 func (t *txWriter) activeQueens(hiveID string) ([]string, error) {
 	rows, err := queryMaps(t.ctx, t.tx, `SELECT id FROM queen
 		WHERE hive_id = ? AND organization_id = ? AND active = TRUE AND deleted = FALSE`+
-		latestFirst("introduced_at"), hiveID, t.id.OrgID)
+		latestFirst(t.tx.DriverName(), "introduced_at"), hiveID, t.id.OrgID)
 	if err != nil {
 		return nil, err
 	}

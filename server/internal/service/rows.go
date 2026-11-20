@@ -22,6 +22,28 @@ import (
 type queryer interface {
 	QueryxContext(ctx context.Context, query string, args ...any) (*sqlx.Rows, error)
 	Rebind(string) string
+	DriverName() string
+}
+
+// tsSort renders a timestamp column as a sort key for ORDER BY. SQLite keeps
+// timestamps as the strings the clients sent, and those come with and
+// without milliseconds, with a zone offset or as a bare date, so the strings
+// do not sort by time; julianday turns each into its instant. Postgres and
+// MySQL store instants and sort the column itself.
+func tsSort(driver, col string) string {
+	if driver == "sqlite" {
+		return "julianday(" + col + ")"
+	}
+	return col
+}
+
+// tsMax renders the latest value of a timestamp column, in a form rtime
+// reads on every backend (see tsSort for why SQLite needs its own).
+func tsMax(driver, col string) string {
+	if driver == "sqlite" {
+		return "strftime('%Y-%m-%dT%H:%M:%fZ', MAX(julianday(" + col + ")))"
+	}
+	return "MAX(" + col + ")"
 }
 
 func queryMaps(ctx context.Context, q queryer, query string, args ...any) ([]map[string]any, error) {

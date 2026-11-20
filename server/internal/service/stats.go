@@ -70,7 +70,7 @@ func dashboardCounts(ctx context.Context, q dashboardQuery, res *wv1.DashboardRe
 // tasks this member may see.
 func dashboardTasks(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
 	tasks, err := queryMaps(ctx, q.db, `SELECT * FROM task
-		WHERE organization_id = ? AND deleted = FALSE AND done = FALSE`+visibleTasks+tasksInOrder,
+		WHERE organization_id = ? AND deleted = FALSE AND done = FALSE`+visibleTasks+tasksInOrder(q.db.DriverName()),
 		q.org, personalScope(q.user))
 	if err != nil {
 		return err
@@ -136,7 +136,7 @@ func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardRespo
 	if err != nil {
 		return err
 	}
-	last, err := queryMaps(ctx, q.db, `SELECT hive_id, MAX(date) AS last_date FROM inspection
+	last, err := queryMaps(ctx, q.db, `SELECT hive_id, `+tsMax(q.db.DriverName(), "date")+` AS last_date FROM inspection
 		WHERE organization_id = ? AND deleted = FALSE AND source <> ? GROUP BY hive_id`, q.org, sourceSensor)
 	if err != nil {
 		return err
@@ -173,7 +173,7 @@ func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardRespo
 func dashboardRecent(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
 	recent, err := queryMaps(ctx, q.db, `SELECT * FROM inspection
 		WHERE organization_id = ? AND deleted = FALSE AND source <> ?
-		ORDER BY date DESC, id DESC LIMIT 10`, q.org, sourceSensor)
+		ORDER BY `+tsSort(q.db.DriverName(), "date")+` DESC, id DESC LIMIT 10`, q.org, sourceSensor)
 	if err != nil {
 		return err
 	}

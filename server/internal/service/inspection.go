@@ -98,7 +98,7 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListIn
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY `+tsSort(s.w.db.DriverName(), "date")+` DESC, id DESC LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)
