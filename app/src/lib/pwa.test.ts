@@ -39,13 +39,14 @@ describe('precacheList', () => {
 });
 
 describe('isServerPath', () => {
-  it('matches the API, auth, workspace, photo and health endpoints', () => {
+  it('matches the API, auth, workspace, photo, export and health endpoints', () => {
     for (const p of [
       '/openbeehive.v1.SyncService/Pull',
       '/auth/instance',
       '/auth/callback',
       '/tenants/invite',
       '/photos/0b7c6d5e-1111-4222-8333-444455556666',
+      '/export',
       '/healthz'
     ]) {
       expect(isServerPath(p), p).toBe(true);
