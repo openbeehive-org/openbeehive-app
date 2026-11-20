@@ -20,10 +20,13 @@ const (
 var mysqlDataErrors = map[uint16]bool{
 	1048: true, // column cannot be null
 	1062: true, // duplicate key
+	1138: true, // invalid use of NULL
 	1264: true, // out of range
 	1265: true, // data truncated
 	1292: true, // incorrect value (e.g. a date)
+	1364: true, // NOT NULL column without a default was not given a value
 	1366: true, // incorrect value for the column type
+	1367: true, // illegal value found during parsing
 	1406: true, // data too long
 	3819: true, // check constraint (MySQL)
 	4025: true, // check constraint (MariaDB)
