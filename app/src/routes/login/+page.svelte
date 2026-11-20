@@ -5,6 +5,7 @@
   import { _ } from 'svelte-i18n';
   import { KeyRound, Mail } from '@lucide/svelte';
   import { authErrorKey, GENERIC_AUTH_ERROR, NETWORK_AUTH_ERROR } from '#lib/auth-errors.js';
+  import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
   import { fetchInstance } from '#lib/instance.js';
   import {
     isPasskeyCancelled,
@@ -192,6 +193,7 @@
   }
 </script>
 
+<div class="top"><UpdatePrompt /></div>
 <div class="wrap">
   <main class="card">
     <span class="mark" aria-hidden="true">⬡</span>
@@ -307,6 +309,13 @@
 </div>
 
 <style>
+  .top {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+  }
   .wrap {
     min-height: 100vh;
     display: grid;

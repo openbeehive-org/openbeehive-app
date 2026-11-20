@@ -3,7 +3,10 @@
     "name": "Openbeehive",
     "tagline": "Carnet d'apiculture",
     "offline_banner": "Hors ligne : les modifications sont enregistrées et synchronisées plus tard.",
-    "dismiss": "Fermer"
+    "dismiss": "Fermer",
+    "update_available": "Une nouvelle version est disponible.",
+    "update_reload": "Recharger",
+    "update_later": "Plus tard"
   },
   "nav": {
     "dashboard": "Vue d'ensemble",

@@ -3,7 +3,10 @@
     "name": "Openbeehive",
     "tagline": "Imker-Buchführung",
     "offline_banner": "Offline: Änderungen werden gespeichert und später synchronisiert.",
-    "dismiss": "Schließen"
+    "dismiss": "Schließen",
+    "update_available": "Eine neue Version ist verfügbar.",
+    "update_reload": "Neu laden",
+    "update_later": "Später"
   },
   "nav": {
     "dashboard": "Übersicht",

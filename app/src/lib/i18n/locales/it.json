@@ -3,7 +3,10 @@
     "name": "Openbeehive",
     "tagline": "Registro apistico",
     "offline_banner": "Offline: le modifiche vengono salvate e sincronizzate in seguito.",
-    "dismiss": "Chiudi"
+    "dismiss": "Chiudi",
+    "update_available": "È disponibile una nuova versione.",
+    "update_reload": "Ricarica",
+    "update_later": "Più tardi"
   },
   "nav": {
     "dashboard": "Panoramica",

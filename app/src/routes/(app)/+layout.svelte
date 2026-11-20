@@ -8,6 +8,7 @@
   import Toasts from '#lib/components/Toasts.svelte';
   import { toast } from '#lib/toast.js';
   import { fetchInstance } from '#lib/instance.js';
+  import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
   import { get } from 'svelte/store';
 
   const api = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
@@ -179,6 +180,7 @@
   </aside>
 
   <div class="main-col">
+    <UpdatePrompt />
     {#if isDemo}
       <div class="demo-bar">{$_('demo.banner')}</div>
     {/if}

@@ -4,12 +4,21 @@
   import { page } from '$app/state';
   import { initTheme } from '#lib/theme.js';
   import { pageTitle } from '#lib/titles.js';
+  import { watchForUpdates } from '#lib/update.js';
   import { setupI18n } from '#lib/i18n/index.js';
   import { isLoading } from 'svelte-i18n';
   setupI18n();
   let { children } = $props();
 
-  onMount(() => initTheme());
+  onMount(() => {
+    const stopTheme = initTheme();
+    // Notices a new app version; the banner itself is <UpdatePrompt />.
+    const stopUpdates = watchForUpdates();
+    return () => {
+      stopTheme();
+      stopUpdates();
+    };
+  });
 
   // Screen readers, hyphenation and spell checking follow the UI language.
   $effect(() => {
