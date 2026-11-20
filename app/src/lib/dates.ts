@@ -29,11 +29,13 @@ export function fromDateInput(value: string): string {
 }
 
 /**
- * Parses a stored value. Bare `YYYY-MM-DD` strings (older records, imports)
- * are read as a local calendar day rather than as UTC midnight.
+ * Parses a stored value as the calendar day it was meant as. Two older forms
+ * name a day rather than an instant and are read as that local day: a bare
+ * `YYYY-MM-DD` (imports) and exactly UTC midnight, which is how date-only
+ * entries were stored before they moved to local noon.
  */
 export function parseStored(value: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?Z)?$/.exec(value);
   const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12) : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }

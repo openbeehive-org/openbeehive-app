@@ -26,6 +26,12 @@ describe.each(['America/Los_Angeles', 'UTC', 'Europe/Berlin', 'Pacific/Auckland'
       process.env.TZ = tz;
       expect(toDateInput('2026-11-01')).toBe('2026-11-01');
     });
+
+    it('reads a date stored as UTC midnight as that calendar day', () => {
+      process.env.TZ = tz;
+      expect(toDateInput('2026-11-01T00:00:00.000Z')).toBe('2026-11-01');
+      expect(toDateInput('2026-11-01T00:00:00Z')).toBe('2026-11-01');
+    });
   }
 );
 
