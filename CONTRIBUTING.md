@@ -76,6 +76,11 @@ you open a pull request. Rules for portable SQL:
   `VARCHAR(n)` for every column that is indexed or unique. `Store.translate` adapts the few tokens
   that differ. A statement only one dialect needs goes into a file named `NNNN_name.<driver>.sql`
   (for example `0018_column_types.mysql.sql`); the other dialects record it as applied without running it.
+- MariaDB commits every DDL statement on its own, so a crash can leave a file half applied: every
+  statement must be safe to run again (the runner skips "duplicate column/index" and dropping what is
+  gone). Change columns in place there (`MODIFY`, `ALTER COLUMN`); rebuild a table (create, copy, drop,
+  rename) only in a `.sqlite.sql` file, where the file runs in one transaction.
+  `TestMigrationsSurviveACrash` replays a crash after each statement.
 - Text compares byte for byte on every backend (case, accents and trailing spaces matter); MariaDB
   tables are created with a binary collation for that. Compare case-insensitively on purpose, with
   `LOWER()`, where that is wanted.

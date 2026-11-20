@@ -312,6 +312,13 @@ func TestUpgradeFrom041(t *testing.T) {
 		assertFullyMigrated(t, s)
 		after := snapshot(t, s)
 
+		// The upgraded schema is the one a fresh install gets.
+		fresh := b.blank(t)
+		if err := fresh.Migrate(ctx); err != nil {
+			t.Fatalf("fresh install: %v", err)
+		}
+		assertSameCatalogue(t, "upgrade from 0.4.1", catalogue(t, fresh), catalogue(t, s))
+
 		for table, rows := range before {
 			for key, row := range rows {
 				got, ok := after[table][key]
@@ -336,7 +343,7 @@ func TestUpgradeFrom041(t *testing.T) {
 		}
 
 		// Numbers entered with decimals read back as entered, also in the
-		// inspection table, which 0017 rebuilds before 0018 widens it.
+		// inspection table, which 0017 changes before 0018 widens it.
 		var lat, kg, temp, fed float64
 		if err := s.db.QueryRow(`SELECT a.lat, h.amount_kg, i.temp_hive, i.fed_kg
 			FROM apiary a, harvest h, inspection i WHERE i.id = 'in-1'`).Scan(&lat, &kg, &temp, &fed); err != nil {

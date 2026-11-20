@@ -1,4 +1,6 @@
--- 0017_record_semantics.sql
+-- 0017_record_semantics.sqlite.sql
+-- SQLite only (see the file name); Postgres and the MySQL family change the
+-- table in place in their own 0017 files.
 -- Sensor readings, corrections of saved records, and "not recorded" values.
 
 -- Time of the last correction of a treatment or harvest; NULL = never edited.
@@ -6,9 +8,9 @@ ALTER TABLE treatment ADD COLUMN amended_at TIMESTAMP;
 ALTER TABLE harvest   ADD COLUMN amended_at TIMESTAMP;
 
 -- The optional numbers of an inspection become nullable: NULL means "not
--- recorded", 0 an observed zero (the climate columns already are). The three
--- dialects share no statement that drops NOT NULL (SQLite has none at all),
--- so the table is rebuilt: new table, copy, drop, rename. Stored values are
+-- recorded", 0 an observed zero (the climate columns already are). SQLite
+-- has no statement that drops NOT NULL, so the table is rebuilt inside the
+-- migration's transaction: new table, copy, drop, rename. Stored values are
 -- kept as they are.
 --
 -- The new table also gains source, who recorded the inspection (the

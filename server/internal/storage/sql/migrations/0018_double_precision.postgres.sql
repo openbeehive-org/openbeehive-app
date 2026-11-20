@@ -6,10 +6,10 @@
 -- Store.translate; this converts the ones that already exist. Going through
 -- text restores the number as it was entered.
 --
--- The cast to real comes first because 0017 has just rebuilt inspection: its
--- columns already are DOUBLE PRECISION, but the values copied into them
--- still carry the 4-byte rounding. Every value stored up to here came from
--- a 4-byte column, so the cast loses nothing.
+-- The cast to real comes first so that the conversion reads the same whether
+-- a column is still REAL (an upgrade) or was created as DOUBLE PRECISION (a
+-- fresh install, which holds no values yet). Every value stored up to here
+-- came from a 4-byte column, so the cast loses nothing.
 ALTER TABLE apiary
   ALTER COLUMN lat TYPE DOUBLE PRECISION USING lat::real::text::double precision,
   ALTER COLUMN lng TYPE DOUBLE PRECISION USING lng::real::text::double precision;

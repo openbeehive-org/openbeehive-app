@@ -1,8 +1,10 @@
--- 0015_sync_tenant_scope.sql
+-- 0015_sync_tenant_scope.sqlite.sql
+-- SQLite only (see the file name); Postgres and the MySQL family change the
+-- column in place in their own 0015 files.
 -- Pull is scoped by workspace: it reads the change log by (org_id, seq).
--- org_id was TEXT, which MySQL-family databases cannot index, so the column
--- is rebuilt as VARCHAR(64) (add, copy, drop, rename: the only way to change
--- a column type that all three dialects share) and then indexed.
+-- org_id was TEXT; it becomes VARCHAR(64), the type the other dialects need
+-- to index it. SQLite cannot change a column's type, so the column is
+-- rebuilt (add, copy, drop, rename) inside the migration's transaction.
 ALTER TABLE change_log ADD COLUMN org_id_new VARCHAR(64) NOT NULL DEFAULT '';
 UPDATE change_log SET org_id_new = org_id;
 ALTER TABLE change_log DROP COLUMN org_id;

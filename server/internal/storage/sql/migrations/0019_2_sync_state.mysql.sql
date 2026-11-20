@@ -1,6 +1,6 @@
 -- MySQL family only (see the file name). DDL commits at once here, so a
 -- migration that fails halfway is run again from the top: every statement
--- but the last can be repeated.
+-- can be repeated (the runner skips an index that is already gone).
 INSERT IGNORE INTO sync_state (name, val) VALUES ('horizon', 0);
 INSERT IGNORE INTO sync_state (name, val) VALUES ('epoch', FLOOR(RAND() * 1000000000000000) + 1);
 -- Seconds since 1970 in UTC, spelled without the function whose name the

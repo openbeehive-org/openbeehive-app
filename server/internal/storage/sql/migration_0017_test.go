@@ -5,11 +5,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
 
-// 0017 makes the optional numbers of an inspection nullable by rebuilding
-// the table. The copy must keep every stored value, the result must accept
-// NULL, and the new columns must exist, on every dialect.
+// 0017 makes the optional numbers of an inspection nullable (SQLite by
+// rebuilding the table, the others in place). Every stored value must be
+// kept, the result must accept NULL, and the new columns must exist, on
+// every dialect.
 func TestInspectionNumbersBecomeNullable(t *testing.T) {
 	onEachBackend(t, func(t *testing.T, b backend) { testInspectionNumbersNullable(t, b.blank(t)) })
 }
@@ -28,21 +31,28 @@ func testInspectionNumbersNullable(t *testing.T, s *Store) {
 		t.Fatalf("insert with values: %v", err)
 	}
 
-	// Replay the rebuild over a table that holds data: this is what an
-	// upgrading instance runs, and every value must come through.
-	raw, _ := migrationsFS.ReadFile("migrations/0017_record_semantics.sql")
-	var replayed int
-	for _, stmt := range splitStatements(string(raw)) {
-		if strings.Contains(stmt, "amended_at") {
-			continue // plain additions, already applied
+	// Run 0017 again over a table that holds data: this is what an
+	// upgrading instance runs (SQLite rebuilds the table, the others change
+	// it in place, and those must be able to repeat it after a crash), and
+	// every value must come through.
+	name := "0017_record_semantics." + string(s.driver) + ".sql"
+	if s.driver == config.DriverSQLite {
+		raw, _ := migrationsFS.ReadFile("migrations/" + name)
+		for _, stmt := range splitStatements(string(raw)) {
+			if strings.Contains(stmt, "amended_at") {
+				continue // plain additions, already applied
+			}
+			if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+				t.Fatalf("replaying %q: %v", stmt, err)
+			}
 		}
-		if _, err := s.db.ExecContext(ctx, s.translate(stmt)); err != nil {
-			t.Fatalf("replaying %q: %v", stmt, err)
+	} else {
+		if err := s.exec(ctx, `DELETE FROM schema_migrations WHERE version = ?`, name); err != nil {
+			t.Fatal(err)
 		}
-		replayed++
-	}
-	if replayed != 5 {
-		t.Fatalf("want create, copy, drop, rename and index, ran %d statements", replayed)
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatalf("running %s again: %v", name, err)
+		}
 	}
 
 	var kept int

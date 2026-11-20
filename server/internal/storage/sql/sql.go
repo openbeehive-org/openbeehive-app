@@ -46,6 +46,10 @@ var migrationsFS embed.FS
 // mysqlTextDefault matches literal defaults on TEXT columns (see translate).
 var mysqlTextDefault = regexp.MustCompile(`TEXT NOT NULL DEFAULT ('[^']*')`)
 
+// postgresAddColumn matches ADD COLUMN, with or without IF NOT EXISTS (see
+// translate).
+var postgresAddColumn = regexp.MustCompile(`\bADD COLUMN (?:IF NOT EXISTS )?`)
+
 // postgresReal matches the REAL column type (see translate).
 var postgresReal = regexp.MustCompile(`\bREAL\b`)
 
@@ -299,12 +303,13 @@ func (s *Store) runMigration(ctx context.Context, name string) error {
 	// multiple statements in one Exec (e.g. MySQL without multiStatements).
 	for _, stmt := range splitStatements(string(raw)) {
 		if _, err := tx.ExecContext(ctx, s.translate(stmt)); err != nil {
-			if s.driver == config.DriverMySQL && isMySQLDuplicate(err) {
+			if s.driver == config.DriverMySQL && isMySQLAlreadyApplied(stmt, err) {
 				// MySQL auto-commits DDL, so a migration that failed halfway
 				// has already persisted its earlier statements; replaying
-				// them raises duplicate column/index errors. Treat those as
-				// "already applied" (the IF NOT EXISTS the other dialects
-				// handle natively).
+				// them raises duplicate column/index or "cannot drop"
+				// errors. Treat those as "already applied" (the IF [NOT]
+				// EXISTS the other dialects handle natively, which Oracle
+				// MySQL lacks for columns and indexes).
 				continue
 			}
 			_ = tx.Rollback()
@@ -320,11 +325,22 @@ func (s *Store) runMigration(ctx context.Context, name string) error {
 	return tx.Commit()
 }
 
-// isMySQLDuplicate reports duplicate column (1060) / duplicate index (1061)
-// errors, which replaying already-applied DDL raises on MySQL and MariaDB.
-func isMySQLDuplicate(err error) bool {
+// isMySQLAlreadyApplied reports the errors that replaying already-applied
+// DDL raises on MySQL and MariaDB: duplicate column (1060), duplicate index
+// (1061), and, for a statement that drops something, "cannot drop, check
+// that it exists" (1091).
+func isMySQLAlreadyApplied(stmt string, err error) bool {
 	var me *mysql.MySQLError
-	return errors.As(err, &me) && (me.Number == 1060 || me.Number == 1061)
+	if !errors.As(err, &me) {
+		return false
+	}
+	switch me.Number {
+	case 1060, 1061:
+		return true
+	case 1091:
+		return strings.HasPrefix(strings.ToUpper(stmt), "DROP ")
+	}
+	return false
 }
 
 // translate minimally adapts the portable migration statements to dialects.
@@ -333,7 +349,9 @@ func (s *Store) translate(stmt string) string {
 	switch s.driver {
 	case config.DriverPostgres:
 		// BOOLEAN/TIMESTAMP are native. REAL is a 4-byte float in Postgres
-		// but an 8-byte double in SQLite and MariaDB.
+		// but an 8-byte double in SQLite and MariaDB. Added columns are
+		// skipped when they exist, so every file can be run again.
+		stmt = postgresAddColumn.ReplaceAllString(stmt, "ADD COLUMN IF NOT EXISTS ")
 		return postgresReal.ReplaceAllString(stmt, "DOUBLE PRECISION")
 	case config.DriverMySQL:
 		r := strings.NewReplacer(
