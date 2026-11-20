@@ -9,7 +9,7 @@ import type { PreparedPhoto } from '../image';
 
 vi.mock('../local/db', async () => {
   const { getCurrentDB } = await import('../../tests/localdb');
-  return { getDB: async () => getCurrentDB() };
+  return { getDB: async () => getCurrentDB(), wipeLocalDB: vi.fn(async () => {}) };
 });
 // Local writes nudge a sync; none runs here.
 vi.mock('../local/sync', () => ({
@@ -334,6 +334,22 @@ describe('viewing', () => {
     expect(await photos.openPhoto('remote')).toEqual({ unavailable: 'not_uploaded' });
     setOnline(false);
     expect(await photos.openPhoto('remote')).toEqual({ unavailable: 'offline' });
+  });
+});
+
+describe('removing the workspace from the device', () => {
+  it('deletes its photo images, also those never uploaded', async () => {
+    setOnline(false);
+    await photos.addPhoto({ entity: 'inspection', id: 'i1' }, picture('one'));
+    expect(get(photos.waitingUploads)).toBe(1);
+    expect((await indexedDB.databases()).map((d) => d.name)).toContain('obh-photos-org1');
+
+    // What "also remove data from this device" and account deletion call.
+    const { removeDeviceData } = await import('../device-data');
+    await removeDeviceData('org1');
+
+    const names = (await indexedDB.databases()).map((d) => d.name);
+    expect(names).not.toContain('obh-photos-org1');
   });
 });
 
