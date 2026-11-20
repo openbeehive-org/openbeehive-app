@@ -388,3 +388,66 @@ describe('a 0.4.1 app pulling from the current server', () => {
     await expect(applyRemote(asChange(update))).rejects.toThrow(/no such column/);
   });
 });
+
+// A photo added on a 0.4.1 device and deleted on an updated one, as the
+// server tells the 0.4.1 device about it: server/internal/service/testdata/
+// legacy_photo_v0.4.1.json, written by the Go test TestLegacyPhotoGolden.
+const photoFeed: { added: Golden[]; deleted: Golden[]; fresh: Golden[] } = JSON.parse(
+  readFileSync(
+    new URL(
+      '../../../../server/internal/service/testdata/legacy_photo_v0.4.1.json',
+      import.meta.url
+    ),
+    'utf8'
+  )
+);
+
+async function visitPhotos(): Promise<string[]> {
+  const row = await db041.get<any>(`SELECT photo_keys FROM inspection WHERE id = 'visit-1'`);
+  const set = parseORSet(row?.photo_keys);
+  return Object.keys(set)
+    .filter((k) => set[k]!.a.some((tag) => !set[k]!.r.includes(tag)))
+    .sort();
+}
+
+const hivePicture = async () =>
+  (await db041.get<{ photo: string }>(`SELECT photo FROM hive WHERE id = 'hive-a'`))?.photo;
+
+describe('photos on a 0.4.1 device', () => {
+  const [visitAdd, pictureSet] = photoFeed.added;
+  const added: string[] = JSON.parse(visitAdd!.payloadJson).photo_keys.add;
+  const picture: string = JSON.parse(pictureSet!.payloadJson).photo;
+
+  it('are sent in the inline form it stores, never as photo records', () => {
+    for (const g of [...photoFeed.added, ...photoFeed.deleted, ...photoFeed.fresh]) {
+      expect(SYNCED_TABLES, g.entity).toContain(g.entity);
+    }
+    expect(added).toHaveLength(2);
+    for (const p of [...added, picture]) expect(p).toMatch(/^data:image\/jpeg;base64,/);
+  });
+
+  it('shows the photos it added, then drops the ones an updated device deleted', async () => {
+    for (const g of photoFeed.added) await applyRemote(asChange(g));
+    expect(await visitPhotos()).toEqual([...added].sort());
+    expect(await hivePicture()).toBe(picture);
+
+    for (const g of photoFeed.deleted) await applyRemote(asChange(g));
+    const left = await visitPhotos();
+    expect(left).toHaveLength(1);
+    expect(added).toContain(left[0]);
+    expect(await hivePicture()).toBe('');
+    const visit = await db041.get<any>(`SELECT note, deleted FROM inspection WHERE id = 'visit-1'`);
+    expect(visit).toEqual({ note: 'two photos', deleted: 0 });
+  });
+
+  it('a device that syncs for the first time sees only the photo that is left', async () => {
+    for (const g of photoFeed.added) await applyRemote(asChange(g));
+    for (const g of photoFeed.deleted) await applyRemote(asChange(g));
+    const expected = await visitPhotos();
+
+    await make041DB();
+    for (const g of photoFeed.fresh) await applyRemote(asChange(g));
+    expect(await visitPhotos()).toEqual(expected);
+    expect(await hivePicture()).toBe('');
+  });
+});

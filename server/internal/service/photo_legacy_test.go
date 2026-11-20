@@ -2,7 +2,10 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -490,5 +493,121 @@ func TestLegacyPhotosWithoutBlobStore(t *testing.T) {
 	res, err := f.insp.ListInspections(ctxA, &wv1.ListInspectionsRequest{})
 	if err != nil || len(res.Inspections[0].PhotoKeys) != 1 {
 		t.Fatalf("inline photo: %v", err)
+	}
+}
+
+const legacyPhotoGolden = "testdata/legacy_photo_v0.4.1.json"
+
+// legacyPhotoFeed is what a 0.4.x device is sent around one photo's life.
+type legacyPhotoFeed struct {
+	// Added: the device's first pull after it added a visit photo and a hive
+	// picture, while an updated device also added a photo to the visit.
+	Added []goldenChange `json:"added"`
+	// Deleted: its next pull, after an updated device deleted one of its
+	// visit photos and the hive picture.
+	Deleted []goldenChange `json:"deleted"`
+	// Fresh: the whole log for a 0.4.x device that never synced before.
+	Fresh []goldenChange `json:"fresh"`
+}
+
+// pullFrom reads the log after cursor for ctx and returns the changes and
+// where to continue.
+func pullFrom(t *testing.T, svc *SyncService, ctx context.Context, cursor string) ([]*wv1.Change, string) {
+	t.Helper()
+	var out []*wv1.Change
+	for range 1000 {
+		res, err := svc.Pull(ctx, &wv1.PullRequest{Cursor: cursor, Limit: 50})
+		if err != nil {
+			t.Fatalf("pull from %q: %v", cursor, err)
+		}
+		out = append(out, res.Changes...)
+		if cursor = res.NextCursor; !res.HasMore {
+			return out, cursor
+		}
+	}
+	t.Fatal("pull never ends")
+	return nil, ""
+}
+
+// TestLegacyPhotoGolden records what a 0.4.x device is sent when a photo it
+// added is deleted on an updated device. app/src/lib/local/legacy.test.ts
+// applies it with the pull code of release 0.4.1. Stamps the server makes
+// itself depend on the time of the run; they are replaced by fixed ones in
+// the same order. UPDATE_GOLDEN=1 rewrites the file.
+func TestLegacyPhotoGolden(t *testing.T) {
+	f := newPhotoFixture(t)
+	img := func(seed uint8) string { return dataURL("image/jpeg", jpegBytes(t, 16, 12, seed)) }
+	kept, gone, picture := img(1), img(2), img(3)
+	stamped := func(c *wv1.Change, n int) *wv1.Change { c.Hlc = pastStamp(n); return c }
+	visit := `{"organization_id":"org-a","hive_id":"hive-a","date":"2026-01-02","note":"two photos","created_at":"2026-01-02T08:00:00.000Z","deleted":0,` +
+		`"photo_keys":{"add":["` + kept + `","` + gone + `"]}}`
+	if err := push(f.sync, legacyA,
+		stamped(change("inspection", "visit-1", "apiary-a", visit), 1),
+		stamped(legacyHivePhoto(picture), 2),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := push(f.sync, ctxA, change("photo", "photo-new", "apiary-a", photoPayload(t, ownerInspection, "visit-1"))); err != nil {
+		t.Fatal(err)
+	}
+	added, cursor := pullFrom(t, f.sync, legacyA, "")
+
+	for _, p := range append(f.livePhotosOf(t, "visit-1"), f.livePhotosOf(t, "hive-a")...) {
+		if p.LegacyKey == legacyKey(gone) || p.LegacyKey == legacyKey(picture) {
+			f.deleteOnDevice(t, p)
+		}
+	}
+	deleted, _ := pullFrom(t, f.sync, legacyA, cursor)
+	fresh, _ := pullFrom(t, f.sync, legacyA, "")
+
+	// One order-preserving mapping of every stamp to a fixed one.
+	var stamps []string
+	for _, list := range [][]*wv1.Change{added, deleted, fresh} {
+		for _, c := range list {
+			if !slices.Contains(stamps, c.Hlc) {
+				stamps = append(stamps, c.Hlc)
+			}
+		}
+	}
+	slices.SortFunc(stamps, wsync.Compare)
+	golden := func(list []*wv1.Change) []goldenChange {
+		out := []goldenChange{}
+		for _, c := range list {
+			if _, ok := legacyColSet[c.Entity]; !ok {
+				t.Fatalf("a 0.4.x device was sent a %s change", c.Entity)
+			}
+			if c.Op != wv1.ChangeOp_CHANGE_OP_DELETE {
+				for _, key := range payloadKeys(t, c) {
+					if !legacyColSet[c.Entity][key] {
+						t.Fatalf("%s.%s is unknown to release 0.4.1", c.Entity, key)
+					}
+				}
+			}
+			out = append(out, goldenChange{c.Entity, c.EntityId, c.ScopeId, int32(c.Op), c.PayloadJson,
+				pastStamp(1000 + slices.Index(stamps, c.Hlc))})
+		}
+		return out
+	}
+	feed := legacyPhotoFeed{Added: golden(added), Deleted: golden(deleted), Fresh: golden(fresh)}
+	if len(feed.Added) == 0 || len(feed.Deleted) == 0 {
+		t.Fatalf("nothing to record: %+v", feed)
+	}
+	out, err := json.MarshalIndent(feed, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out = append(out, '\n')
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(legacyPhotoGolden, out, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(legacyPhotoGolden)
+	if err != nil {
+		t.Fatalf("%v (run the test once with UPDATE_GOLDEN=1)", err)
+	}
+	if !bytes.Equal(out, want) {
+		t.Fatalf("%s is out of date: what a legacy client receives about photos has changed. If that is intended, "+
+			"run this test with UPDATE_GOLDEN=1 and then the app tests.", legacyPhotoGolden)
 	}
 }
