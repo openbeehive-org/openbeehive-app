@@ -5,14 +5,14 @@
 // hives across 4 apiaries and a season of realistic inspections. The data is
 // re-seeded every hour so the showcase always looks the same.
 //
-// Data is written as sync change-log entries (the path the offline-first app
-// pulls from), scoped to the demo apiaries, plus the apiary rows themselves so
-// the scope resolves for the demo user.
+// Data is written through the service writer, the path every API write
+// takes: rows, placements, timeline events and change-log entries. The demo
+// therefore looks the same in the app (which pulls the change log), through
+// the CRUD API and in the statistics.
 package demo
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -21,7 +21,9 @@ import (
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/service"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
@@ -32,13 +34,17 @@ const (
 
 type Seeder struct {
 	db  *sqlx.DB
-	hlc *wsync.HLC
+	w   *service.Writer
 	cfg *config.Config
 }
 
 func New(db *sqlx.DB, hlc *wsync.HLC, cfg *config.Config) *Seeder {
-	return &Seeder{db: db, hlc: hlc, cfg: cfg}
+	return &Seeder{db: db, w: service.NewWriter(db, hlc), cfg: cfg}
 }
+
+// identity is who the demo data is written as: the demo user in the demo
+// tenant, so every row and change-log entry is attributed like a real one.
+var identity = auth.Identity{UserID: UserID, OrgID: OrgID}
 
 // Install ensures the demo user/tenant exist, seeds the data once, and starts an
 // hourly reset loop. Call once at startup when the demo is enabled.
@@ -94,23 +100,18 @@ func (s *Seeder) ensureAccount(ctx context.Context) error {
 	return nil
 }
 
-// Seed wipes and rebuilds the demo data (idempotent; stable ids).
+// Seed wipes and rebuilds the demo data in one transaction. Ids are stable,
+// so a device that already pulled the demo sees the same rows rewritten.
 func (s *Seeder) Seed(ctx context.Context) error {
-	tx, err := s.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return s.w.Seed(ctx, identity, func(w *service.Seeder) error {
+		if err := w.Wipe(); err != nil {
+			return err
+		}
+		return seedApiaries(w, time.Now().UTC())
+	})
+}
 
-	// Wipe previous demo data.
-	if _, err := tx.ExecContext(ctx, tx.Rebind(`DELETE FROM change_log WHERE org_id = ?`), OrgID); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, tx.Rebind(`DELETE FROM apiary WHERE organization_id = ?`), OrgID); err != nil {
-		return err
-	}
-
-	now := time.Now().UTC()
+func seedApiaries(w *service.Seeder, now time.Time) error {
 	apiaries := []struct {
 		name, addr string
 		lat, lng   float64
@@ -122,56 +123,47 @@ func (s *Seeder) Seed(ctx context.Context) error {
 	}
 	// 15 hives distributed 4/4/4/3 across the apiaries.
 	perApiary := []int{4, 4, 4, 3}
-	hiveTypes := []int{1, 2, 4, 3, 5} // Zander, Dadant, Langstroth, Deutsch Normal, Warre
+	// The hives exist for longer than any seeded record reaches back, so every
+	// record falls into the hive's placement at its apiary.
+	founded := now.AddDate(-2, 0, 0)
 	hiveNo := 0
 
 	for ai, a := range apiaries {
 		apID := fmt.Sprintf("demo-apiary-%d", ai+1)
-		af := map[string]any{
-			"organization_id": OrgID, "name": a.name, "address": a.addr,
-			"lat": a.lat, "lng": a.lng, "note": "", "created_at": iso(now), "updated_at": iso(now), "deleted": 0,
-		}
-		// Apiary needs a real row so the demo user's scopes resolve.
-		if _, err := tx.ExecContext(ctx, tx.Rebind(
-			`INSERT INTO apiary (id, organization_id, name, address, lat, lng, note, created_at, updated_at, field_hlc, deleted)
-			 VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, '{}', FALSE)`),
-			apID, OrgID, a.name, a.addr, a.lat, a.lng, now, now); err != nil {
+		if err := w.Apiary(service.SeedApiary{
+			ID: apID, Name: a.name, Address: a.addr, Lat: a.lat, Lng: a.lng, CreatedAt: founded,
+		}); err != nil {
 			return err
 		}
-		if err := s.put(ctx, tx, "apiary", apID, apID, af); err != nil {
-			return err
-		}
-
 		for h := 0; h < perApiary[ai]; h++ {
 			hiveNo++
-			if err := s.seedHive(ctx, tx, apID, hiveNo, hiveTypes, now); err != nil {
+			if err := seedHive(w, apID, hiveNo, founded, now); err != nil {
 				return err
 			}
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
+// hiveTypes cycles through Zander, Dadant, Langstroth, Deutsch Normal, Warre.
+var hiveTypes = []int32{1, 2, 4, 3, 5}
+
 // seedHive writes one hive with its queen, inspections, harvest and treatments.
-func (s *Seeder) seedHive(ctx context.Context, tx *sqlx.Tx, apID string, hiveNo int, hiveTypes []int, now time.Time) error {
+func seedHive(w *service.Seeder, apID string, hiveNo int, founded, now time.Time) error {
 	hvID := fmt.Sprintf("demo-hive-%d", hiveNo)
-	year := 2023 + (hiveNo % 3)
-	marking := ((year%10)+4)%5 + 1
-	if err := s.put(ctx, tx, "hive", apID, hvID, map[string]any{
-		"organization_id": OrgID, "apiary_id": apID, "name": fmt.Sprintf("Hive %d", hiveNo),
-		"type": hiveTypes[hiveNo%len(hiveTypes)], "status": 1, "boxes": 2 + hiveNo%3,
-		"colony_origin": pick(hiveNo, "swarm 2024", "split from Hive 2", "own rearing", "nucleus"),
-		"note":          "", "created_at": iso(now.AddDate(-1, 0, 0)), "updated_at": iso(now), "deleted": 0,
+	if err := w.Hive(service.SeedHive{
+		ID: hvID, ApiaryID: apID, Name: fmt.Sprintf("Hive %d", hiveNo),
+		Type: hiveTypes[hiveNo%len(hiveTypes)], Boxes: int32(2 + hiveNo%3),
+		ColonyOrigin: pick(hiveNo, "swarm 2024", "split from Hive 2", "own rearing", "nucleus"),
+		CreatedAt:    founded,
 	}); err != nil {
 		return err
 	}
 	// Current queen.
-	qID := fmt.Sprintf("demo-queen-%d", hiveNo)
-	if err := s.put(ctx, tx, "queen", apID, qID, map[string]any{
-		"organization_id": OrgID, "hive_id": hvID, "year": year, "marking": marking,
-		"origin": pick(hiveNo, "Buckfast", "Carnica", "own rearing"), "breeder_number": fmt.Sprintf("%d", 10+hiveNo),
-		"introduced_at": iso(mostRecent(now, time.May, 10).AddDate(-(hiveNo % 2), 0, 0)), "replaced_at": nil,
-		"active": 1, "note": "", "created_at": iso(now), "updated_at": iso(now), "deleted": 0,
+	if err := w.Queen(service.SeedQueen{
+		ID: fmt.Sprintf("demo-queen-%d", hiveNo), HiveID: hvID, Year: int32(2023 + hiveNo%3),
+		Origin: pick(hiveNo, "Buckfast", "Carnica", "own rearing"), BreederNumber: fmt.Sprintf("%d", 10+hiveNo),
+		IntroducedAt: mostRecent(now, time.May, 10).AddDate(-(hiveNo % 2), 0, 0),
 	}); err != nil {
 		return err
 	}
@@ -179,42 +171,36 @@ func (s *Seeder) seedHive(ctx context.Context, tx *sqlx.Tx, apID string, hiveNo 
 	// demo always shows recent activity (it re-seeds hourly).
 	for v, off := range []int{4, 20, 45, 80, 130, 195, 280} {
 		date := now.AddDate(0, 0, -(off + hiveNo%6))
-		inspID := fmt.Sprintf("demo-insp-%d-%d", hiveNo, v)
-		if err := s.put(ctx, tx, "inspection", apID, inspID, inspectionFields(hvID, date, hiveNo, v)); err != nil {
+		if err := w.Inspection(fmt.Sprintf("demo-insp-%d-%d", hiveNo, v), hvID, date,
+			inspectionFields(date, hiveNo, v)); err != nil {
 			return err
 		}
 	}
 	// Last summer's honey harvest (most recent July at or before now).
 	hd := mostRecent(now, time.July, 12+hiveNo%6)
-	if err := s.put(ctx, tx, "harvest", apID, fmt.Sprintf("demo-harv-%d", hiveNo), map[string]any{
-		"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
-		"date": iso(hd), "variety": pick(hiveNo, "spring blossom", "summer flow", "forest"),
+	if err := w.Harvest(fmt.Sprintf("demo-harv-%d", hiveNo), hvID, hd, map[string]any{
+		"variety":   pick(hiveNo, "spring blossom", "summer flow", "forest"),
 		"amount_kg": round1(10 + float64(hiveNo%8)), "water_content": round1(17 + float64(hiveNo%3)),
-		"batch_number": fmt.Sprintf("B%d-%d", hd.Year(), hiveNo), "best_before": iso(hd.AddDate(2, 0, 0)),
-		"note": "", "deleted": 0,
+		"batch_number": fmt.Sprintf("B%d-%d", hd.Year(), hiveNo), "best_before": hd.AddDate(2, 0, 0),
+		"note": "",
 	}); err != nil {
 		return err
 	}
 	// Varroa control: late-summer formic acid + midwinter oxalic acid.
 	fa := mostRecent(now, time.August, 18)
-	if err := s.put(ctx, tx, "treatment", apID, fmt.Sprintf("demo-treat-fa-%d", hiveNo), map[string]any{
-		"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
-		"date": iso(fa), "product": "Formic acid 60%", "active_ingredient": "formic acid",
+	if err := w.Treatment(fmt.Sprintf("demo-treat-fa-%d", hiveNo), hvID, fa, map[string]any{
+		"product": "Formic acid 60%", "active_ingredient": "formic acid",
 		"dose": "30 ml", "method": "evaporation", "batch_number": fmt.Sprintf("FA-%d", hiveNo),
-		"withdrawal_until": iso(fa.AddDate(0, 0, 14)), "reason": "varroa", "note": "", "deleted": 0,
+		"withdrawal_until": fa.AddDate(0, 0, 14), "reason": "varroa", "note": "",
 	}); err != nil {
 		return err
 	}
 	ox := mostRecent(now, time.December, 27)
-	if err := s.put(ctx, tx, "treatment", apID, fmt.Sprintf("demo-treat-ox-%d", hiveNo), map[string]any{
-		"organization_id": OrgID, "apiary_id": apID, "hive_id": hvID, "queen_id": qID,
-		"date": iso(ox), "product": "Oxuvar 5.7%", "active_ingredient": "oxalic acid",
+	return w.Treatment(fmt.Sprintf("demo-treat-ox-%d", hiveNo), hvID, ox, map[string]any{
+		"product": "Oxuvar 5.7%", "active_ingredient": "oxalic acid",
 		"dose": "50 ml", "method": "trickling", "batch_number": fmt.Sprintf("OX-%d", hiveNo),
-		"withdrawal_until": "", "reason": "varroa", "note": "broodless winter treatment", "deleted": 0,
-	}); err != nil {
-		return err
-	}
-	return nil
+		"withdrawal_until": "", "reason": "varroa", "note": "broodless winter treatment",
+	})
 }
 
 // mostRecent returns the most recent occurrence of month/day at or before `now`
@@ -232,7 +218,7 @@ func round1(x float64) float64 { return math.Round(x*10) / 10 }
 // inspectionFields builds a season-appropriate inspection for a given date.
 // Activities are only recorded when they actually make sense for that time of
 // year: no feeding in spring, no supering in winter, etc. (Northern hemisphere.)
-func inspectionFields(hiveID string, date time.Time, hiveNo, idx int) map[string]any {
+func inspectionFields(date time.Time, hiveNo, idx int) map[string]any {
 	m := int(date.Month())
 	spring := m >= 3 && m <= 5
 	summer := m >= 6 && m <= 8
@@ -266,7 +252,6 @@ func inspectionFields(hiveID string, date time.Time, hiveNo, idx int) map[string
 	}
 
 	f := map[string]any{
-		"organization_id": OrgID, "hive_id": hiveID, "date": iso(date),
 		"weather":       weatherFor(m, idx),
 		"queen_seen":    boolInt(!winter && idx%2 == 0),
 		"eggs_seen":     boolInt(!winter),
@@ -276,7 +261,7 @@ func inspectionFields(hiveID string, date time.Time, hiveNo, idx int) map[string
 		"varroa":    fmt.Sprintf("%d mites/day", varroaByMonth[m-1]+hiveNo%2),
 		"temp_hive": round1(hiveTemp), "temp_outside": round1(outTemp),
 		"humidity_hive": 55 + (hiveNo+idx)%8, "humidity_outside": 60 + (hiveNo+idx)%25,
-		"note": "", "created_at": iso(date), "deleted": 0,
+		"note": "", "source": 1, "created_at": date,
 	}
 	switch {
 	case spring:
@@ -287,9 +272,6 @@ func inspectionFields(hiveID string, date time.Time, hiveNo, idx int) map[string
 		f["weight_kg"] = round1(34 + float64(hiveNo%5))
 	case summer:
 		f["super_added"] = boolInt(m == 6)
-		if m == 7 {
-			f["honey_kg"] = round1(10 + float64(hiveNo%8)) // honey taken on this visit
-		}
 		f["weight_kg"] = round1(42 + float64(hiveNo%7))
 	case autumn:
 		f["fed_kg"] = round1(3 + float64(hiveNo%3)) // build winter stores
@@ -317,24 +299,6 @@ func weatherFor(m, idx int) string {
 	}
 }
 
-// put writes a create change-log entry for an entity, scoped to scopeID.
-func (s *Seeder) put(ctx context.Context, tx *sqlx.Tx, entity, scopeID, id string, fields map[string]any) error {
-	var seq int64
-	if _, err := tx.ExecContext(ctx, "UPDATE seq_counter SET val = val + 1 WHERE name = 'change'"); err != nil {
-		return err
-	}
-	if err := tx.GetContext(ctx, &seq, "SELECT val FROM seq_counter WHERE name = 'change'"); err != nil {
-		return err
-	}
-	payload, _ := json.Marshal(fields)
-	_, err := tx.ExecContext(ctx, tx.Rebind(
-		`INSERT INTO change_log (id, seq, scope_id, entity, entity_id, op, payload, hlc, author_id, org_id)
-		 VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`),
-		fmt.Sprintf("demo-cl-%d", seq), seq, scopeID, entity, id, string(payload), s.hlc.Now(), UserID, OrgID)
-	return err
-}
-
-func iso(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 func boolInt(b bool) int {
 	if b {
 		return 1

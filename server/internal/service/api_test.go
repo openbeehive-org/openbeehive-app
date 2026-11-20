@@ -20,6 +20,7 @@ import (
 // tests can write through the API and read back through Pull like a device.
 type apiFixture struct {
 	db     *sqlx.DB
+	writer *Writer
 	sync   *SyncService
 	apiary *ApiaryService
 	hive   *HiveService
@@ -39,6 +40,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	w := NewWriter(store.DB(), wsync.NewHLC("api"))
 	return &apiFixture{
 		db:     store.DB(),
+		writer: w,
 		sync:   s,
 		apiary: NewApiaryService(store.Apiaries(), w),
 		hive:   NewHiveService(store.Hives(), w),
