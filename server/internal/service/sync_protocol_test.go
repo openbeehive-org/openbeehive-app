@@ -197,6 +197,15 @@ func TestCursorCarriesTheEpochOfTheDatabase(t *testing.T) {
 	}
 }
 
+// Subscribe only needs the position of a cursor, whichever form it has.
+func TestCursorSeqReadsBothForms(t *testing.T) {
+	for in, want := range map[string]int64{"": 0, "17": 17, "4711:17:abcd1234": 17, "4711:17:": 17, "junk": 0, "1:2": 0} {
+		if got := cursorSeq(in); got != want {
+			t.Errorf("cursorSeq(%q) = %d, want %d", in, got, want)
+		}
+	}
+}
+
 // TestRestoredBackupIsDetectedByTheCursor: after a restore the server hands
 // out sequence numbers a second time. A device that had read further than
 // the backup must not continue from its old position, whether it comes back

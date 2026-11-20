@@ -139,7 +139,7 @@ type SyncService struct {
 	// MinProtocol is the lowest sync protocol version a client may speak;
 	// 0 also admits 0.4.x apps, which announce none.
 	MinProtocol int
-	refused     sync.Map // syncClient -> true: refusals already logged
+	refused     sync.Map // protocol version -> true: refusal already logged
 
 	poll time.Duration // Subscribe poll interval
 	// pageBytes is the size at which a snapshot page is closed.

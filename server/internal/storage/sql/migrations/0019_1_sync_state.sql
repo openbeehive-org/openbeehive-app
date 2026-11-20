@@ -17,10 +17,11 @@ INSERT INTO sync_state (name, val) VALUES ('horizon', 0);
 -- wrote it. 0019_2 sets it to "now" for the entries that exist already.
 ALTER TABLE change_log ADD COLUMN logged_at BIGINT NOT NULL DEFAULT 0;
 
--- A task without an apiary is personal: only its owner sees it. Until now
--- the owner was whoever had written the task in a personal scope, looked up
--- in the change log. The column records it on the row itself, so the answer
--- survives compaction. It is not part of the synced payload.
+-- A task without an apiary is personal: only its owner sees it. The owner is
+-- the user in whose personal scope the task was written. The column records
+-- that on the row itself; for existing tasks it is read from the change log,
+-- the only place that knew it, before compaction starts removing entries. It
+-- is not part of the synced payload.
 ALTER TABLE task ADD COLUMN owner_id VARCHAR(64) NOT NULL DEFAULT '';
 UPDATE task SET owner_id = COALESCE((
   SELECT MIN(SUBSTR(c.scope_id, 6)) FROM change_log c

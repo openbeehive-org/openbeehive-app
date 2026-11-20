@@ -65,9 +65,9 @@ func clientOf(ctx context.Context) syncClient {
 func (s *SyncService) admit(ctx context.Context) (syncClient, error) {
 	c := clientOf(ctx)
 	if c.protocol < s.MinProtocol {
-		// One log line per kind of app, not one per request: a refused app
-		// keeps asking.
-		if _, logged := s.refused.LoadOrStore(c, true); !logged {
+		// One log line per protocol version, not one per request: a refused
+		// app keeps asking.
+		if _, logged := s.refused.LoadOrStore(c.protocol, true); !logged {
 			log.Printf("sync: refusing app version %q speaking sync protocol %d; BEEHIVE_SYNC_MIN_PROTOCOL is %d",
 				c.appVersion, c.protocol, s.MinProtocol)
 		}
