@@ -107,6 +107,15 @@ async function setMeta(k: string, v: string) {
 
 const getCursor = async () => (await getMeta('cursor')) ?? '';
 
+/**
+ * Whether this device has finished loading the workspace from the server
+ * at least once, so that its database holds every record (plus its own
+ * unsent changes). Until then an export or import would work on a part.
+ */
+export async function firstSyncDone(): Promise<boolean> {
+  return !!(await getCursor()) || Number(await getMeta('last_sync')) > 0;
+}
+
 // Version of the local repairs this database has been through (kept under
 // the key "sync_epoch"). Raising it runs them once more on every device and
 // makes the device load the current rows again (merging is idempotent, so
