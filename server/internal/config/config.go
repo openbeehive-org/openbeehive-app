@@ -16,6 +16,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -130,6 +131,9 @@ type CORSConfig struct {
 
 type SyncConfig struct {
 	NodeID string // HLC node id stamped on server-side changes
+	// MinProtocol is the lowest sync protocol version accepted from apps.
+	// 0 admits the 0.4.x apps, which announce none.
+	MinProtocol int
 }
 
 type WebConfig struct {
@@ -300,6 +304,9 @@ func Load() (*Config, error) {
 		// from every other writer without any configuration.
 		NodeID: env("NODE_ID", randomNodeID()),
 	}
+	if err := loadSync(c); err != nil {
+		return nil, err
+	}
 
 	// --- Embedded web (single-binary production) ---
 	c.Web = WebConfig{
@@ -367,6 +374,28 @@ func checkLogin(c *Config) error {
 		return fmt.Errorf("BEEHIVE_EMAIL_VERIFICATION=true needs a mail server: set BEEHIVE_SMTP_HOST, or turn verification off")
 	}
 	return nil
+}
+
+// loadSync reads the sync settings that are numbers.
+func loadSync(c *Config) error {
+	var err error
+	if c.Sync.MinProtocol, err = envCount("SYNC_MIN_PROTOCOL", 0); err != nil {
+		return fmt.Errorf("%w (the lowest sync protocol version accepted from apps; 0 accepts all)", err)
+	}
+	return nil
+}
+
+// envCount reads a whole number of 0 or more.
+func envCount(key string, def int) (int, error) {
+	v := strings.TrimSpace(os.Getenv(envPrefix + key))
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("%s%s must be a whole number, 0 or more; got %q", envPrefix, key, v)
+	}
+	return n, nil
 }
 
 func randomNodeID() string {

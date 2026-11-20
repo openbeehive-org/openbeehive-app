@@ -61,7 +61,14 @@ func newFixtureStore(t *testing.T) *sqlstore.Store {
 	return store
 }
 
+// identityCtx is a call from the current app: signed in, announcing the
+// sync protocol it speaks.
 func identityCtx(user, org string) context.Context {
+	return WithSyncProtocol(legacyCtx(user, org), protocolSnapshots)
+}
+
+// legacyCtx is a call from a 0.4.x app, which announces no protocol version.
+func legacyCtx(user, org string) context.Context {
 	return auth.WithIdentity(context.Background(), auth.Identity{UserID: user, OrgID: org})
 }
 

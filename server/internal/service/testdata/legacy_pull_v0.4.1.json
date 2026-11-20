@@ -1,0 +1,250 @@
+[
+  {
+    "entity": "apiary",
+    "entityId": "apiary-1",
+    "scopeId": "apiary-1",
+    "op": 1,
+    "payloadJson": "{\"address\":\"s-address\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"lat\":1.5,\"lng\":1.5,\"name\":\"s-name\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"updated_at\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600001:00000:new"
+  },
+  {
+    "entity": "apiary",
+    "entityId": "apiary-2",
+    "scopeId": "apiary-2",
+    "op": 1,
+    "payloadJson": "{\"address\":\"s-address\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"lat\":1.5,\"lng\":1.5,\"name\":\"s-name\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"updated_at\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600002:00000:new"
+  },
+  {
+    "entity": "apiary",
+    "entityId": "apiary-2",
+    "scopeId": "apiary-2",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600003:00000:new"
+  },
+  {
+    "entity": "event",
+    "entityId": "event-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"author_id\":\"s-author_id\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"detail\":\"s-detail\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"ref_entity\":\"s-ref_entity\",\"ref_id\":\"s-ref_id\",\"scope_id\":\"apiary-a\",\"title\":\"s-title\",\"type\":3}",
+    "hlc": "001767225600004:00000:new"
+  },
+  {
+    "entity": "event",
+    "entityId": "event-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"author_id\":\"s-author_id\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"detail\":\"s-detail\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"ref_entity\":\"s-ref_entity\",\"ref_id\":\"s-ref_id\",\"scope_id\":\"apiary-a\",\"title\":\"s-title\",\"type\":3}",
+    "hlc": "001767225600005:00000:new"
+  },
+  {
+    "entity": "event",
+    "entityId": "event-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600006:00000:new"
+  },
+  {
+    "entity": "harvest",
+    "entityId": "harvest-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"batch_number\":\"s-batch_number\",\"best_before\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"hive_id\":\"hive-a\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"variety\":\"s-variety\",\"water_content\":1.5}",
+    "hlc": "001767225600007:00000:new"
+  },
+  {
+    "entity": "harvest",
+    "entityId": "harvest-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"amount_kg\":1.5,\"apiary_id\":\"apiary-a\",\"batch_number\":\"s-batch_number\",\"best_before\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"hive_id\":\"hive-a\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"queen_id\":\"s-queen_id\",\"variety\":\"s-variety\",\"water_content\":1.5}",
+    "hlc": "001767225600008:00000:new"
+  },
+  {
+    "entity": "harvest",
+    "entityId": "harvest-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"deleted\":0}",
+    "hlc": "001767225600009:00000:new"
+  },
+  {
+    "entity": "harvest",
+    "entityId": "harvest-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600011:00000:new"
+  },
+  {
+    "entity": "hive",
+    "entityId": "hive-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"apiary_id\":\"apiary-a\",\"boxes\":3,\"colony_origin\":\"s-colony_origin\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"name\":\"s-name\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo\":\"s-photo\",\"qr_code\":\"s-qr_code\",\"status\":3,\"type\":3,\"updated_at\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600012:00000:new"
+  },
+  {
+    "entity": "hive",
+    "entityId": "hive-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"apiary_id\":\"apiary-a\",\"boxes\":3,\"colony_origin\":\"s-colony_origin\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"name\":\"s-name\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo\":\"s-photo\",\"qr_code\":\"s-qr_code\",\"status\":3,\"type\":3,\"updated_at\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600013:00000:new"
+  },
+  {
+    "entity": "hive",
+    "entityId": "hive-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600014:00000:new"
+  },
+  {
+    "entity": "inspection",
+    "entityId": "inspection-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"brood_frames\":3,\"calmness\":3,\"covered_larva\":1,\"created_at\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"drone_frame_cut\":1,\"eggs_seen\":1,\"fed_kg\":1.5,\"frames\":3,\"frames_added\":3,\"frames_removed\":3,\"hive_id\":\"hive-a\",\"honey_kg\":1.5,\"humidity_hive\":1.5,\"humidity_outside\":1.5,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo_keys\":{\"add\":[\"k1\",\"k2\"]},\"queen_cells\":3,\"queen_seen\":1,\"stores\":3,\"super_added\":1,\"temp_hive\":1.5,\"temp_outside\":1.5,\"temperament\":3,\"varroa\":\"s-varroa\",\"weather\":\"s-weather\",\"weight_kg\":1.5,\"youngest_larva\":3}",
+    "hlc": "001767225600015:00000:new"
+  },
+  {
+    "entity": "inspection",
+    "entityId": "inspection-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"brood_frames\":3,\"calmness\":3,\"covered_larva\":1,\"created_at\":\"2026-01-02T03:04:05.000Z\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"drone_frame_cut\":1,\"eggs_seen\":1,\"fed_kg\":1.5,\"frames\":3,\"frames_added\":3,\"frames_removed\":3,\"hive_id\":\"hive-a\",\"honey_kg\":1.5,\"humidity_hive\":1.5,\"humidity_outside\":1.5,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"photo_keys\":{\"add\":[\"k1\",\"k2\"]},\"queen_cells\":3,\"queen_seen\":1,\"stores\":3,\"super_added\":1,\"temp_hive\":1.5,\"temp_outside\":1.5,\"temperament\":3,\"varroa\":\"s-varroa\",\"weather\":\"s-weather\",\"weight_kg\":1.5,\"youngest_larva\":3}",
+    "hlc": "001767225600016:00000:new"
+  },
+  {
+    "entity": "inspection",
+    "entityId": "inspection-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"deleted\":0}",
+    "hlc": "001767225600017:00000:new"
+  },
+  {
+    "entity": "inspection",
+    "entityId": "inspection-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"photo_keys\":{\"remove\":[\"k1\"],\"removed_tags\":{\"k1\":[\"001767225600015:00000:new\"]}}}",
+    "hlc": "001767225600019:00000:new"
+  },
+  {
+    "entity": "inspection",
+    "entityId": "inspection-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600020:00000:new"
+  },
+  {
+    "entity": "placement",
+    "entityId": "placement-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"apiary_id\":\"apiary-a\",\"deleted\":0,\"end_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"start_at\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600021:00000:new"
+  },
+  {
+    "entity": "placement",
+    "entityId": "placement-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"apiary_id\":\"apiary-a\",\"deleted\":0,\"end_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"start_at\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600022:00000:new"
+  },
+  {
+    "entity": "placement",
+    "entityId": "placement-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600023:00000:new"
+  },
+  {
+    "entity": "queen",
+    "entityId": "queen-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"active\":1,\"breeder_number\":\"s-breeder_number\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"hive_id\":\"hive-a\",\"introduced_at\":\"2026-01-02T03:04:05.000Z\",\"marking\":3,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"origin\":\"s-origin\",\"replaced_at\":\"2026-01-02T03:04:05.000Z\",\"updated_at\":\"2026-01-02T03:04:05.000Z\",\"year\":3}",
+    "hlc": "001767225600024:00000:new"
+  },
+  {
+    "entity": "queen",
+    "entityId": "queen-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"active\":1,\"breeder_number\":\"s-breeder_number\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"hive_id\":\"hive-a\",\"introduced_at\":\"2026-01-02T03:04:05.000Z\",\"marking\":3,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"origin\":\"s-origin\",\"replaced_at\":\"2026-01-02T03:04:05.000Z\",\"updated_at\":\"2026-01-02T03:04:05.000Z\",\"year\":3}",
+    "hlc": "001767225600025:00000:new"
+  },
+  {
+    "entity": "queen",
+    "entityId": "queen-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600026:00000:new"
+  },
+  {
+    "entity": "task",
+    "entityId": "task-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"apiary_id\":\"apiary-a\",\"assigned_to\":\"s-assigned_to\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"done\":1,\"due_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"priority\":3,\"recurrence\":\"s-recurrence\",\"title\":\"s-title\"}",
+    "hlc": "001767225600027:00000:new"
+  },
+  {
+    "entity": "task",
+    "entityId": "task-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"apiary_id\":\"apiary-a\",\"assigned_to\":\"s-assigned_to\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"done\":1,\"due_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"priority\":3,\"recurrence\":\"s-recurrence\",\"title\":\"s-title\"}",
+    "hlc": "001767225600028:00000:new"
+  },
+  {
+    "entity": "task",
+    "entityId": "task-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600029:00000:new"
+  },
+  {
+    "entity": "treatment",
+    "entityId": "treatment-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"active_ingredient\":\"s-active_ingredient\",\"apiary_id\":\"apiary-a\",\"batch_number\":\"s-batch_number\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"dose\":\"s-dose\",\"hive_id\":\"hive-a\",\"method\":\"s-method\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"product\":\"s-product\",\"queen_id\":\"s-queen_id\",\"reason\":\"s-reason\",\"withdrawal_until\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600030:00000:new"
+  },
+  {
+    "entity": "treatment",
+    "entityId": "treatment-2",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"active_ingredient\":\"s-active_ingredient\",\"apiary_id\":\"apiary-a\",\"batch_number\":\"s-batch_number\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"dose\":\"s-dose\",\"hive_id\":\"hive-a\",\"method\":\"s-method\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"product\":\"s-product\",\"queen_id\":\"s-queen_id\",\"reason\":\"s-reason\",\"withdrawal_until\":\"2026-01-02T03:04:05.000Z\"}",
+    "hlc": "001767225600031:00000:new"
+  },
+  {
+    "entity": "treatment",
+    "entityId": "treatment-1",
+    "scopeId": "apiary-a",
+    "op": 1,
+    "payloadJson": "{\"deleted\":0}",
+    "hlc": "001767225600032:00000:new"
+  },
+  {
+    "entity": "treatment",
+    "entityId": "treatment-2",
+    "scopeId": "apiary-a",
+    "op": 2,
+    "payloadJson": "{\"deleted\":1}",
+    "hlc": "001767225600034:00000:new"
+  }
+]

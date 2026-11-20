@@ -179,6 +179,26 @@ func TestLoadNodeIDIsRandomByDefault(t *testing.T) {
 	}
 }
 
+func TestLoadSyncSettings(t *testing.T) {
+	clearBeehiveEnv(t)
+	cfg, err := Load()
+	if err != nil || cfg.Sync.MinProtocol != 0 {
+		t.Fatalf("defaults: %+v %v; want legacy apps accepted", cfg.Sync, err)
+	}
+	t.Setenv(envPrefix+"SYNC_MIN_PROTOCOL", "1")
+	if cfg, err = Load(); err != nil || cfg.Sync.MinProtocol != 1 {
+		t.Fatalf("explicit values: %+v %v", cfg.Sync, err)
+	}
+	// A value that is not a number stops the boot and names the setting.
+	for key, bad := range map[string]string{"SYNC_MIN_PROTOCOL": "-1"} {
+		clearBeehiveEnv(t)
+		t.Setenv(envPrefix+key, bad)
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), envPrefix+key) {
+			t.Fatalf("%s=%q: %v", key, bad, err)
+		}
+	}
+}
+
 func TestLoadTimeoutsAreBoundedByDefault(t *testing.T) {
 	clearBeehiveEnv(t)
 	cfg, _ := Load()

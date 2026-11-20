@@ -25,6 +25,18 @@ package openbeehive.v1;
 //
 // hlc stamps the whole delta: "<unix ms, 15 digits>:<counter, 5 digits>:<node>".
 // Per field the newer stamp wins; equal stamps do not overwrite.
+//
+// Protocol version. A client says which version of this protocol it speaks
+// with two request headers on every call of SyncService:
+//   Openbeehive-Sync-Protocol: 1        (an integer; this file describes 1)
+//   Openbeehive-App-Version:   0.5.0    (free text, for the server log)
+// A request without Openbeehive-Sync-Protocol comes from a 0.4.x app
+// ("version 0"). Such a client is served as release 0.4.1 was: Pull returns
+// only the entities and columns that release knew, cursors are plain
+// sequence numbers, and it gets neither snapshots nor reset signals. Scripts
+// that call this service must send the header to receive everything.
+// The server may require a minimum version; below it every call fails with
+// FAILED_PRECONDITION and an UpgradeRequired error detail.
 
 enum ChangeOp {
   CHANGE_OP_UNSPECIFIED = 0;
@@ -48,8 +60,27 @@ message Change {
   string author_id = 7;
 }
 
+// What the server made of the cursor of a Pull. Only clients that announce a
+// protocol version receive a value other than UNSPECIFIED.
+enum PullStatus {
+  // The cursor was accepted: changes, next_cursor and has_more are valid.
+  PULL_STATUS_UNSPECIFIED = 0;
+  // The cursor is older than the oldest change the server still keeps (the
+  // change log is compacted). Nothing was returned. Load the current rows
+  // with Snapshot and continue from its cursor; the outbox is unaffected.
+  PULL_STATUS_SNAPSHOT_REQUIRED = 1;
+  // The cursor does not belong to the history of this database: it was
+  // restored from a backup or replaced. Nothing was returned. Load the
+  // current rows with Snapshot, continue from its cursor, and push the
+  // local rows again (with their existing stamps) so that what the server
+  // lost comes back.
+  PULL_STATUS_RESET_REQUIRED = 2;
+}
+
 message PullRequest {
-  string cursor = 1;     // next_cursor of the previous Pull ("" = from the start)
+  // next_cursor of the previous Pull, or cursor of a Snapshot ("" = from the
+  // start). Opaque: store it and send it back unchanged.
+  string cursor = 1;
   int32 limit = 2;       // 0 => server default
 }
 message PullResponse {
@@ -57,6 +88,44 @@ message PullResponse {
   string next_cursor = 2;
   bool has_more = 3;     // more pages available -> pull again immediately
   int64 server_time_ms = 4; // server wall clock (unix ms); devices correct their own clock with it
+  PullStatus status = 5;
+}
+
+// Snapshot returns the current rows of the caller's workspace, page by page:
+// every synced row including deleted ones (tombstones), and of the personal
+// rows only the caller's own. A new device loads it instead of replaying the
+// whole change log.
+message SnapshotRequest {
+  string page_token = 1; // next_page_token of the previous page ("" = first page)
+}
+message SnapshotRow {
+  string entity = 1;
+  string entity_id = 2;
+  // Every synced column of the row, in the form of Change.payload_json. A
+  // set column carries its whole state instead of a delta:
+  //   {"photo_keys": {"<element>": {"a": ["<add tag>", ...], "r": ["<removed tag>", ...]}}}
+  string payload_json = 3;
+  // JSON object: column -> hlc stamp of its last write. Merge the row field
+  // by field like a change: a column is taken when its stamp is newer than
+  // the local one. A column without a stamp was never written through sync
+  // and is taken only where the local row has no stamp for it either. Set
+  // columns are merged by union of their tags.
+  string field_hlc_json = 4;
+}
+message SnapshotResponse {
+  repeated SnapshotRow rows = 1;
+  string next_page_token = 2; // "" = this was the last page
+  // Where to continue with Pull after the last page. The same on every page:
+  // it is taken before the first row is read, so a row changed while the
+  // pages are being fetched is delivered again by Pull.
+  string cursor = 3;
+  int64 server_time_ms = 4; // server wall clock (unix ms)
+}
+
+// Error detail of FAILED_PRECONDITION: the calling app is too old for this
+// server and has to be updated before it can sync again.
+message UpgradeRequired {
+  int32 min_protocol = 1; // lowest protocol version the server accepts
 }
 
 message PushRequest {
@@ -93,12 +162,15 @@ message PushResponse {
 }
 
 // Optional live channel: nudges the device to pull when its workspace has
-// new changes.
+// new changes. server_cursor is the sequence number of the newest change,
+// for information only; it is not a cursor for Pull.
 message SubscribeRequest { string cursor = 1; }
 message SubscribeEvent { string server_cursor = 1; }
 
 service SyncService {
   rpc Pull(PullRequest) returns (PullResponse);
+  // Requires a protocol version (see the top of this file).
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
   // Applies each change on its own: one bad change neither blocks nor drops
   // the others (see PushResponse.rejected). The whole request fails with
   // PERMISSION_DENIED only for read-only identities.

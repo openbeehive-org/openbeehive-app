@@ -87,6 +87,7 @@ const (
 // until it is listed.
 var rpcAccessByProcedure = map[string]rpcAccess{
 	"/openbeehive.v1.SyncService/Pull":      rpcRead,
+	"/openbeehive.v1.SyncService/Snapshot":  rpcRead,
 	"/openbeehive.v1.SyncService/Push":      rpcWrite,
 	"/openbeehive.v1.SyncService/Subscribe": rpcRead,
 

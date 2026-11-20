@@ -259,7 +259,9 @@ func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.St
 	// One clock for every server-side write, shared with the sync endpoint.
 	hlc := wsync.NewHLC(cfg.Sync.NodeID)
 	// Offline sync: central push/pull endpoint (the app's write path).
-	openbeehivev1connect.RegisterSyncServiceHandler(server, service.NewSyncService(store.DB(), hlc))
+	syncSvc := service.NewSyncService(store.DB(), hlc)
+	syncSvc.MinProtocol = cfg.Sync.MinProtocol
+	openbeehivev1connect.RegisterSyncServiceHandler(server, syncSvc)
 	// CRUD services for scripts and integrations. Their writes go through the
 	// same merge + change log as Push, so they show up on devices.
 	w := service.NewWriter(store.DB(), hlc)

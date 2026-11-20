@@ -136,13 +136,20 @@ type SyncService struct {
 	db  *sqlx.DB
 	hlc *wsync.HLC
 
-	poll    time.Duration // Subscribe poll interval
-	mu      sync.Mutex
-	streams map[string]int // open Subscribe streams per user
+	// MinProtocol is the lowest sync protocol version a client may speak;
+	// 0 also admits 0.4.x apps, which announce none.
+	MinProtocol int
+	refused     sync.Map // syncClient -> true: refusals already logged
+
+	poll time.Duration // Subscribe poll interval
+	// pageBytes is the size at which a snapshot page is closed.
+	pageBytes int
+	mu        sync.Mutex
+	streams   map[string]int // open Subscribe streams per user
 }
 
 func NewSyncService(db *sqlx.DB, hlc *wsync.HLC) *SyncService {
-	return &SyncService{db: db, hlc: hlc, poll: subscribePoll, streams: map[string]int{}}
+	return &SyncService{db: db, hlc: hlc, poll: subscribePoll, pageBytes: snapshotPageBytes, streams: map[string]int{}}
 }
 
 func internalErr(err error) error {
@@ -157,7 +164,7 @@ func internalErr(err error) error {
 // workspace they were written in. idx_change_org_seq serves both queries.
 const (
 	pullQuery = `
-		SELECT scope_id, entity, entity_id, op, payload, hlc, author_id, seq
+		SELECT id, scope_id, entity, entity_id, op, payload, hlc, author_id, seq
 		FROM change_log
 		WHERE org_id = ? AND seq > ? AND (scope_id NOT LIKE 'user:%' OR scope_id = ?)
 		ORDER BY seq ASC LIMIT ?`
@@ -167,6 +174,23 @@ const (
 		ORDER BY seq DESC LIMIT 1`
 )
 
+// logEntry is one change-log row as Pull reads it.
+type logEntry struct {
+	id     string
+	seq    int64
+	change *wv1.Change
+}
+
+// Pull returns the changes after the caller's cursor. What happens around
+// that depends on who is asking (see sync.proto, "Protocol version"):
+//
+// A client that announces a protocol version has its cursor checked against
+// this database (checkCursor) and, instead of changes, may get the status
+// that sends it to Snapshot.
+//
+// A legacy 0.4.x app gets the changes reduced to what it can store
+// (forLegacy), and a failure it cannot miss when the log no longer reaches
+// back to its cursor.
 func (s *SyncService) Pull(
 	ctx context.Context, req *wv1.PullRequest,
 ) (*wv1.PullResponse, error) {
@@ -174,53 +198,143 @@ func (s *SyncService) Pull(
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, "")
 	}
+	client, err := s.admit(ctx)
+	if err != nil {
+		return nil, err
+	}
 	limit := int(req.Limit)
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
-	// limit+1 rows are requested to tell whether more pages follow.
-	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(pullQuery),
-		id.OrgID, cursorToSeq(req.Cursor), personalScope(id.UserID), limit+1)
+	st, err := s.state(ctx)
 	if err != nil {
 		return nil, internalErr(err)
 	}
+	res := &wv1.PullResponse{NextCursor: req.Cursor, ServerTimeMs: time.Now().UnixMilli()}
+	after, err := s.pullStart(ctx, client, st, req.Cursor, res)
+	if err != nil {
+		return nil, internalErr(err)
+	}
+	if res.Status != wv1.PullStatus_PULL_STATUS_UNSPECIFIED {
+		return res, nil
+	}
+
+	// limit+1 rows are requested to tell whether more pages follow.
+	page, err := s.readLog(ctx, id, after, limit+1)
+	if err != nil {
+		return nil, internalErr(err)
+	}
+	// Compaction may have removed entries while the page was read. It stores
+	// the horizon first, so looking again now tells whether this page can
+	// have a hole.
+	now, err := s.state(ctx)
+	if err != nil {
+		return nil, internalErr(err)
+	}
+	if after < now.horizon {
+		if client.legacy() {
+			return nil, upgradeRequired(protocolSnapshots,
+				"the server no longer keeps the changes made since this device last synced")
+		}
+		res.Status = wv1.PullStatus_PULL_STATUS_SNAPSHOT_REQUIRED
+		return res, nil
+	}
+
+	res.HasMore = len(page) > limit
+	if res.HasMore {
+		page = page[:limit]
+	}
+	for _, e := range page {
+		if !client.legacy() || forLegacy(e.change) {
+			res.Changes = append(res.Changes, e.change)
+		}
+	}
+	if err := s.pullEnd(ctx, client, st, after, page, res); err != nil {
+		return nil, internalErr(err)
+	}
+	return res, nil
+}
+
+// pullStart turns the request's cursor into the sequence number to read
+// after. For a client that announced a protocol version it may set
+// res.Status instead, and then nothing is read.
+func (s *SyncService) pullStart(ctx context.Context, client syncClient, st syncState, raw string, res *wv1.PullResponse) (int64, error) {
+	if !client.legacy() {
+		after, status, err := s.checkCursor(ctx, st, raw)
+		res.Status = status
+		return after, err
+	}
+	// A position beyond the end of the log comes from before a restore: such
+	// a device reads the log again from the start, which merges without
+	// effect where it already has the rows.
+	after := cursorToSeq(raw)
+	if after > st.head {
+		after = 0
+		res.NextCursor = seqToCursor(0)
+	}
+	return after, nil
+}
+
+// pullEnd sets res.NextCursor, where the device continues: after the last
+// entry of a full page, and otherwise at the end of the log as it was when
+// the call began. Moving on without changes of its own keeps a quiet
+// workspace ahead of the compaction horizon. A device that is already there
+// keeps the cursor it sent.
+func (s *SyncService) pullEnd(ctx context.Context, client syncClient, st syncState, after int64, page []logEntry, res *wv1.PullResponse) error {
+	pos, tag := after, ""
+	if len(page) > 0 {
+		last := page[len(page)-1]
+		pos, tag = last.seq, entryTag(last.id)
+	}
+	if !res.HasMore && st.head > pos {
+		pos, tag = st.head, ""
+	}
+	if client.legacy() {
+		if pos > after {
+			res.NextCursor = seqToCursor(pos)
+		}
+		return nil
+	}
+	if pos == after && res.NextCursor != "" {
+		return nil
+	}
+	if tag == "" {
+		var err error
+		if tag, err = s.tagAt(ctx, pos); err != nil {
+			return err
+		}
+	}
+	res.NextCursor = cursor{epoch: st.epoch, seq: pos, tag: tag}.String()
+	return nil
+}
+
+// readLog returns up to limit changes the identity may see after seq.
+func (s *SyncService) readLog(ctx context.Context, id auth.Identity, after int64, limit int) ([]logEntry, error) {
+	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(pullQuery),
+		id.OrgID, after, personalScope(id.UserID), limit)
+	if err != nil {
+		return nil, err
+	}
 	defer func() { _ = rows.Close() }()
 
-	var out []*wv1.Change
-	var seqs []int64
+	var out []logEntry
 	for rows.Next() {
 		var c struct {
-			ScopeID, Entity, EntityID, Payload, HLC, Author string
-			Op                                              int32
-			Seq                                             int64
+			ID, ScopeID, Entity, EntityID, Payload, HLC, Author string
+			Op                                                  int32
+			Seq                                                 int64
 		}
-		if err := rows.Scan(&c.ScopeID, &c.Entity, &c.EntityID, &c.Op, &c.Payload, &c.HLC, &c.Author, &c.Seq); err != nil {
-			return nil, internalErr(err)
+		if err := rows.Scan(&c.ID, &c.ScopeID, &c.Entity, &c.EntityID, &c.Op, &c.Payload, &c.HLC, &c.Author, &c.Seq); err != nil {
+			return nil, err
 		}
-		out = append(out, &wv1.Change{
+		out = append(out, logEntry{id: c.ID, seq: c.Seq, change: &wv1.Change{
 			Entity: c.Entity, EntityId: c.EntityID, ScopeId: c.ScopeID,
 			Op: wv1.ChangeOp(c.Op), PayloadJson: c.Payload, Hlc: c.HLC, AuthorId: c.Author,
-		})
-		seqs = append(seqs, c.Seq)
+		}})
 	}
 	// A page cut short by a read error must not look complete: the device
 	// would move its cursor past rows it never received.
-	if err := rows.Err(); err != nil {
-		return nil, internalErr(err)
-	}
-
-	hasMore := len(out) > limit
-	if hasMore {
-		out, seqs = out[:limit], seqs[:limit]
-	}
-	next := req.Cursor
-	if len(seqs) > 0 {
-		next = seqToCursor(seqs[len(seqs)-1])
-	}
-	return &wv1.PullResponse{
-		Changes: out, NextCursor: next, HasMore: hasMore,
-		ServerTimeMs: time.Now().UnixMilli(),
-	}, nil
+	return out, rows.Err()
 }
 
 // --- Push: applies incoming changes one by one ---
@@ -235,6 +349,9 @@ func (s *SyncService) Push(
 	id, ok := auth.FromContext(ctx)
 	if !ok {
 		return nil, connect.NewError(connect.CodeUnauthenticated, "")
+	}
+	if _, err := s.admit(ctx); err != nil {
+		return nil, err
 	}
 	// Read-only identities (demo account, read-scoped API keys) upload
 	// nothing at all; the device discards the attempt.
@@ -392,7 +509,10 @@ func (s *SyncService) Subscribe(
 	if !ok {
 		return connect.NewError(connect.CodeUnauthenticated, "")
 	}
-	return s.subscribe(ctx, id, cursorToSeq(req.Cursor), stream.Send)
+	if _, err := s.admit(ctx); err != nil {
+		return err
+	}
+	return s.subscribe(ctx, id, cursorSeq(req.Cursor), stream.Send)
 }
 
 func (s *SyncService) subscribe(ctx context.Context, id auth.Identity, last int64, send func(*wv1.SubscribeEvent) error) error {
@@ -615,6 +735,7 @@ func appendChangeLog(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change, orgID str
 	return err
 }
 
+// cursorToSeq reads the bare sequence number legacy clients use as cursor.
 func cursorToSeq(c string) int64 {
 	n, _ := strconv.ParseInt(c, 10, 64)
 	return n
