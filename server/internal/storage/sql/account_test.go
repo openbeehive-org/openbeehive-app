@@ -223,3 +223,102 @@ func TestMembershipChangesKeepAnOwner(t *testing.T) {
 		}
 	})
 }
+
+// A workspace that goes with its only member's account is deleted only if
+// the account still is its only member when the delete runs.
+func TestDeleteIfOnlyMember(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		s := b.blank(t)
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		for _, org := range []string{"shared", "alone"} {
+			if err := s.Orgs().Create(ctx, &storage.Organization{ID: org, Name: org, CreatedAt: now}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Members().Add(ctx, &storage.Membership{OrgID: org, UserID: "u1", Role: "owner"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := s.Members().Add(ctx, &storage.Membership{OrgID: "shared", UserID: "u2", Role: "member"}); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := s.Orgs().DeleteIfOnlyMember(ctx, "shared", "u1"); !errors.Is(err, storage.ErrNotOnlyMember) {
+			t.Fatalf("a workspace with another member: %v", err)
+		}
+		if _, err := s.Orgs().Get(ctx, "shared"); err != nil {
+			t.Fatalf("the refused delete must leave the workspace: %v", err)
+		}
+		if members, err := s.Members().ListByOrg(ctx, "shared"); err != nil || len(members) != 2 {
+			t.Fatalf("the refused delete must leave the members: %v %+v", err, members)
+		}
+		// Not a member at all: everyone in it is "somebody else".
+		if err := s.Orgs().DeleteIfOnlyMember(ctx, "alone", "u2"); !errors.Is(err, storage.ErrNotOnlyMember) {
+			t.Fatalf("a workspace of somebody else: %v", err)
+		}
+
+		if err := s.Orgs().DeleteIfOnlyMember(ctx, "alone", "u1"); err != nil {
+			t.Fatalf("the only member's workspace: %v", err)
+		}
+		if _, err := s.Orgs().Get(ctx, "alone"); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("the workspace must be gone: %v", err)
+		}
+		// Nobody joins a workspace that no longer exists.
+		if err := s.Members().Add(ctx, &storage.Membership{OrgID: "alone", UserID: "u2", Role: "member"}); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("joining a deleted workspace: %v", err)
+		}
+		var n int
+		if err := s.db.Get(&n, `SELECT COUNT(*) FROM member WHERE organization_id = 'alone'`); err != nil || n != 0 {
+			t.Fatalf("memberships of the deleted workspace: %d %v", n, err)
+		}
+	})
+}
+
+// A join waits for a delete that is checking the members, and the other way
+// round: whichever comes first, a workspace never disappears under a member
+// who has just joined it.
+func TestJoinAndDeleteIfOnlyMemberDoNotCross(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		s := b.blank(t)
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		for round := range 20 {
+			org := "o" + string(rune('a'+round))
+			if err := s.Orgs().Create(ctx, &storage.Organization{ID: org, Name: org, CreatedAt: time.Now().UTC()}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Members().Add(ctx, &storage.Membership{OrgID: org, UserID: "owner", Role: "owner"}); err != nil {
+				t.Fatal(err)
+			}
+			joined, deleted := make(chan error, 1), make(chan error, 1)
+			go func() {
+				joined <- s.Members().Add(ctx, &storage.Membership{OrgID: org, UserID: "late", Role: "member"})
+			}()
+			go func() { deleted <- s.Orgs().DeleteIfOnlyMember(ctx, org, "owner") }()
+			joinErr, deleteErr := <-joined, <-deleted
+
+			_, getErr := s.Orgs().Get(ctx, org)
+			exists := getErr == nil
+			switch {
+			case joinErr == nil && errors.Is(deleteErr, storage.ErrNotOnlyMember) && exists:
+				// The join came first: the workspace stays, with both members.
+				if members, _ := s.Members().ListByOrg(ctx, org); len(members) != 2 {
+					t.Fatalf("round %d: members after join-first: %+v", round, members)
+				}
+			case errors.Is(joinErr, storage.ErrNotFound) && deleteErr == nil && !exists:
+				// The delete came first: there was nothing left to join.
+				var n int
+				if err := s.db.Get(&n, s.db.Rebind(`SELECT COUNT(*) FROM member WHERE organization_id = ?`), org); err != nil || n != 0 {
+					t.Fatalf("round %d: memberships of the deleted workspace: %d %v", round, n, err)
+				}
+			default:
+				t.Fatalf("round %d: join %v, delete %v, workspace exists %v", round, joinErr, deleteErr, exists)
+			}
+		}
+	})
+}

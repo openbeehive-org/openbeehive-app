@@ -16,6 +16,10 @@ var ErrNotFound = errors.New("not found")
 // members without an owner.
 var ErrLastOwner = errors.New("a workspace needs at least one owner")
 
+// ErrNotOnlyMember is returned when a workspace was to be deleted on the
+// understanding that one account is its only member, and it has others.
+var ErrNotOnlyMember = errors.New("the workspace has other members")
+
 // NormalizeEmail returns the form in which email addresses are stored and
 // compared: trimmed and lower case.
 func NormalizeEmail(email string) string {
@@ -153,6 +157,12 @@ type OrgRepo interface {
 	// Delete removes the tenant and every row scoped to it (memberships,
 	// invites, API keys, apiaries, hives and all records) in one transaction.
 	Delete(ctx context.Context, id string) error
+	// DeleteIfOnlyMember is Delete for a workspace that goes with its only
+	// member's account. Whether the account really is the only member is
+	// checked inside the deleting transaction, against joins that are held
+	// back until it ends: ErrNotOnlyMember if somebody else belongs to it,
+	// and nothing is deleted.
+	DeleteIfOnlyMember(ctx context.Context, id, userID string) error
 	// PhotoKeysByOrg returns every blob key the tenant's inspections have ever
 	// referenced, including OR-Set-removed ones, whose blobs also linger.
 	// Used to purge the blob store when the tenant is deleted.
@@ -160,6 +170,8 @@ type OrgRepo interface {
 }
 
 type MemberRepo interface {
+	// Add makes the account a member. ErrNotFound when the tenant does not
+	// exist (any more).
 	Add(ctx context.Context, m *Membership) error
 	Get(ctx context.Context, orgID, userID string) (*Membership, error)
 	ListByUser(ctx context.Context, userID string) ([]TenantMembership, error)

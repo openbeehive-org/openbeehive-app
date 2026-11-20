@@ -270,6 +270,10 @@ func TestTenantOwnerManagesMemberKeys(t *testing.T) {
 		t.Fatal("revoked member key must not verify")
 	}
 	// Owner of another tenant cannot touch org-1 keys through the override.
+	if _, err := keys.db.ExecContext(ctx, keys.db.Rebind(`INSERT INTO organization (id, name, created_at) VALUES (?, ?, ?)`),
+		"org-2", "Other", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
 	if err := keys.members.Add(ctx, &storage.Membership{OrgID: "org-2", UserID: "u2", Role: "owner"}); err != nil {
 		t.Fatal(err)
 	}
