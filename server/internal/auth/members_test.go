@@ -87,6 +87,9 @@ func TestRemoveMember(t *testing.T) {
 	f.join(t, owner.orgID, other, "member")
 	inClub := f.switchTo(t, member, owner.orgID)
 	clubKey, ownKey := f.apiKey(t, inClub), f.apiKey(t, member.token)
+	f.writeRecords(t, owner.orgID, member.userID, "club")
+	f.writeRecords(t, member.orgID, member.userID, "own")
+	f.writeRecords(t, owner.orgID, other.userID, "other")
 	remove := func(token, userID string) response {
 		return f.call(t, http.MethodPost, "/tenants/members/remove", token, map[string]string{"org_id": owner.orgID, "user_id": userID})
 	}
@@ -113,6 +116,29 @@ func TestRemoveMember(t *testing.T) {
 	if err := f.store.DB().Get(&keys, f.store.DB().Rebind(`SELECT COUNT(*) FROM api_key WHERE organization_id = ?`), owner.orgID); err != nil || keys != 0 {
 		t.Fatalf("the removed member's keys for the workspace must be deleted: %d %v", keys, err)
 	}
+	// Their personal tasks in the workspace, which nobody else could see,
+	// go with the membership; what they wrote for everyone stays.
+	for what, q := range map[string][2]string{
+		"personal task":             {`SELECT COUNT(*) FROM task WHERE id = ?`, "club-task"},
+		"personal timeline entry":   {`SELECT COUNT(*) FROM event WHERE id = ?`, "club-ev-own"},
+		"personal change-log entry": {`SELECT COUNT(*) FROM change_log WHERE id = ?`, "club-cl-task"},
+	} {
+		if n := f.count(t, q[0], q[1]); n != 0 {
+			t.Errorf("the removed member's %s is still on the server", what)
+		}
+	}
+	for what, q := range map[string][2]string{
+		"shared record":                   {`SELECT COUNT(*) FROM event WHERE id = ?`, "club-ev"},
+		"shared change-log entry":         {`SELECT COUNT(*) FROM change_log WHERE id = ?`, "club-cl-ev"},
+		"personal task in their own":      {`SELECT COUNT(*) FROM task WHERE id = ?`, "own-task"},
+		"personal change log in own":      {`SELECT COUNT(*) FROM change_log WHERE id = ?`, "own-cl-task"},
+		"another member's personal task":  {`SELECT COUNT(*) FROM task WHERE id = ?`, "other-task"},
+		"another member's personal entry": {`SELECT COUNT(*) FROM change_log WHERE id = ?`, "other-cl-task"},
+	} {
+		if n := f.count(t, q[0], q[1]); n != 1 {
+			t.Errorf("%s must stay, found %d", what, n)
+		}
+	}
 	// What they have elsewhere is untouched.
 	if _, err := f.keys.Verify(ctx, ownKey); err != nil {
 		t.Fatalf("the key for their own workspace must keep working: %v", err)
@@ -132,6 +158,7 @@ func TestLeaveWorkspace(t *testing.T) {
 	f.join(t, owner.orgID, member, "member")
 	inClub := f.switchTo(t, member, owner.orgID)
 	clubKey := f.apiKey(t, inClub)
+	f.writeRecords(t, owner.orgID, member.userID, "club")
 	leave := func(token, orgID string) response {
 		return f.call(t, http.MethodPost, "/tenants/leave", token, map[string]string{"org_id": orgID})
 	}
@@ -153,6 +180,13 @@ func TestLeaveWorkspace(t *testing.T) {
 	wantError(t, f.call(t, http.MethodGet, "/auth/me", inClub, nil), http.StatusUnauthorized, "not_signed_in")
 	if _, err := f.keys.Verify(context.Background(), clubKey); err == nil {
 		t.Fatal("the API key for the workspace they left still works")
+	}
+	// Their personal tasks there leave with them; their shared records stay.
+	if n := f.count(t, `SELECT COUNT(*) FROM task WHERE id = 'club-task'`) + f.count(t, `SELECT COUNT(*) FROM change_log WHERE id = 'club-cl-task'`); n != 0 {
+		t.Fatalf("personal tasks of the member who left are still on the server: %d rows", n)
+	}
+	if n := f.count(t, `SELECT COUNT(*) FROM event WHERE id = 'club-ev'`); n != 1 {
+		t.Fatal("the shared record of the member who left must stay")
 	}
 
 	// With a second owner, the first one may go.
