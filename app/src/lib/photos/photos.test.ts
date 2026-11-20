@@ -14,6 +14,7 @@ vi.mock('../local/db', async () => {
 // Local writes nudge a sync; none runs here.
 vi.mock('../local/sync', () => ({
   syncOnce: vi.fn(async () => {}),
+  onServerReset: vi.fn(),
   syncStatus: writable({ state: 'idle', pending: 0, failed: 0, lastSyncedAt: null })
 }));
 

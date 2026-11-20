@@ -508,6 +508,18 @@ async function storeMerged(
 
 // --- Reset: the server is not the database this device synced with ---
 
+const resetHooks: (() => Promise<void>)[] = [];
+
+/**
+ * Registers work for when the server turns out to have lost what this
+ * device sent it (it was restored from a backup), for data a module keeps
+ * outside the local database. It runs after the local rows are queued
+ * again, before the snapshot is loaded, and must be safe to run twice.
+ */
+export function onServerReset(hook: () => Promise<void>): void {
+  resetHooks.push(hook);
+}
+
 // The server was restored from a backup or replaced, so it may lack changes
 // this device has. Every local row is queued for upload again, as ordinary
 // changes: one per row and stamp, carrying the columns last written with
@@ -597,6 +609,8 @@ async function requeueLocal(db: LocalDB, staleCursor: string) {
       after = text(rows[rows.length - 1]!.id);
     }
   }
+  // Data kept outside this database (photo images) is sent again too.
+  for (const hook of resetHooks) await hook();
   if (staleCursor) await setMeta('requeued_for', staleCursor);
 }
 

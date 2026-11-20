@@ -7,7 +7,7 @@
 import { derived, get, type Readable } from 'svelte/store';
 import { storageState } from '../local/live';
 import { photoRecords, type PhotoOwner, type PhotoRow } from '../local/repo';
-import { syncStatus } from '../local/sync';
+import { onServerReset, syncStatus } from '../local/sync';
 import type { PreparedPhoto } from '../image';
 import { onDeviceDataRemoval } from '../device-data';
 import { openFileStore, removeFileStore, type FileStore } from './files';
@@ -45,6 +45,9 @@ function transfers(): PhotoTransfers {
 onDeviceDataRemoval((orgId) =>
   removeFileStore(orgId, orgId === filesOf ? (files ?? undefined) : undefined)
 );
+
+// A server restored from a backup may lack images this device has.
+onServerReset(() => transfers().uploadAllAgain());
 
 /** Upload state per photo id, for photos whose image is still only here. */
 export const uploadStates: Readable<ReadonlyMap<string, UploadState>> = {

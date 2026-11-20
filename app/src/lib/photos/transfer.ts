@@ -131,6 +131,19 @@ export class PhotoTransfers {
     await this.publish();
   }
 
+  /**
+   * The server may have lost images it had (it was restored from a backup):
+   * every image kept here is uploaded again. An image the server still has
+   * is not stored twice.
+   */
+  async uploadAllAgain(): Promise<void> {
+    for (const m of await this.store.list()) {
+      if (m.state !== 'cached') continue;
+      await this.store.update(m.id, { state: 'pending', attempts: 0, nextTry: 0, error: '' });
+    }
+    await this.publish();
+  }
+
   /** Forgets the image of a photo (it was deleted, or never came to be). */
   async drop(id: string): Promise<void> {
     await this.store.delete(id);

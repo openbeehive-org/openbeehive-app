@@ -310,6 +310,39 @@ describe('viewing on another device', () => {
   });
 });
 
+describe('a server restored from a backup', () => {
+  it('gets every image this device keeps uploaded again', async () => {
+    await d.take('mine');
+    await d.transfers.uploadDue();
+    d.server.stored.set('seen', image(80));
+    d.live.add('seen');
+    await d.transfers.open('seen'); // fetched for viewing, kept as a copy
+    await d.take('waiting');
+    d.online = false;
+    await d.transfers.uploadDue();
+    d.online = true;
+
+    d.server.stored.clear(); // the restored server has none of them
+    d.server.uploads = [];
+    await d.transfers.uploadAllAgain();
+    expect(d.states()).toEqual({ mine: 'waiting', seen: 'waiting', waiting: 'waiting' });
+    await d.transfers.uploadDue();
+
+    expect(d.server.uploads.sort()).toEqual(['mine', 'seen', 'waiting']);
+    expect([...d.server.stored.keys()].sort()).toEqual(['mine', 'seen', 'waiting']);
+    expect(d.states()).toEqual({});
+  });
+
+  it('keeps a failing upload where it was', async () => {
+    d.online = false;
+    await d.take('p1');
+    await d.transfers.uploadDue();
+    await d.store.update('p1', { attempts: 3, error: 'retry', nextTry: d.clock + MINUTE });
+    await d.transfers.uploadAllAgain();
+    expect(await d.meta('p1')).toMatchObject({ state: 'pending', attempts: 3, error: 'retry' });
+  });
+});
+
 describe('making room', () => {
   // Budget 1000 bytes in these tests.
   async function cache(id: string, bytes: number) {
