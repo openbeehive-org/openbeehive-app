@@ -4,6 +4,7 @@ import {
   IndexedDBFileStore,
   MemoryFileStore,
   openFileStore,
+  removeFileStore,
   type FileMeta,
   type FileStore
 } from './files';
@@ -113,6 +114,33 @@ describe('IndexedDB file store', () => {
     await expect(s.list()).rejects.toThrow('denied');
     fail = false;
     expect(await s.list()).toEqual([]);
+  });
+});
+
+describe('removing a workspace from the device', () => {
+  it('deletes the open store with every image in it, pending ones too', async () => {
+    const browser = new IDBFactory();
+    const mine = new IndexedDBFileStore('obh-photos-org1', browser);
+    const other = new IndexedDBFileStore('obh-photos-org2', browser);
+    await mine.put(meta('p1'), blob('abc'));
+    await mine.put(meta('p2', { state: 'cached' }), blob('def'));
+    await other.put(meta('p9'), blob('xyz'));
+
+    await removeFileStore('org1', mine);
+
+    expect((await browser.databases()).map((d) => d.name)).toEqual(['obh-photos-org2']);
+    expect(await new IndexedDBFileStore('obh-photos-org1', browser).list()).toEqual([]);
+    expect(await other.list()).toEqual([meta('p9')]);
+    // The store object keeps working: it starts empty.
+    await mine.put(meta('p3'), blob('new'));
+    expect((await mine.list()).map((m) => m.id)).toEqual(['p3']);
+  });
+
+  it('does nothing where there is no IndexedDB, or for a memory store', async () => {
+    await removeFileStore('org1');
+    const memory = new MemoryFileStore();
+    await memory.put(meta('p1'), blob('abc'));
+    await removeFileStore('org1', memory);
   });
 });
 

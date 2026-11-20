@@ -9,7 +9,8 @@ import { storageState } from '../local/live';
 import { photoRecords, type PhotoOwner, type PhotoRow } from '../local/repo';
 import { syncStatus } from '../local/sync';
 import type { PreparedPhoto } from '../image';
-import { openFileStore } from './files';
+import { onDeviceDataRemoval } from '../device-data';
+import { openFileStore, removeFileStore, type FileStore } from './files';
 import { httpTransport } from './http';
 import { PhotoTransfers, type Unavailable, type UploadState } from './transfer';
 
@@ -19,19 +20,31 @@ const API_URL =
   import.meta.env.BEEHIVE_API_URL ??
   (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080');
 
+const workspace = () => localStorage.getItem('obh.orgId') ?? 'local';
+
 let instance: PhotoTransfers | null = null;
+let files: FileStore | null = null;
+let filesOf = '';
 
 // One per page load: switching the workspace reloads the app.
 function transfers(): PhotoTransfers {
   if (!instance) {
+    filesOf = workspace();
+    files = openFileStore(filesOf);
     instance = new PhotoTransfers(
-      openFileStore(localStorage.getItem('obh.orgId') ?? 'local'),
+      files,
       httpTransport({ baseUrl: API_URL, token: () => localStorage.getItem('session') }),
       { isLive: photoRecords.isLive, online: () => navigator.onLine }
     );
   }
   return instance;
 }
+
+// "Remove this workspace's data from the device" takes the photo images
+// along, including those that were never uploaded.
+onDeviceDataRemoval((orgId) =>
+  removeFileStore(orgId, orgId === filesOf ? (files ?? undefined) : undefined)
+);
 
 /** Upload state per photo id, for photos whose image is still only here. */
 export const uploadStates: Readable<ReadonlyMap<string, UploadState>> = {

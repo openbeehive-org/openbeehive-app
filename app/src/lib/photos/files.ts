@@ -153,10 +153,35 @@ export class IndexedDBFileStore implements FileStore {
     tx.objectStore(DATA).delete(id);
     await done(tx);
   }
+
+  /** Removes the whole store with everything in it. */
+  async destroy() {
+    const open = this.db;
+    this.db = null;
+    // An open connection would keep the deletion waiting.
+    if (open) await open.then((db) => db.close()).catch(() => undefined);
+    await new Promise<void>((resolve, reject) => {
+      const req = this.factory.deleteDatabase(this.name);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error ?? new Error('photo store: cannot delete'));
+      req.onblocked = () => reject(new Error('photo store: in use by another tab'));
+    });
+  }
 }
+
+const storeName = (orgId: string) => `obh-photos-${orgId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
 /** The store of one workspace on this device. */
 export function openFileStore(orgId: string): FileStore {
   if (typeof indexedDB === 'undefined') return new MemoryFileStore();
-  return new IndexedDBFileStore(`obh-photos-${orgId.replace(/[^a-zA-Z0-9_-]/g, '_')}`);
+  return new IndexedDBFileStore(storeName(orgId));
+}
+
+/**
+ * Deletes every photo image this device keeps for the workspace, uploaded
+ * or not. `open` is the store in use, if the workspace is the open one.
+ */
+export async function removeFileStore(orgId: string, open?: FileStore): Promise<void> {
+  if (open instanceof IndexedDBFileStore) return open.destroy();
+  if (typeof indexedDB !== 'undefined') await new IndexedDBFileStore(storeName(orgId)).destroy();
 }
