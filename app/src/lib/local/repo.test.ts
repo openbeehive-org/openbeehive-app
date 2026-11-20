@@ -175,3 +175,105 @@ describe('OR-Set columns through the repo', () => {
     expect(last.photo_keys.remove).toEqual(['p1']);
   });
 });
+
+describe('patch only writes real columns', () => {
+  // Field names used to be pasted into the statement. An import file or a
+  // crafted record could carry a "column" that was SQL.
+  it('drops hostile and unknown keys instead of running or failing on them', async () => {
+    const db = getCurrentDB();
+    await patch('apiary', 'keep', 'keep', { organization_id: 'org1', name: 'Keep', deleted: 0 });
+    await db.exec(`DELETE FROM outbox`);
+
+    await patch('apiary', 'a1', 'a1', {
+      name: 'Orchard',
+      "note) VALUES ('x'); DELETE FROM apiary; --": 1,
+      'name = excluded.name; DROP TABLE hive; --': 1,
+      column_of_a_newer_app: 'ignored',
+      id: 'other',
+      field_hlc: '{"name":"999999999999999:99999:x"}',
+      lat: undefined,
+      deleted: false
+    });
+
+    const rows = await db.all<any>(`SELECT id, name, deleted FROM apiary ORDER BY id`);
+    expect(rows).toEqual([
+      { id: 'a1', name: 'Orchard', deleted: 0 },
+      { id: 'keep', name: 'Keep', deleted: 0 }
+    ]);
+    expect(await db.all(`SELECT name FROM sqlite_master WHERE name = 'hive'`)).toHaveLength(1);
+    // Only what was written is sent.
+    const out = await db.all<any>(`SELECT entity_id, payload FROM outbox`);
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].payload)).toEqual({ name: 'Orchard', deleted: 0 });
+  });
+
+  it('refuses tables that are not synced and values no column can hold', async () => {
+    await expect(patch('outbox', 'x', 'x', { entity: 'apiary' })).rejects.toThrow(/not a synced/);
+    await expect(patch('apiary; DROP TABLE hive', 'x', 'x', { name: 'x' })).rejects.toThrow();
+    await expect(remove('sync_meta', 'cursor', 'x')).rejects.toThrow(/not a synced/);
+    await expect(patch('apiary', 'a1', 'a1', { name: { nested: true } })).rejects.toThrow(/name/);
+    await expect(setAdd('apiary', 'a1', 'a1', 'name', 'p1')).rejects.toThrow(/set column/);
+    expect(await getCurrentDB().all(`SELECT * FROM apiary`)).toHaveLength(0);
+    expect(await getCurrentDB().all(`SELECT * FROM outbox`)).toHaveLength(0);
+  });
+
+  it('a patch with nothing to write leaves no trace', async () => {
+    await patch('apiary', 'a1', 'a1', { no_such_column: 1 });
+    expect(await getCurrentDB().all(`SELECT * FROM apiary`)).toHaveLength(0);
+    expect(await getCurrentDB().all(`SELECT * FROM outbox`)).toHaveLength(0);
+  });
+
+  it('set columns are not writable through patch', async () => {
+    await patch('inspection', 'i1', 'a1', { organization_id: 'org1', hive_id: 'h1', deleted: 0 });
+    await setAdd('inspection', 'i1', 'a1', 'photo_keys', 'p1');
+    // An import that resets the column must not wipe the photos.
+    await patch('inspection', 'i1', 'a1', { note: 'n', photo_keys: '{}' });
+    const row = await getCurrentDB().get<any>(`SELECT photo_keys FROM inspection WHERE id = 'i1'`);
+    expect(orValues(parseORSet(row!.photo_keys))).toEqual(['p1']);
+  });
+});
+
+describe('stamps of local writes', () => {
+  // The row was last written by a device whose clock is ahead of this one
+  // (within what the server tolerates). An edit made here now must still win.
+  it('stamps above the stamp the field already has', async () => {
+    const ahead = `${String(Date.now() + 5 * 60_000).padStart(15, '0')}:00007:other`;
+    await getCurrentDB().exec(
+      `INSERT INTO apiary (id, name, note, deleted, field_hlc) VALUES ('a1', 'Theirs', '', 0, ?)`,
+      [JSON.stringify({ name: ahead })]
+    );
+
+    await patch('apiary', 'a1', 'a1', { name: 'Mine' });
+
+    const row = await getCurrentDB().get<any>(`SELECT name, field_hlc FROM apiary WHERE id = 'a1'`);
+    expect(row!.name).toBe('Mine');
+    expect(parseFieldClock(row!.field_hlc).name! > ahead).toBe(true);
+    const out = await getCurrentDB().all<any>(`SELECT hlc FROM outbox`);
+    expect(out[0].hlc > ahead).toBe(true);
+  });
+});
+
+describe('a write is all or nothing', () => {
+  // Row, field clock and outbox entry used to be separate statements; a tab
+  // closed in between left a saved record that never synced.
+  it('stores the row together with its outbox entry, or neither', async () => {
+    const db = getCurrentDB();
+    const batch = db.batch.bind(db);
+    const seen: string[][] = [];
+    db.batch = async (stmts) => {
+      seen.push(stmts.map((s) => s.sql.trim().split(/\s+/).slice(0, 3).join(' ')));
+      return batch(stmts);
+    };
+    await patch('apiary', 'a1', 'a1', { organization_id: 'org1', name: 'One', deleted: 0 });
+    expect(seen).toEqual([['INSERT INTO apiary', 'INSERT INTO outbox']]);
+
+    // The outbox insert fails: the row write before it must not survive.
+    await db.exec(`ALTER TABLE outbox RENAME TO outbox_gone`);
+    await expect(patch('apiary', 'a2', 'a2', { name: 'Two' })).rejects.toThrow();
+    await expect(remove('apiary', 'a1', 'a1')).rejects.toThrow();
+    await db.exec(`ALTER TABLE outbox_gone RENAME TO outbox`);
+
+    expect(await db.all<any>(`SELECT id, deleted FROM apiary`)).toEqual([{ id: 'a1', deleted: 0 }]);
+    expect(await db.all(`SELECT * FROM outbox`)).toHaveLength(1);
+  });
+});

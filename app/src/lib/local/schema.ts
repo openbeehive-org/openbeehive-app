@@ -100,6 +100,15 @@ export async function migrateLocal(db: LocalDB) {
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_inspection_last ON inspection (hive_id, deleted, date, source)`
   );
+
+  // Changes the server refused for good (wrong workspace, invalid value, ...).
+  // They leave the outbox so they stop blocking it, but stay on the device
+  // until the user retries or discards them (Settings: sync problems).
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS outbox_failed (
+      id TEXT PRIMARY KEY, entity TEXT, entity_id TEXT, scope_id TEXT,
+      op INTEGER, payload TEXT, hlc TEXT, author_id TEXT,
+      code TEXT, reason TEXT, failed_at TEXT)`);
 }
 
 // Add any missing columns to an existing table (idempotent; SQLite ALTER TABLE

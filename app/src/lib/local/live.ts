@@ -18,3 +18,13 @@ export function bumpData() {
 // device or the demo never flashes "create your first apiary" during the
 // initial download. Flipped by the sync engine (sync.ts).
 export const initialSyncPending = writable(true);
+
+// Where this tab's data lives:
+//   ok        persistent local database, owned by this tab
+//   volatile  persistent storage is unavailable (private browsing, blocked
+//             storage); the app runs on an in-memory database and loses
+//             what was not synced when the tab closes
+//   elsewhere another tab owns the local database; this tab shows a notice
+//             and does nothing until the user takes over
+export type StorageState = 'ok' | 'volatile' | 'elsewhere';
+export const storageState = writable<StorageState>('ok');

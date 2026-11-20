@@ -7,6 +7,7 @@
   import { watchForUpdates } from '#lib/update.js';
   import { setupI18n } from '#lib/i18n/index.js';
   import { isLoading } from 'svelte-i18n';
+  import StorageNotice from '#lib/components/sync/StorageNotice.svelte';
   setupI18n();
   let { children } = $props();
 
@@ -34,6 +35,7 @@
 </svelte:head>
 
 {#if !$isLoading}
+  <StorageNotice />
   {@render children()}
 {/if}
 

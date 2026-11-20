@@ -12,15 +12,19 @@ import sqlite3InitModule, {
   type SAHPoolUtil
 } from '@sqlite.org/sqlite-wasm';
 
+type Stmt = { sql: string; params?: BindableValue[] };
 type Req = {
   id: number;
-  method: 'open' | 'exec' | 'all';
-  sql: string;
-  params: BindableValue[];
+  method: 'open' | 'exec' | 'all' | 'batch';
+  sql?: string;
+  params?: BindableValue[];
+  stmts?: Stmt[];
   name?: string;
+  attempts?: number;
 };
 
 let dbName = 'openbeehive.sqlite3';
+let openAttempts = 3;
 let dbPromise: Promise<Database> | null = null;
 let pool: SAHPoolUtil | null = null;
 
@@ -36,10 +40,11 @@ async function getDb() {
       const sqlite3 = await sqlite3InitModule();
       // Persistent: OPFS SAHPool VFS (no SharedArrayBuffer / cross-origin
       // isolation required, works behind any reverse proxy). The pool takes
-      // EXCLUSIVE access handles, so a page refresh can race the previous
-      // worker still holding them, so retry briefly before falling back.
+      // EXCLUSIVE access handles, so a page refresh (or a tab taking the
+      // database over) can race the previous worker still holding them:
+      // retry briefly before falling back.
       let lastErr: unknown;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < openAttempts; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
         try {
           pool = await sqlite3.installOpfsSAHPoolVfs({
@@ -57,12 +62,12 @@ async function getDb() {
       }
       // OPFS stays unavailable in some environments (notably Firefox Private
       // Browsing and browsers/settings that block storage) where
-      // navigator.storage.getDirectory() throws a SecurityError, or another
-      // tab keeps holding the pool. Fall back to an in-memory database so the
-      // app still works this session; data won't persist across reloads.
-      // That's fine for the demo (reseeded hourly and pulled fresh) and a
-      // graceful degradation everywhere else. Tell the page so the user learns
-      // about it (db.ts shows a toast), not only the console.
+      // navigator.storage.getDirectory() throws a SecurityError. Fall back to
+      // an in-memory database so the app still works this session; data that
+      // was not synced is gone when the tab closes. Tell the page, which
+      // shows a banner for as long as that is the case (see db.ts). A second
+      // tab does not end up here: the tab lock keeps it from opening the
+      // database at all (tablock.ts).
       console.warn('OPFS unavailable, using a non-persistent in-memory store:', lastErr);
       (self as unknown as Worker).postMessage({ volatile: true });
       return new sqlite3.oo1.DB(':memory:', 'c');
@@ -71,31 +76,57 @@ async function getDb() {
   return dbPromise;
 }
 
-// Run a query; if the pool has no free slot for the journal/temp file the
-// statement fails with SQLITE_CANTOPEN: grow the pool and retry once.
-function run(db: Database, method: 'exec' | 'all', sql: string, params: BindableValue[]) {
-  if (method === 'all') {
-    return db.exec({ sql, bind: params, rowMode: 'object', returnValue: 'resultRows' });
+function run(db: Database, req: Req): unknown {
+  if (req.method === 'all') {
+    return db.exec({
+      sql: req.sql ?? '',
+      bind: req.params ?? [],
+      rowMode: 'object',
+      returnValue: 'resultRows'
+    });
   }
-  db.exec({ sql, bind: params });
+  if (req.method === 'batch') {
+    // One transaction for the whole list: a tab killed halfway leaves either
+    // all of it or none of it (a row never exists without its outbox entry).
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const s of req.stmts ?? []) db.exec({ sql: s.sql, bind: s.params ?? [] });
+      db.exec('COMMIT');
+    } catch (err) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {
+        /* the failed statement already ended the transaction */
+      }
+      throw err;
+    }
+    return undefined;
+  }
+  db.exec({ sql: req.sql ?? '', bind: req.params ?? [] });
+  return undefined;
 }
 
 self.onmessage = async (e: MessageEvent<Req>) => {
-  const { id, method, sql, params, name } = e.data;
+  const req = e.data;
+  const { id, method } = req;
   try {
     if (method === 'open') {
-      if (name) dbName = name; // must arrive before the first query
+      // must arrive before the first query
+      if (req.name) dbName = req.name;
+      if (req.attempts) openAttempts = req.attempts;
       (self as unknown as Worker).postMessage({ id, ok: true });
       return;
     }
     const db = await getDb();
     let rows: unknown;
     try {
-      rows = run(db, method, sql, params);
+      rows = run(db, req);
     } catch (err) {
+      // If the pool has no free slot for the journal/temp file the statement
+      // fails with SQLITE_CANTOPEN: grow the pool and retry once.
       if (pool && /SQLITE_CANTOPEN/.test(String((err as Error)?.message ?? err))) {
         await pool.addCapacity(8);
-        rows = run(db, method, sql, params);
+        rows = run(db, req);
       } else {
         throw err;
       }

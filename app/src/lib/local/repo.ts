@@ -4,70 +4,26 @@
 // List fields (e.g. photos) go through OR-Set operations.
 
 import { getDB } from './db';
-import { hlc } from './hlc';
-import { syncOnce } from './sync';
-import { parseFieldClock, parseORSet, orAdd, orRemove, orValues } from './merge';
+import { parseORSet, orValues } from './merge';
+import { unit } from './write';
 import { byName, type HiveOverview } from '../hivelist';
 
-const authorId = () => localStorage.getItem('obh.userId') ?? 'local';
+// Each write below is one unit of work (write.ts): the row, its field
+// clock and the outbox entry are stored in a single local transaction.
 
-async function enqueue(
-  entity: string,
-  id: string,
-  scopeId: string,
-  op: 1 | 2,
-  payload: unknown,
-  stamp: string
-) {
-  const db = await getDB();
-  await db.exec(
-    `INSERT INTO outbox (id, entity, entity_id, scope_id, op, payload, hlc, author_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [crypto.randomUUID(), entity, id, scopeId, op, JSON.stringify(payload), stamp, authorId()]
-  );
-  void syncOnce();
-}
-
-// patch sets only the given scalar fields (partial per-field delta).
+// patch sets only the given scalar fields (partial per-field delta). Keys
+// that are not columns of the table are ignored.
 export async function patch(
   entity: string,
   id: string,
   scopeId: string,
   fields: Record<string, unknown>
 ) {
-  const db = await getDB();
-  const stamp = hlc.now();
-  const cur = await db.get<any>(`SELECT field_hlc FROM ${entity} WHERE id = ?`, [id]);
-  const fc = parseFieldClock(cur?.field_hlc);
-  for (const k of Object.keys(fields)) fc[k] = stamp;
-
-  const cols = ['id', ...Object.keys(fields), 'field_hlc'];
-  const vals = [id, ...Object.values(fields), JSON.stringify(fc)];
-  const ph = cols.map(() => '?').join(', ');
-  const upd = cols
-    .filter((c) => c !== 'id')
-    .map((c) => `${c} = excluded.${c}`)
-    .join(', ');
-  await db.exec(
-    `INSERT INTO ${entity} (${cols.join(', ')}) VALUES (${ph})
-     ON CONFLICT(id) DO UPDATE SET ${upd}`,
-    vals
-  );
-
-  await enqueue(entity, id, scopeId, 1, fields, stamp);
+  await unit().patch(entity, id, scopeId, fields).commit();
 }
 
 export async function remove(entity: string, id: string, scopeId: string) {
-  const db = await getDB();
-  const stamp = hlc.now();
-  const cur = await db.get<any>(`SELECT field_hlc FROM ${entity} WHERE id = ?`, [id]);
-  const fc = parseFieldClock(cur?.field_hlc);
-  fc['deleted'] = stamp;
-  await db.exec(`UPDATE ${entity} SET deleted = 1, field_hlc = ? WHERE id = ?`, [
-    JSON.stringify(fc),
-    id
-  ]);
-  await enqueue(entity, id, scopeId, 2, { deleted: 1 }, stamp);
+  await unit().remove(entity, id, scopeId).commit();
 }
 
 // --- OR-Set operations (list fields, e.g. inspection.photo_keys) ---
@@ -79,13 +35,7 @@ export async function setAdd(
   field: string,
   elem: string
 ) {
-  const db = await getDB();
-  const stamp = hlc.now();
-  const cur = await db.get<any>(`SELECT ${field} FROM ${entity} WHERE id = ?`, [id]);
-  const os = parseORSet(cur?.[field]);
-  orAdd(os, elem, stamp); // tag = HLC of this add
-  await db.exec(`UPDATE ${entity} SET ${field} = ? WHERE id = ?`, [JSON.stringify(os), id]);
-  await enqueue(entity, id, scopeId, 1, { [field]: { add: [elem] } }, stamp);
+  await unit().setAdd(entity, id, scopeId, field, elem).commit();
 }
 
 export async function setRemove(
@@ -95,23 +45,7 @@ export async function setRemove(
   field: string,
   elem: string
 ) {
-  const db = await getDB();
-  const stamp = hlc.now();
-  const cur = await db.get<any>(`SELECT ${field} FROM ${entity} WHERE id = ?`, [id]);
-  const os = parseORSet(cur?.[field]);
-  // The delta carries WHICH add tags this device observed; receivers tombstone
-  // only those, so an add another device made concurrently survives (add-wins).
-  const observed = [...(os[elem]?.a ?? [])];
-  orRemove(os, elem);
-  await db.exec(`UPDATE ${entity} SET ${field} = ? WHERE id = ?`, [JSON.stringify(os), id]);
-  await enqueue(
-    entity,
-    id,
-    scopeId,
-    1,
-    { [field]: { remove: [elem], removed_tags: { [elem]: observed } } },
-    stamp
-  );
+  await unit().setRemove(entity, id, scopeId, field, elem).commit();
 }
 
 // --- Public, typed API for the UI ---

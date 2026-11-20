@@ -20,6 +20,16 @@ export async function makeLocalDB(): Promise<LocalDB> {
     },
     async get<T>(sql: string, params: unknown[] = []) {
       return db.prepare(sql).get(...(params as any[])) as T | undefined;
+    },
+    async batch(stmts) {
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        for (const s of stmts) db.prepare(s.sql).run(...((s.params ?? []) as any[]));
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
     }
   };
   await migrateLocal(impl);

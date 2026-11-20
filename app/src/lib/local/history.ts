@@ -15,6 +15,7 @@ import {
   InspectionSource,
   type InspectionInput
 } from './repo';
+import { unit, type Unit } from './write';
 
 export const EventType = {
   CREATED: 1,
@@ -77,7 +78,8 @@ export async function resolveContext(hiveId: string, date: string) {
   return { apiaryId, queenId };
 }
 
-async function emit(
+function emit(
+  w: Unit,
   type: number,
   scopeId: string,
   e: {
@@ -93,7 +95,7 @@ async function emit(
   }
 ) {
   const id = crypto.randomUUID();
-  await patch('event', id, scopeId, {
+  w.patch('event', id, scopeId, {
     organization_id: orgId(),
     scope_id: scopeId,
     type,
@@ -113,12 +115,16 @@ async function emit(
 }
 
 // --- Write flows ---
+// Each flow collects its rows in one unit of work and commits them together:
+// a hive never exists without its placement and event, an old queen is never
+// ended without the new one being introduced.
 
 // Create a hive: hive row + open placement interval + event.
 export async function createHive(b: { name: string; apiary_id: string; type?: number }) {
   const id = crypto.randomUUID();
   const ts = now();
-  await patch('hive', id, b.apiary_id, {
+  const w = unit();
+  w.patch('hive', id, b.apiary_id, {
     organization_id: orgId(),
     apiary_id: b.apiary_id,
     name: b.name,
@@ -128,7 +134,7 @@ export async function createHive(b: { name: string; apiary_id: string; type?: nu
     updated_at: ts,
     deleted: 0
   });
-  await patch('placement', crypto.randomUUID(), b.apiary_id, {
+  w.patch('placement', crypto.randomUUID(), b.apiary_id, {
     organization_id: orgId(),
     hive_id: id,
     apiary_id: b.apiary_id,
@@ -136,12 +142,13 @@ export async function createHive(b: { name: string; apiary_id: string; type?: nu
     end_at: null,
     deleted: 0
   });
-  await emit(EventType.CREATED, b.apiary_id, {
+  emit(w, EventType.CREATED, b.apiary_id, {
     date: ts,
     apiary_id: b.apiary_id,
     hive_id: id,
     title: b.name
   });
+  await w.commit();
   return id;
 }
 
@@ -168,16 +175,17 @@ export async function setQueen(
     `SELECT id FROM queen WHERE hive_id = ? AND active = 1 AND deleted = 0 LIMIT 1`,
     [hiveId]
   );
+  const w = unit();
   if (alt) {
-    await patch('queen', alt.id, scopeApiaryId, { active: 0, replaced_at: since });
-    await emit(EventType.QUEEN_REPLACED, scopeApiaryId, {
+    w.patch('queen', alt.id, scopeApiaryId, { active: 0, replaced_at: since });
+    emit(w, EventType.QUEEN_REPLACED, scopeApiaryId, {
       date: since,
       hive_id: hiveId,
       queen_id: alt.id
     });
   }
   const neu = crypto.randomUUID();
-  await patch('queen', neu, scopeApiaryId, {
+  w.patch('queen', neu, scopeApiaryId, {
     organization_id: orgId(),
     hive_id: hiveId,
     year: k.year,
@@ -192,12 +200,13 @@ export async function setQueen(
     updated_at: ts,
     deleted: 0
   });
-  await emit(EventType.QUEEN_INTRODUCED, scopeApiaryId, {
+  emit(w, EventType.QUEEN_INTRODUCED, scopeApiaryId, {
     date: since,
     hive_id: hiveId,
     queen_id: neu,
     title: queenTitle(k.year)
   });
+  await w.commit();
   return neu;
 }
 
@@ -209,8 +218,9 @@ export async function moveHive(hiveId: string, fromApiary: string, toApiary: str
     `SELECT id FROM placement WHERE hive_id = ? AND end_at IS NULL AND deleted = 0 ORDER BY start_at DESC LIMIT 1`,
     [hiveId]
   );
-  if (open) await patch('placement', open.id, fromApiary, { end_at: ts });
-  await patch('placement', crypto.randomUUID(), toApiary, {
+  const w = unit();
+  if (open) w.patch('placement', open.id, fromApiary, { end_at: ts });
+  w.patch('placement', crypto.randomUUID(), toApiary, {
     organization_id: orgId(),
     hive_id: hiveId,
     apiary_id: toApiary,
@@ -218,13 +228,14 @@ export async function moveHive(hiveId: string, fromApiary: string, toApiary: str
     end_at: null,
     deleted: 0
   });
-  await patch('hive', hiveId, toApiary, { apiary_id: toApiary, updated_at: ts });
-  await emit(EventType.MOVED, toApiary, {
+  w.patch('hive', hiveId, toApiary, { apiary_id: toApiary, updated_at: ts });
+  emit(w, EventType.MOVED, toApiary, {
     date: ts,
     apiary_id: toApiary,
     hive_id: hiveId,
     detail: { from: fromApiary, to: toApiary }
   });
+  await w.commit();
 }
 
 // Record a honey harvest: freeze the context -> harvest record + fact row.
@@ -241,7 +252,8 @@ export async function recordHarvest(input: {
   const date = input.date ?? now();
   const ctx = await resolveContext(input.hiveId, date);
   const harvestId = crypto.randomUUID();
-  await patch('harvest', harvestId, ctx.apiaryId, {
+  const w = unit();
+  w.patch('harvest', harvestId, ctx.apiaryId, {
     organization_id: orgId(),
     apiary_id: ctx.apiaryId,
     hive_id: input.hiveId,
@@ -255,7 +267,7 @@ export async function recordHarvest(input: {
     note: input.note ?? '',
     deleted: 0
   });
-  await emit(EventType.HARVEST, ctx.apiaryId, {
+  emit(w, EventType.HARVEST, ctx.apiaryId, {
     date,
     apiary_id: ctx.apiaryId,
     hive_id: input.hiveId,
@@ -265,6 +277,7 @@ export async function recordHarvest(input: {
     amount_kg: input.amount_kg,
     title: harvestTitle(input.amount_kg, input.variety)
   });
+  await w.commit();
   return harvestId;
 }
 
@@ -284,7 +297,8 @@ export async function recordTreatment(input: {
   const date = input.date ?? now();
   const ctx = await resolveContext(input.hiveId, date);
   const treatmentId = crypto.randomUUID();
-  await patch('treatment', treatmentId, ctx.apiaryId, {
+  const w = unit();
+  w.patch('treatment', treatmentId, ctx.apiaryId, {
     organization_id: orgId(),
     apiary_id: ctx.apiaryId,
     hive_id: input.hiveId,
@@ -300,7 +314,7 @@ export async function recordTreatment(input: {
     note: input.note ?? '',
     deleted: 0
   });
-  await emit(EventType.TREATMENT, ctx.apiaryId, {
+  emit(w, EventType.TREATMENT, ctx.apiaryId, {
     date,
     apiary_id: ctx.apiaryId,
     hive_id: input.hiveId,
@@ -309,6 +323,7 @@ export async function recordTreatment(input: {
     ref_id: treatmentId,
     title: input.product
   });
+  await w.commit();
   return treatmentId;
 }
 
@@ -317,7 +332,8 @@ export async function recordInspection(hiveId: string, d: InspectionInput) {
   const date = d.date ?? now();
   const ctx = await resolveContext(hiveId, date);
   const id = crypto.randomUUID();
-  await patch('inspection', id, ctx.apiaryId, {
+  const w = unit();
+  w.patch('inspection', id, ctx.apiaryId, {
     organization_id: orgId(),
     source: InspectionSource.MANUAL,
     ...d,
@@ -326,7 +342,7 @@ export async function recordInspection(hiveId: string, d: InspectionInput) {
     created_at: now(),
     deleted: 0
   });
-  await emit(EventType.INSPECTION, ctx.apiaryId, {
+  emit(w, EventType.INSPECTION, ctx.apiaryId, {
     date,
     apiary_id: ctx.apiaryId,
     hive_id: hiveId,
@@ -335,6 +351,7 @@ export async function recordInspection(hiveId: string, d: InspectionInput) {
     ref_id: id,
     title: 'Inspection'
   });
+  await w.commit();
   return id;
 }
 
@@ -593,16 +610,18 @@ export async function updateHive(
   const changes = changedFields(row, fields);
   if (Object.keys(changes).length === 0) return false;
   const ts = now();
-  await patch('hive', id, apiaryId, { ...changes, updated_at: ts });
+  const w = unit();
+  w.patch('hive', id, apiaryId, { ...changes, updated_at: ts });
   if ('status' in changes) {
     const dissolved = changes.status === HIVE_STATUS_DISSOLVED;
-    await emit(dissolved ? EventType.DISSOLVED : EventType.STATUS, apiaryId, {
+    emit(w, dissolved ? EventType.DISSOLVED : EventType.STATUS, apiaryId, {
       date: ts,
       apiary_id: apiaryId,
       hive_id: id,
       detail: { from: row.status ?? 0, to: changes.status }
     });
   }
+  await w.commit();
   return true;
 }
 
