@@ -411,6 +411,9 @@ func (s *SyncService) subscribe(ctx context.Context, id auth.Identity, last int6
 		case <-ticker.C:
 			cur, err := s.latestSeq(ctx, id)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil // the client left while the query was running
+				}
 				return internalErr(err)
 			}
 			if cur > last {
