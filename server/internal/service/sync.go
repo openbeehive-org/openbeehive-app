@@ -167,8 +167,6 @@ const (
 		ORDER BY seq DESC LIMIT 1`
 )
 
-func personalScope(userID string) string { return "user:" + userID }
-
 func (s *SyncService) Pull(
 	ctx context.Context, req *wv1.PullRequest,
 ) (*wv1.PullResponse, error) {

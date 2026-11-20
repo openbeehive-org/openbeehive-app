@@ -4,10 +4,12 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect/v2"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // hiveEvents lists the live timeline events of tenant A's fixture hive.
@@ -115,7 +117,7 @@ func TestHoneyStatsIgnoreDeletedHivesAndOrphanedEvents(t *testing.T) {
 	// An older app deletes a harvest without its event; the honey must go too.
 	if err := push(f.sync, ctx, &wv1.Change{
 		Entity: "harvest", EntityId: keep.Harvest.Id, ScopeId: "apiary-a",
-		Op: wv1.ChangeOp_CHANGE_OP_DELETE, PayloadJson: `{"deleted":1}`, Hlc: "999999999999999:00000:dev", AuthorId: "dev",
+		Op: wv1.ChangeOp_CHANGE_OP_DELETE, PayloadJson: `{"deleted":1}`, Hlc: wsync.Format(time.Now().Add(time.Minute).UnixMilli(), 0, "dev"), AuthorId: "dev",
 	}); err != nil {
 		t.Fatal(err)
 	}

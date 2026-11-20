@@ -105,21 +105,25 @@ var rpcAccessByProcedure = map[string]rpcAccess{
 	"/openbeehive.v1.InspectionService/CreateInspection":      rpcWrite,
 	"/openbeehive.v1.InspectionService/ListInspections":       rpcRead,
 	"/openbeehive.v1.InspectionService/DeleteInspection":      rpcWrite,
+	"/openbeehive.v1.InspectionService/UpdateInspection":      rpcWrite,
 	"/openbeehive.v1.InspectionService/AddInspectionPhoto":    rpcWrite,
 	"/openbeehive.v1.InspectionService/RemoveInspectionPhoto": rpcWrite,
 
 	"/openbeehive.v1.TaskService/CreateTask":  rpcWrite,
 	"/openbeehive.v1.TaskService/ListTasks":   rpcRead,
 	"/openbeehive.v1.TaskService/SetTaskDone": rpcWrite,
+	"/openbeehive.v1.TaskService/UpdateTask":  rpcWrite,
 	"/openbeehive.v1.TaskService/DeleteTask":  rpcWrite,
 
 	"/openbeehive.v1.TreatmentService/CreateTreatment": rpcWrite,
 	"/openbeehive.v1.TreatmentService/ListTreatments":  rpcRead,
 	"/openbeehive.v1.TreatmentService/DeleteTreatment": rpcWrite,
+	"/openbeehive.v1.TreatmentService/UpdateTreatment": rpcWrite,
 
 	"/openbeehive.v1.HarvestService/CreateHarvest": rpcWrite,
 	"/openbeehive.v1.HarvestService/ListHarvests":  rpcRead,
 	"/openbeehive.v1.HarvestService/DeleteHarvest": rpcWrite,
+	"/openbeehive.v1.HarvestService/UpdateHarvest": rpcWrite,
 
 	"/openbeehive.v1.EventService/ListEvents": rpcRead,
 
