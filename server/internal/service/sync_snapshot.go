@@ -162,9 +162,13 @@ func (s *SyncService) snapshotRows(ctx context.Context, id auth.Identity, tok sn
 		}
 	}
 	visible, args := visibleRows(tok.Entity, id)
-	q := fmt.Sprintf(`SELECT %s, field_hlc FROM %s WHERE organization_id = ? AND id > ?%s ORDER BY id ASC LIMIT ?`,
-		strings.Join(selected, ", "), spec.table, visible)
-	args = append(append([]any{id.OrgID, tok.After}, args...), snapshotBatch)
+	owner, ownerArg := "organization_id", id.OrgID
+	if spec.perUser {
+		owner, ownerArg = "id", id.UserID // the account's own row, in every workspace
+	}
+	q := fmt.Sprintf(`SELECT %s, field_hlc FROM %s WHERE %s = ? AND id > ?%s ORDER BY id ASC LIMIT ?`,
+		strings.Join(selected, ", "), spec.table, owner, visible)
+	args = append(append([]any{ownerArg, tok.After}, args...), snapshotBatch)
 	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(q), args...)
 	if err != nil {
 		return nil, false, err

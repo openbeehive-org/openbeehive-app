@@ -16,6 +16,7 @@ import (
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
@@ -50,6 +51,12 @@ func sampleValue(col string, kind colKind) any {
 		return "image/jpeg"
 	case "thumb":
 		return sampleThumb
+	case "weight_unit":
+		return "lb"
+	case "temp_unit":
+		return "f"
+	case "language":
+		return "de"
 	}
 	switch kind {
 	case kindBool:
@@ -84,8 +91,11 @@ func everyColumn(t *testing.T, entity, id string, n int) *wv1.Change {
 		t.Fatal(err)
 	}
 	scope := "apiary-a"
-	if entity == "apiary" {
+	switch {
+	case entity == "apiary":
 		scope = id // a new apiary opens its own scope
+	case spec.perUser:
+		scope = personalScope(id) // an account's own row: its id is the account's
 	}
 	return &wv1.Change{
 		Entity: entity, EntityId: id, ScopeId: scope, Op: wv1.ChangeOp_CHANGE_OP_UPSERT,
@@ -116,8 +126,13 @@ func writeLikeACurrentApp(t *testing.T, svc *SyncService, ctx context.Context) {
 	next := func() int { n++; return n }
 	for _, entity := range snapshotEntities() {
 		spec := entityCols[entity]
-		id := entity + "-1"
-		changes := []*wv1.Change{everyColumn(t, entity, id, next()), everyColumn(t, entity, entity+"-2", next())}
+		id, id2 := entity+"-1", entity+"-2"
+		if spec.perUser {
+			// One row per account: both samples and the delete go to it.
+			caller, _ := auth.FromContext(ctx)
+			id, id2 = caller.UserID, caller.UserID
+		}
+		changes := []*wv1.Change{everyColumn(t, entity, id, next()), everyColumn(t, entity, id2, next())}
 		scope := changes[0].ScopeId
 		upsert := func(fields map[string]any) {
 			payload, _ := json.Marshal(fields)
@@ -145,7 +160,7 @@ func writeLikeACurrentApp(t *testing.T, svc *SyncService, ctx context.Context) {
 			}})
 		}
 		changes = append(changes, &wv1.Change{
-			Entity: entity, EntityId: entity + "-2", ScopeId: changes[1].ScopeId,
+			Entity: entity, EntityId: id2, ScopeId: changes[1].ScopeId,
 			Op: wv1.ChangeOp_CHANGE_OP_DELETE, PayloadJson: `{"deleted":1}`, Hlc: pastStamp(next()),
 		})
 		res := pushRes(t, svc, ctx, changes...)
@@ -260,7 +275,7 @@ func TestLegacyPullStaysInsideTheFrozenSet(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"inspection.source", "treatment.amended_at", "harvest.amended_at"} {
+	for _, want := range []string{"inspection.source", "treatment.amended_at", "harvest.amended_at", "user_settings.weight_unit"} {
 		if !newer[want] {
 			t.Fatalf("a current app must receive %s; newer columns seen: %v", want, newer)
 		}

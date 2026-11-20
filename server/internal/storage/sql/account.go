@@ -15,9 +15,9 @@ import (
 )
 
 // DeleteAccount removes an account and everything personal that hangs on it,
-// in one transaction: passkeys, API keys, reset links, memberships, open
-// invites to its address, and its personal tasks with their history in every
-// workspace. Records the account wrote in shared workspaces stay; their
+// in one transaction: passkeys, API keys, reset links, its settings,
+// memberships, open invites to its address, and its personal tasks with their
+// history in every workspace. Records the account wrote in shared workspaces stay; their
 // author id then points at no account. Workspaces are not touched: the caller
 // deletes those the account was the only member of beforehand.
 func (s *Store) DeleteAccount(ctx context.Context, userID string) error {
@@ -45,6 +45,7 @@ func (s *Store) DeleteAccount(ctx context.Context, userID string) error {
 		{`DELETE FROM user_passkey WHERE user_id = ?`, userID},
 		{`DELETE FROM api_key WHERE user_id = ?`, userID},
 		{`DELETE FROM password_reset WHERE user_id = ?`, userID},
+		{`DELETE FROM user_settings WHERE id = ?`, userID},
 		{`DELETE FROM member WHERE benutzer_id = ?`, userID},
 		{`DELETE FROM invite WHERE LOWER(email) = ?`, storage.NormalizeEmail(email)},
 		{`DELETE FROM users WHERE id = ?`, userID},

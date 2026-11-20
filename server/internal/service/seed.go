@@ -29,6 +29,9 @@ func (w *Writer) Seed(ctx context.Context, id auth.Identity, fn func(s *Seeder) 
 func (s *Seeder) Wipe() error {
 	t := s.t
 	for _, spec := range entityCols {
+		if spec.perUser {
+			continue // belongs to an account, not to the tenant
+		}
 		if _, err := t.tx.ExecContext(t.ctx, t.tx.Rebind(
 			"DELETE FROM "+spec.table+" WHERE organization_id = ?"), t.id.OrgID); err != nil {
 			return err

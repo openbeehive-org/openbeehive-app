@@ -36,6 +36,9 @@ type entitySpec struct {
 	bools   []string
 	ints    []string
 	times   []string
+	// perUser marks the one entity whose rows belong to an account instead
+	// of a workspace (see sync_user.go).
+	perUser bool
 }
 
 var entityCols = map[string]entitySpec{
@@ -107,6 +110,12 @@ var entityCols = map[string]entitySpec{
 		bools: []string{"deleted"},
 		ints:  []string{"size_bytes"},
 		times: []string{"created_at"},
+	},
+	"user_settings": {
+		table:   "user_settings",
+		cols:    []string{"id", "weight_unit", "temp_unit", "language", "deleted"},
+		bools:   []string{"deleted"},
+		perUser: true,
 	},
 }
 
@@ -316,8 +325,20 @@ func (s *SyncService) pullEnd(ctx context.Context, client syncClient, st syncSta
 
 // readLog returns up to limit changes the identity may see after seq.
 func (s *SyncService) readLog(ctx context.Context, id auth.Identity, after int64, limit int) ([]logEntry, error) {
-	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(pullQuery),
-		id.OrgID, after, personalScope(id.UserID), limit)
+	page, err := s.queryLog(ctx, pullQuery, id.OrgID, after, personalScope(id.UserID), limit)
+	if err != nil {
+		return nil, err
+	}
+	own, err := s.queryLog(ctx, accountLogQuery, accountLog(id.UserID), after, limit)
+	if err != nil {
+		return nil, err
+	}
+	return mergeLog(page, own, limit), nil
+}
+
+// queryLog runs a change-log query that selects the columns of pullQuery.
+func (s *SyncService) queryLog(ctx context.Context, query string, args ...any) ([]logEntry, error) {
+	rows, err := s.db.QueryxContext(ctx, s.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -472,6 +493,9 @@ func pushOne(ctx context.Context, tx *sqlx.Tx, scopes *scopeSet, orgID string, c
 		return &changeError{code: rejForbiddenScope,
 			reason: fmt.Sprintf("scope %q is not writable for this user", clip(ch.ScopeId))}, nil
 	}
+	if cerr := checkOwnRow(spec, ch, scopes); cerr != nil {
+		return cerr, nil
+	}
 	if _, err := tx.ExecContext(ctx, "SAVEPOINT obh_change"); err != nil {
 		return nil, err
 	}
@@ -506,7 +530,7 @@ func applyLogged(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	if err := applyChange(ctx, tx, spec, ch, orgID); err != nil {
 		return err
 	}
-	if err := appendChangeLog(ctx, tx, ch, orgID); err != nil {
+	if err := appendChangeLog(ctx, tx, ch, logOrg(spec, ch, orgID)); err != nil {
 		return err
 	}
 	return photos.afterChange(ctx, tx, ch, orgID)
@@ -567,10 +591,11 @@ func (s *SyncService) subscribe(ctx context.Context, id auth.Identity, last int6
 func (s *SyncService) latestSeq(ctx context.Context, id auth.Identity) (int64, error) {
 	var seq int64
 	err := s.db.GetContext(ctx, &seq, s.db.Rebind(latestQuery), id.OrgID, personalScope(id.UserID))
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
 	}
-	return seq, err
+	own, err := s.latestAccountSeq(ctx, id.UserID)
+	return max(seq, own), err
 }
 
 func (s *SyncService) openStream(userID string) bool {
@@ -608,6 +633,9 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 		return invalidChange("malformed hlc stamp %q", clip(ch.Hlc))
 	}
 	fields, cerr := wireFields(ch.Entity, spec, ch)
+	if cerr == nil && spec.perUser {
+		cerr = checkSettingValues(fields)
+	}
 	if cerr != nil {
 		return cerr
 	}
@@ -626,7 +654,7 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	if exists && rowOrg != "" && rowOrg != orgID {
 		return errWrongTenant
 	}
-	if !exists {
+	if !exists && !spec.perUser {
 		fields["organization_id"] = orgID // new rows always belong to the caller's tenant
 	}
 
@@ -676,7 +704,11 @@ func loadMergeState(ctx context.Context, tx *sqlx.Tx, spec entitySpec, id string
 	for _, sc := range spec.setCols {
 		row.Sets[sc] = wsync.ORSet{}
 	}
-	cols := append([]string{"organization_id", "field_hlc"}, spec.setCols...)
+	owner := "organization_id"
+	if spec.perUser {
+		owner = "''" // an account's own row: checkOwnRow has checked whose it is
+	}
+	cols := append([]string{owner + " AS organization_id", "field_hlc"}, spec.setCols...)
 	rows, err := queryMaps(ctx, tx, fmt.Sprintf("SELECT %s FROM %s WHERE id = ?",
 		strings.Join(cols, ", "), spec.table), id)
 	if err != nil || len(rows) == 0 {
