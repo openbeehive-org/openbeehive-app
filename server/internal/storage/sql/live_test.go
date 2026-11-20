@@ -194,6 +194,35 @@ func assertFullyMigrated(t *testing.T, s *Store) {
 	if s.driver == config.DriverMySQL {
 		assertBinaryCollation(t, s)
 	}
+	assertColumnTypes(t, s)
+}
+
+// assertColumnTypes checks the types the dialect-specific migrations set, on
+// a fresh install and after an upgrade alike, whichever migration created or
+// rebuilt the table last: no 4-byte float is left on Postgres, and the
+// columns that carry photos are LONGTEXT on the MySQL family.
+func assertColumnTypes(t *testing.T, s *Store) {
+	t.Helper()
+	switch s.driver {
+	case config.DriverPostgres:
+		var float4 []string
+		if err := s.db.Select(&float4, `SELECT table_name || '.' || column_name FROM information_schema.columns
+			WHERE table_schema = current_schema() AND data_type = 'real'`); err != nil {
+			t.Fatalf("read column types: %v", err)
+		}
+		if len(float4) != 0 {
+			t.Fatalf("4-byte float columns: %v", float4)
+		}
+	case config.DriverMySQL:
+		var long []string
+		if err := s.db.Select(&long, `SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME) FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE() AND DATA_TYPE = 'longtext' ORDER BY 1`); err != nil {
+			t.Fatalf("read column types: %v", err)
+		}
+		if want := "change_log.payload hive.photo inspection.photo_keys"; strings.Join(long, " ") != want {
+			t.Fatalf("LONGTEXT columns: %v, want %s", long, want)
+		}
+	}
 }
 
 // assertBinaryCollation: on the MySQL family every table and every text
@@ -305,13 +334,38 @@ func TestUpgradeFrom041(t *testing.T) {
 			}
 		}
 
-		// Numbers entered with decimals read back as entered.
-		var lat, kg float64
-		if err := s.db.QueryRow(`SELECT a.lat, h.amount_kg FROM apiary a, harvest h`).Scan(&lat, &kg); err != nil {
+		// Numbers entered with decimals read back as entered, also in the
+		// inspection table, which 0017 rebuilds before 0018 widens it.
+		var lat, kg, temp, fed float64
+		if err := s.db.QueryRow(`SELECT a.lat, h.amount_kg, i.temp_hive, i.fed_kg
+			FROM apiary a, harvest h, inspection i WHERE i.id = 'in-1'`).Scan(&lat, &kg, &temp, &fed); err != nil {
 			t.Fatalf("read numbers: %v", err)
 		}
-		if lat != 48.193 || kg != 12.3 {
-			t.Fatalf("after upgrade: lat %v, amount_kg %v; want 48.193 and 12.3", lat, kg)
+		if lat != 48.193 || kg != 12.3 || temp != 34.8 || fed != 1.7 {
+			t.Fatalf("after upgrade: lat %v, amount_kg %v, temp_hive %v, fed_kg %v; want 48.193, 12.3, 34.8 and 1.7", lat, kg, temp, fed)
+		}
+
+		// What the later migrations add starts out neutral: a recorded zero
+		// stays a zero, an unmeasured value stays NULL, nothing counts as a
+		// sensor reading or an amended record, and no session is revoked.
+		var neutral int
+		if err := s.db.Get(&neutral, `SELECT
+			(SELECT COUNT(*) FROM inspection WHERE id = 'in-zero' AND frames = 0 AND brood_frames = 0
+			   AND queen_cells = 0 AND weight_kg = 0 AND honey_kg = 0 AND temp_hive IS NULL AND source = 0) +
+			(SELECT COUNT(*) FROM inspection WHERE id = 'in-1' AND frames = 9 AND brood_frames = 4
+			   AND frames_removed = 0 AND temp_outside IS NULL AND source = 0) +
+			(SELECT COUNT(*) FROM treatment WHERE id = 'tr-1' AND amended_at IS NULL) +
+			(SELECT COUNT(*) FROM harvest WHERE id = 'ha-1' AND amended_at IS NULL) +
+			(SELECT COUNT(*) FROM users WHERE id = 'u-1' AND sessions_valid_after = 0) +
+			(SELECT COUNT(*) FROM invite WHERE id = 'iv-1' AND expires_at IS NULL) +
+			(SELECT COUNT(*) FROM change_log WHERE id = 'cl-2' AND org_id = 'org-1' AND scope_id = 'user:u-1')`); err != nil {
+			t.Fatalf("read migrated rows: %v", err)
+		}
+		if neutral != 7 {
+			t.Fatalf("%d of 7 migrated rows have the expected values", neutral)
+		}
+		if got, err := s.Invites().GetByToken(ctx, "invite-token-1"); err != nil || got.Email != "friend@example.org" {
+			t.Fatalf("invite after upgrade: %+v, %v", got, err)
 		}
 
 		// The upgraded install serves the same repo calls as a fresh one.
@@ -413,10 +467,21 @@ func insert041Rows(t *testing.T, s *Store) {
 		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[]any{"in-1", "org-1", "hv-1", ts, "sunny, 24°C", true, false, 2, 9, 1, 0, "3 mites/day", 2.5, "calm colony",
 				`{"` + photo + `":{"a":["000000000001000:00000:dev"],"r":[]}}`, ts, "", false, "{}",
-				4, 3, 1.5, 1, 0, true, false, 42.5, 3, true, 34.8, nil, 55.0, nil}},
+				4, 3, 1.7, 1, 0, true, false, 42.5, 3, true, 34.8, nil, 55.0, nil}},
+		// A visit where nothing was counted: 0.4.1 stored zeros, and zeros
+		// they must stay when the columns become nullable.
+		{`INSERT INTO inspection (id, organization_id, hive_id, date, created_at) VALUES (?, ?, ?, ?, ?)`,
+			[]any{"in-zero", "org-1", "hv-1", ts, ts}},
 		{`INSERT INTO task (id, organization_id, title, hive_id, apiary_id, due_at, done, priority, note, recurrence, assigned_to, created_at, updated_hlc, deleted, field_hlc)
 		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[]any{"tk-1", "org-1", "Feed", "hv-1", nil, ts, false, 2, "", "", "", ts, "", false, "{}"}},
+		// A personal task: no hive, no apiary, logged in its owner's scope.
+		{`INSERT INTO task (id, organization_id, title, hive_id, apiary_id, due_at, done, priority, note, recurrence, assigned_to, created_at, updated_hlc, deleted, field_hlc)
+		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			[]any{"tk-personal", "org-1", "Order jars", nil, nil, nil, true, 1, "500 g", "", "u-1", ts, "", false, "{}"}},
+		{`INSERT INTO change_log (id, seq, scope_id, entity, entity_id, op, payload, hlc, author_id, org_id)
+		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			[]any{"cl-2", 2, "user:u-1", "task", "tk-personal", 1, `{"title":"Order jars","done":1}`, "000000000002000:00000:dev", "u-1", "org-1"}},
 		{`INSERT INTO treatment (id, organization_id, apiary_id, hive_id, queen_id, date, product, active_ingredient, dose, method, batch_number, withdrawal_until, reason, note, field_hlc, deleted)
 		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[]any{"tr-1", "org-1", "ap-1", "hv-1", "q-1", ts, "Formic acid 60%", "formic acid", "30 ml", "evaporation", "FA-1", ts, "varroa", "", "{}", false}},
@@ -432,7 +497,7 @@ func insert041Rows(t *testing.T, s *Store) {
 		{`INSERT INTO change_log (id, seq, scope_id, entity, entity_id, op, payload, hlc, author_id, org_id)
 		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			[]any{"cl-1", 1, "ap-1", "hive", "hv-1", 1, `{"name":"Hive 1","photo":"` + photo + `"}`, "000000000001000:00000:dev", "u-1", "org-1"}},
-		{`UPDATE seq_counter SET val = ? WHERE name = ?`, []any{1, "change"}},
+		{`UPDATE seq_counter SET val = ? WHERE name = ?`, []any{2, "change"}},
 		{`INSERT INTO invite (id, organization_id, email, role, token, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			[]any{"iv-1", "org-1", "friend@example.org", "member", "invite-token-1", at}},
 		{`INSERT INTO user_passkey (id, user_id, name, cred, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?)`,

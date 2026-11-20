@@ -5,22 +5,27 @@
 -- coordinates lost precision. New columns are created as DOUBLE PRECISION by
 -- Store.translate; this converts the ones that already exist. Going through
 -- text restores the number as it was entered.
+--
+-- The cast to real comes first because 0017 has just rebuilt inspection: its
+-- columns already are DOUBLE PRECISION, but the values copied into them
+-- still carry the 4-byte rounding. Every value stored up to here came from
+-- a 4-byte column, so the cast loses nothing.
 ALTER TABLE apiary
-  ALTER COLUMN lat TYPE DOUBLE PRECISION USING lat::text::double precision,
-  ALTER COLUMN lng TYPE DOUBLE PRECISION USING lng::text::double precision;
+  ALTER COLUMN lat TYPE DOUBLE PRECISION USING lat::real::text::double precision,
+  ALTER COLUMN lng TYPE DOUBLE PRECISION USING lng::real::text::double precision;
 
 ALTER TABLE inspection
-  ALTER COLUMN honey_kg         TYPE DOUBLE PRECISION USING honey_kg::text::double precision,
-  ALTER COLUMN fed_kg           TYPE DOUBLE PRECISION USING fed_kg::text::double precision,
-  ALTER COLUMN weight_kg        TYPE DOUBLE PRECISION USING weight_kg::text::double precision,
-  ALTER COLUMN temp_hive        TYPE DOUBLE PRECISION USING temp_hive::text::double precision,
-  ALTER COLUMN temp_outside     TYPE DOUBLE PRECISION USING temp_outside::text::double precision,
-  ALTER COLUMN humidity_hive    TYPE DOUBLE PRECISION USING humidity_hive::text::double precision,
-  ALTER COLUMN humidity_outside TYPE DOUBLE PRECISION USING humidity_outside::text::double precision;
+  ALTER COLUMN honey_kg         TYPE DOUBLE PRECISION USING honey_kg::real::text::double precision,
+  ALTER COLUMN fed_kg           TYPE DOUBLE PRECISION USING fed_kg::real::text::double precision,
+  ALTER COLUMN weight_kg        TYPE DOUBLE PRECISION USING weight_kg::real::text::double precision,
+  ALTER COLUMN temp_hive        TYPE DOUBLE PRECISION USING temp_hive::real::text::double precision,
+  ALTER COLUMN temp_outside     TYPE DOUBLE PRECISION USING temp_outside::real::text::double precision,
+  ALTER COLUMN humidity_hive    TYPE DOUBLE PRECISION USING humidity_hive::real::text::double precision,
+  ALTER COLUMN humidity_outside TYPE DOUBLE PRECISION USING humidity_outside::real::text::double precision;
 
 ALTER TABLE harvest
-  ALTER COLUMN amount_kg     TYPE DOUBLE PRECISION USING amount_kg::text::double precision,
-  ALTER COLUMN water_content TYPE DOUBLE PRECISION USING water_content::text::double precision;
+  ALTER COLUMN amount_kg     TYPE DOUBLE PRECISION USING amount_kg::real::text::double precision,
+  ALTER COLUMN water_content TYPE DOUBLE PRECISION USING water_content::real::text::double precision;
 
 ALTER TABLE event
-  ALTER COLUMN amount_kg TYPE DOUBLE PRECISION USING amount_kg::text::double precision;
+  ALTER COLUMN amount_kg TYPE DOUBLE PRECISION USING amount_kg::real::text::double precision;
