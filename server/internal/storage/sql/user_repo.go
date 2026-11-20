@@ -24,6 +24,7 @@ type userRow struct {
 	EmailVerified bool      `db:"email_verified"`
 	VerifyToken   string    `db:"verification_token"`
 	CreatedAt     time.Time `db:"created_at"`
+	ValidAfter    int64     `db:"sessions_valid_after"`
 }
 
 func (r userRow) model() *storage.User {
@@ -31,6 +32,7 @@ func (r userRow) model() *storage.User {
 		ID: r.ID, Email: r.Email, Name: r.Name, OIDCSubject: r.OIDCSubject,
 		PasswordHash: r.PasswordHash, Role: r.Role, EmailVerified: r.EmailVerified,
 		VerifyToken: r.VerifyToken, CreatedAt: r.CreatedAt,
+		SessionsValidAfter: r.ValidAfter,
 	}
 }
 
@@ -63,7 +65,7 @@ func (r *userRepo) LinkOIDC(ctx context.Context, id, subject string) error {
 func (r *userRepo) getBy(ctx context.Context, where, arg string) (*storage.User, error) {
 	var row userRow
 	err := r.s.db.GetContext(ctx, &row, r.s.db.Rebind(
-		`SELECT id, email, name, oidc_subject, password_hash, role, email_verified, verification_token, created_at
+		`SELECT id, email, name, oidc_subject, password_hash, role, email_verified, verification_token, created_at, sessions_valid_after
 		 FROM users WHERE `+where), arg)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, storage.ErrNotFound
@@ -89,4 +91,8 @@ func (r *userRepo) SetCredentials(ctx context.Context, id, passwordHash, role st
 	return r.s.exec(ctx, `
 		UPDATE users SET password_hash = ?, role = ?, email_verified = TRUE, verification_token = ''
 		WHERE id = ?`, passwordHash, role, id)
+}
+
+func (r *userRepo) SetSessionsValidAfter(ctx context.Context, id string, unixMilli int64) error {
+	return r.s.exec(ctx, `UPDATE users SET sessions_valid_after = ? WHERE id = ?`, unixMilli, id)
 }

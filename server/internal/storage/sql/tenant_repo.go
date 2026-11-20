@@ -49,6 +49,7 @@ func (r *orgRepo) Delete(ctx context.Context, id string) error {
 		`DELETE FROM apiary WHERE organization_id = ?`,
 		`DELETE FROM change_log WHERE org_id = ?`,
 		`DELETE FROM invite WHERE organization_id = ?`,
+		`DELETE FROM api_key WHERE organization_id = ?`,
 		`DELETE FROM member WHERE organization_id = ?`,
 		`DELETE FROM organization WHERE id = ?`,
 	}
@@ -131,8 +132,8 @@ func (r *memberRepo) ListByUser(ctx context.Context, userID string) ([]storage.T
 type inviteRepo struct{ s *Store }
 
 func (r *inviteRepo) Create(ctx context.Context, i *storage.Invite) error {
-	return r.s.exec(ctx, `INSERT INTO invite (id, organization_id, email, role, token, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		i.ID, i.OrgID, i.Email, i.Role, i.Token, i.CreatedAt)
+	return r.s.exec(ctx, `INSERT INTO invite (id, organization_id, email, role, token, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		i.ID, i.OrgID, i.Email, i.Role, i.Token, i.CreatedAt, i.ExpiresAt)
 }
 
 func (r *inviteRepo) GetByToken(ctx context.Context, token string) (*storage.Invite, error) {
@@ -141,7 +142,7 @@ func (r *inviteRepo) GetByToken(ctx context.Context, token string) (*storage.Inv
 	}
 	var i storage.Invite
 	err := r.s.db.GetContext(ctx, &i, r.s.db.Rebind(
-		`SELECT id, organization_id, email, role, token, created_at FROM invite WHERE token = ?`), token)
+		`SELECT id, organization_id, email, role, token, created_at, expires_at FROM invite WHERE token = ?`), token)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, storage.ErrNotFound
 	}
@@ -151,7 +152,7 @@ func (r *inviteRepo) GetByToken(ctx context.Context, token string) (*storage.Inv
 func (r *inviteRepo) ListByOrg(ctx context.Context, orgID string) ([]storage.Invite, error) {
 	out := []storage.Invite{}
 	err := r.s.db.SelectContext(ctx, &out, r.s.db.Rebind(
-		`SELECT id, organization_id, email, role, token, created_at FROM invite WHERE organization_id = ? ORDER BY created_at DESC`), orgID)
+		`SELECT id, organization_id, email, role, token, created_at, expires_at FROM invite WHERE organization_id = ? ORDER BY created_at DESC`), orgID)
 	return out, err
 }
 

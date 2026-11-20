@@ -53,6 +53,9 @@ type User struct {
 	EmailVerified bool      `db:"email_verified"`
 	VerifyToken   string    `db:"verification_token"`
 	CreatedAt     time.Time `db:"created_at"`
+	// SessionsValidAfter (Unix milliseconds) invalidates every session token
+	// issued before it; 0 means no session has been revoked.
+	SessionsValidAfter int64 `db:"sessions_valid_after"`
 }
 
 // Organization is a tenant: a collection of apiaries/hives that members share.
@@ -85,7 +88,24 @@ type Invite struct {
 	Role      string    `db:"role"`
 	Token     string    `db:"token"`
 	CreatedAt time.Time `db:"created_at"`
+	// ExpiresAt is nil for invites stored by 0.4.x servers; Expiry applies
+	// InviteTTL from CreatedAt for those.
+	ExpiresAt *time.Time `db:"expires_at"`
 }
+
+// InviteTTL is how long an invite stays usable.
+const InviteTTL = 7 * 24 * time.Hour
+
+// Expiry returns the instant after which the invite can no longer be used.
+func (i *Invite) Expiry() time.Time {
+	if i.ExpiresAt != nil {
+		return *i.ExpiresAt
+	}
+	return i.CreatedAt.Add(InviteTTL)
+}
+
+// Expired reports whether the invite can no longer be used at the given time.
+func (i *Invite) Expired(now time.Time) bool { return !now.Before(i.Expiry()) }
 
 // --- Repository interfaces ---
 
@@ -100,13 +120,16 @@ type UserRepo interface {
 	// SetCredentials overwrites password hash and role and marks the account
 	// verified. Used by the instance-admin bootstrap (env is authoritative).
 	SetCredentials(ctx context.Context, id, passwordHash, role string) error
+	// SetSessionsValidAfter revokes every session token of the account that
+	// was issued before the given instant (Unix milliseconds).
+	SetSessionsValidAfter(ctx context.Context, id string, unixMilli int64) error
 }
 
 type OrgRepo interface {
 	Create(ctx context.Context, o *Organization) error
 	Get(ctx context.Context, id string) (*Organization, error)
 	// Delete removes the tenant and every row scoped to it (memberships,
-	// invites, apiaries, hives and all records) in one transaction.
+	// invites, API keys, apiaries, hives and all records) in one transaction.
 	Delete(ctx context.Context, id string) error
 	// PhotoKeysByOrg returns every blob key the tenant's inspections have ever
 	// referenced, including OR-Set-removed ones, whose blobs also linger.
