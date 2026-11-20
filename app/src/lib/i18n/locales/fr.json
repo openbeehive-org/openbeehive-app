@@ -2,7 +2,8 @@
   "app": {
     "name": "Openbeehive",
     "tagline": "Carnet d'apiculture",
-    "offline_banner": "Hors ligne : les modifications sont enregistrées et synchronisées plus tard."
+    "offline_banner": "Hors ligne : les modifications sont enregistrées et synchronisées plus tard.",
+    "dismiss": "Fermer"
   },
   "nav": {
     "dashboard": "Vue d'ensemble",
@@ -10,7 +11,8 @@
     "hives": "Ruches",
     "tasks": "Tâches",
     "scan": "Scanner",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "main": "Navigation principale"
   },
   "qr": {
     "print": "Imprimer",

@@ -2,7 +2,8 @@
   "app": {
     "name": "Openbeehive",
     "tagline": "Beekeeping records",
-    "offline_banner": "Offline: changes are saved and synced later."
+    "offline_banner": "Offline: changes are saved and synced later.",
+    "dismiss": "Dismiss"
   },
   "nav": {
     "dashboard": "Overview",
@@ -10,7 +11,8 @@
     "hives": "Hives",
     "tasks": "Tasks",
     "scan": "Scan",
-    "settings": "Settings"
+    "settings": "Settings",
+    "main": "Main navigation"
   },
   "qr": {
     "print": "Print",

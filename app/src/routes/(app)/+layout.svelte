@@ -133,30 +133,42 @@
     const p = page.url.pathname;
     return href === '/' ? p === '/' : p === href || p.startsWith(href + '/');
   }
+  const current = (href: string) => (isActive(href) ? 'page' : undefined);
 </script>
+
+<!-- The main destinations, shared by the desktop sidebar and the mobile tab bar. -->
+{#snippet tabLinks()}
+  {#each tabs as t}
+    <a href={t.href} class:active={isActive(t.href)} aria-current={current(t.href)}>
+      <span class="ic"><NavIcon name={t.icon} /></span>
+      <span class="lbl">{$_(t.key)}</span>
+    </a>
+  {/each}
+{/snippet}
 
 <div class="shell">
   <!-- Desktop sidebar -->
   <aside class="sidebar">
     <a class="brand" href="/">
-      <span class="mark">⬡</span>
+      <span class="mark" aria-hidden="true">⬡</span>
       <span class="word">
         <strong>{$_('app.name')}</strong>
         <small>{$_('app.tagline')}</small>
       </span>
     </a>
 
-    <nav class="side-nav">
-      {#each tabs as t}
-        <a href={t.href} class:active={isActive(t.href)}>
-          <span class="ic"><NavIcon name={t.icon} /></span>
-          <span class="lbl">{$_(t.key)}</span>
-        </a>
-      {/each}
+    <nav class="side-nav" aria-label={$_('nav.main')}>
+      {@render tabLinks()}
     </nav>
 
-    <a class="account" href="/settings" class:active={isActive('/settings')}>
-      <span class="avatar">{initial}</span>
+    <a
+      class="account"
+      href="/settings"
+      class:active={isActive('/settings')}
+      aria-current={current('/settings')}
+      title={$_('nav.settings')}
+    >
+      <span class="avatar" aria-hidden="true">{initial}</span>
       <span class="acc-info">
         <strong>{email}</strong>
         <span class="status" class:off={!online}>
@@ -182,15 +194,10 @@
 <Toasts />
 
 <!-- Mobile bottom tab bar -->
-<nav class="tabbar">
-  {#each tabs as t}
-    <a href={t.href} class:active={isActive(t.href)}>
-      <span class="ic"><NavIcon name={t.icon} /></span>
-      <span class="lbl">{$_(t.key)}</span>
-    </a>
-  {/each}
-  <a href="/settings" class:active={isActive('/settings')}>
-    <span class="ic avatar-sm">{initial}</span>
+<nav class="tabbar" aria-label={$_('nav.main')}>
+  {@render tabLinks()}
+  <a href="/settings" class:active={isActive('/settings')} aria-current={current('/settings')}>
+    <span class="ic avatar-sm" aria-hidden="true">{initial}</span>
     <span class="lbl">{$_('nav.settings')}</span>
   </a>
 </nav>
@@ -212,18 +219,17 @@
     position: sticky;
     top: 0;
     z-index: 30;
-    background: var(--ink);
-    color: var(--cream2);
+    background: var(--text);
+    color: var(--bg);
     font-size: 0.82rem;
     text-align: center;
     padding: 9px 12px;
   }
+  /* Not sticky: only the offline banner stays in view, so the two never
+     cover each other. */
   .demo-bar {
-    position: sticky;
-    top: 0;
-    z-index: 31;
-    background: linear-gradient(90deg, var(--honey-l), var(--honey));
-    color: #fff;
+    background: var(--warn-bg);
+    color: var(--warn-text);
     font-size: 0.82rem;
     font-weight: 600;
     text-align: center;
@@ -238,9 +244,9 @@
     z-index: 40;
     display: grid;
     grid-template-columns: repeat(6, 1fr);
-    background: rgba(255, 253, 247, 0.94);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
     backdrop-filter: blur(10px);
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--border);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .tabbar a {
@@ -248,12 +254,14 @@
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    padding: 10px 2px 9px;
+    padding: 9px 2px 8px;
     text-decoration: none;
-    color: var(--ink-soft);
-    font-size: 0.64rem;
+    color: var(--text-soft);
+    font-size: 0.75rem;
     font-weight: 600;
     min-width: 0;
+    /* Marks the current tab by shape as well as colour. */
+    border-top: 2px solid transparent;
   }
   .tabbar a .lbl {
     max-width: 100%;
@@ -267,7 +275,8 @@
     opacity: 0.75;
   }
   .tabbar a.active {
-    color: var(--honey-d);
+    color: var(--accent-text);
+    border-top-color: var(--accent);
   }
   .tabbar a.active .ic {
     opacity: 1;
@@ -276,14 +285,14 @@
     display: grid;
     place-items: center;
     border-radius: 50%;
-    background: linear-gradient(150deg, var(--honey-l), var(--honey));
-    color: #fff;
+    background: var(--accent);
+    color: var(--on-accent);
     font-weight: 800;
     font-size: 0.8rem;
     opacity: 1 !important;
   }
   .tabbar a.active .avatar-sm {
-    box-shadow: 0 0 0 2px rgba(199, 127, 34, 0.35);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
   }
 
   /* ---- Desktop: persistent sidebar, no bottom bar ---- */
@@ -307,8 +316,8 @@
       position: sticky;
       top: 0;
       height: 100vh;
-      background: var(--cream2);
-      border-right: 1px solid var(--line);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
       padding: 22px 16px;
     }
     .main-col {
@@ -322,11 +331,11 @@
       gap: 11px;
       padding: 6px 10px 20px;
       text-decoration: none;
-      color: var(--ink);
+      color: var(--text);
     }
     .brand .mark {
       font-size: 1.7rem;
-      color: var(--honey);
+      color: var(--accent);
       line-height: 1;
     }
     .brand .word {
@@ -339,8 +348,8 @@
       font-size: 1.15rem;
     }
     .brand .word small {
-      color: var(--ink-soft);
-      font-size: 0.72rem;
+      color: var(--text-soft);
+      font-size: 0.75rem;
     }
 
     .side-nav {
@@ -355,7 +364,7 @@
       padding: 11px 12px;
       border-radius: 11px;
       text-decoration: none;
-      color: var(--ink-soft);
+      color: var(--text-soft);
       font-weight: 600;
       font-size: 0.95rem;
       transition:
@@ -369,12 +378,14 @@
       opacity: 0.8;
     }
     .side-nav a:hover {
-      background: rgba(199, 127, 34, 0.08);
-      color: var(--ink);
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+      color: var(--text);
     }
     .side-nav a.active {
-      background: rgba(199, 127, 34, 0.14);
-      color: var(--honey-d);
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      color: var(--accent-text);
+      /* Marks the current page by shape as well as colour. */
+      box-shadow: inset 3px 0 0 var(--accent);
     }
     .side-nav a.active .ic {
       opacity: 1;
@@ -389,18 +400,18 @@
       padding: 10px 10px;
       border-radius: 12px;
       text-decoration: none;
-      color: var(--ink);
+      color: var(--text);
       border: 1px solid transparent;
       transition:
         background 0.12s,
         border-color 0.12s;
     }
     .account:hover {
-      background: rgba(199, 127, 34, 0.08);
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
     }
     .account.active {
-      background: rgba(199, 127, 34, 0.12);
-      border-color: rgba(199, 127, 34, 0.25);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      border-color: var(--accent);
     }
     .account .avatar {
       width: 38px;
@@ -409,10 +420,10 @@
       flex-shrink: 0;
       display: grid;
       place-items: center;
-      color: #fff;
+      color: var(--on-accent);
       font-weight: 800;
       font-size: 1rem;
-      background: linear-gradient(150deg, var(--honey-l), var(--honey-d));
+      background: var(--accent);
     }
     .account .acc-info {
       display: flex;

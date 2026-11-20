@@ -2,7 +2,8 @@
   "app": {
     "name": "Openbeehive",
     "tagline": "Registro apistico",
-    "offline_banner": "Offline: le modifiche vengono salvate e sincronizzate in seguito."
+    "offline_banner": "Offline: le modifiche vengono salvate e sincronizzate in seguito.",
+    "dismiss": "Chiudi"
   },
   "nav": {
     "dashboard": "Panoramica",
@@ -10,7 +11,8 @@
     "hives": "Arnie",
     "tasks": "Attività",
     "scan": "Scansiona",
-    "settings": "Impostazioni"
+    "settings": "Impostazioni",
+    "main": "Navigazione principale"
   },
   "qr": {
     "print": "Stampa",
