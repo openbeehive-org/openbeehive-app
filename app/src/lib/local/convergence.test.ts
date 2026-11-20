@@ -20,15 +20,16 @@ vi.mock('./sync', async (importOriginal) => {
 });
 
 const pullMock = vi.fn();
+const pushMock = vi.fn();
 vi.mock('#lib/client.js', () => ({
   syncClient: {
-    push: vi.fn(async () => ({ serverCursor: '' })),
+    push: (...a: unknown[]) => pushMock(...a),
     pull: (...a: unknown[]) => pullMock(...a)
   }
 }));
 
 import { apiaries, setAdd, patch } from './repo';
-import { pull } from './sync';
+import { pull, push } from './sync';
 
 type Change = { entity: string; entityId: string; op: number; payloadJson: string; hlc: string };
 
@@ -64,6 +65,7 @@ beforeEach(async () => {
   localStorage.setItem('obh.orgId', 'org1');
   localStorage.setItem('obh.userId', 'userA');
   pullMock.mockReset();
+  pushMock.mockReset();
   vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());
@@ -180,5 +182,71 @@ describe('two offline devices converge', () => {
 
     expect(second).toEqual(first);
     expect(await B.all(`SELECT id FROM apiary`)).toHaveLength(1);
+  });
+});
+
+// A server as the devices see it: one change log with a global sequence,
+// Pull by cursor. Like every server before 0.5 it answers a push with that
+// global sequence; a device must not mistake it for its own pull position.
+function fakeServer() {
+  const log: { seq: number; change: Change }[] = [];
+  return {
+    push: async (req: { changes: Change[] }) => {
+      for (const change of req.changes) log.push({ seq: log.length + 1, change });
+      return { serverCursor: String(log.length) };
+    },
+    pull: async (req: { cursor: string }) => {
+      const after = Number(req.cursor || 0);
+      const page = log.filter((e) => e.seq > after);
+      return {
+        changes: page.map((e) => e.change),
+        nextCursor: page.length ? String(page[page.length - 1]!.seq) : req.cursor,
+        hasMore: false
+      };
+    }
+  };
+}
+
+describe('two devices syncing through a server', () => {
+  it('a device that pushes after another one wrote still receives that write', async () => {
+    const server = fakeServer();
+    pushMock.mockImplementation(server.push);
+    pullMock.mockImplementation(server.pull);
+    const sync = async (db: LocalDB) => {
+      setCurrentDB(db);
+      await push();
+      await pull();
+    };
+
+    // A creates the apiary; both devices have it.
+    vi.setSystemTime(41_000_000);
+    setCurrentDB(A);
+    const id = await apiaries.create({ organization_id: 'org1', name: 'Shared', note: '' });
+    await sync(A);
+    await sync(B);
+    expect((await apiaryRow(B, id))!.name).toBe('Shared');
+
+    // B writes a note and syncs. A has not pulled it yet.
+    vi.setSystemTime(42_000_000);
+    setCurrentDB(B);
+    await apiaries.setNote(id, 'from B');
+    await sync(B);
+
+    // A edits another field and syncs: push first, then pull.
+    vi.setSystemTime(43_000_000);
+    setCurrentDB(A);
+    await apiaries.rename(id, 'Renamed by A');
+    await sync(A);
+
+    expect(await apiaryRow(A, id)).toMatchObject({ name: 'Renamed by A', note: 'from B' });
+    await sync(B);
+    expect(await apiaryRow(B, id)).toEqual(await apiaryRow(A, id));
+
+    // Its own changes coming back through pull changed nothing on A.
+    const fc = JSON.parse(
+      (await A.get<any>(`SELECT field_hlc FROM apiary WHERE id = ?`, [id]))!.field_hlc
+    );
+    expect(fc.name > fc.note).toBe(true);
+    expect(await A.all(`SELECT id FROM apiary`)).toHaveLength(1);
   });
 });
