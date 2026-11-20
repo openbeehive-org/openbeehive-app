@@ -108,6 +108,15 @@ app/        SvelteKit PWA
   moves its cursor along with the log even when its workspace is quiet. Nothing else reads old log
   entries: who owns a personal task, for example, is stored on the task (`task.owner_id`). The job
   runs in the server process and assumes it is the only one: run exactly one instance per database.
+- **Account settings.** `user_settings` (units, language) is the one synced table whose rows belong
+  to an account instead of a workspace: one row per account, id = the account id, written only in
+  the account's personal scope. Its log entries are filed under the account (`org_id`
+  `user:<id>`), so `Pull`, `Subscribe` and `Snapshot` serve it in every workspace of the account and
+  each workspace's local database holds a copy of the same row. Leaving a workspace keeps it;
+  deleting the account removes it. Values are display preferences only: records, payloads, exports
+  and the API stay metric. On the device `src/lib/prefs.ts` keeps what was last applied (so the
+  app starts with it before a database opens) and `src/lib/local/userSettings.ts` reconciles it
+  with the record by field stamp. The colour theme is not part of it; it stays per device.
 
 ## Photos
 
