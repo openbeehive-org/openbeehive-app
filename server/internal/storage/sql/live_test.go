@@ -616,6 +616,43 @@ func TestTextComparesExactly(t *testing.T) {
 	})
 }
 
+// TestTimeKeepsItsInstant: a time value is stored as the instant it denotes,
+// whatever zone it carries, as a value and behind a pointer.
+func TestTimeKeepsItsInstant(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) {
+		s := b.blank(t)
+		ctx := context.Background()
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
+		at := time.Date(2026, 7, 11, 12, 0, 0, 0, time.FixedZone("CEST", 2*60*60)) // 10:00 UTC
+		u := &storage.User{ID: "u-zone", Email: "zone@example.org", Role: "user", CreatedAt: at}
+		if err := s.Users().Create(ctx, u); err != nil {
+			t.Fatalf("create user: %v", err)
+		}
+		got, err := s.Users().GetByID(ctx, "u-zone")
+		if err != nil {
+			t.Fatalf("read user: %v", err)
+		}
+		if !got.CreatedAt.Equal(at) {
+			t.Fatalf("created_at: got %v, want %v", got.CreatedAt.UTC(), at.UTC())
+		}
+
+		if _, err := s.db.Exec(s.db.Rebind(
+			`INSERT INTO api_key (id, user_id, organization_id, key_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`),
+			"k-zone", "u-zone", "org", "hash", at, &at); err != nil {
+			t.Fatalf("insert api key: %v", err)
+		}
+		var expires *time.Time
+		if err := s.db.Get(&expires, `SELECT expires_at FROM api_key WHERE id = 'k-zone'`); err != nil {
+			t.Fatalf("read api key: %v", err)
+		}
+		if expires == nil || !expires.Equal(at) {
+			t.Fatalf("expires_at: got %v, want %v", expires, at.UTC())
+		}
+	})
+}
+
 // TestMySQLAdoptsOlderInstall: a MySQL-family database created by a release
 // that still used the server's default collation, and that stopped halfway
 // through 0013, comes up with binary collation on every table and the
