@@ -1,5 +1,7 @@
 build/
 coverage/
+test-results/
+playwright-report/
 .svelte-kit/
 node_modules/
 package-lock.json

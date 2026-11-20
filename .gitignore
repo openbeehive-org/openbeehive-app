@@ -17,6 +17,8 @@ app/node_modules/
 app/.svelte-kit/
 app/build/
 app/coverage/
+app/test-results/
+app/playwright-report/
 app/.vite/
 app/vite.config.js.timestamp-*
 app/vite.config.ts.timestamp-*

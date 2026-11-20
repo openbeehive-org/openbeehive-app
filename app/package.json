@@ -13,11 +13,14 @@
     "format": "prettier --write . && eslint --fix .",
     "test": "vitest run",
     "cover": "vitest run --coverage",
+    "e2e": "playwright test",
     "licenses": "license-checker-rseidelsohn --production --excludePrivatePackages --summary --onlyAllow 'MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;0BSD;(Apache-2.0 AND BSD-3-Clause)'",
     "unused": "knip --dependencies"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
     "@sveltejs/adapter-static": "4.0.1",
     "@sveltejs/kit": "3.1.1",
     "@sveltejs/load-config": "0.2.3",
@@ -56,6 +59,9 @@
   "overrides": {
     "svelte-i18n": {
       "esbuild": "^0.28.0"
+    },
+    "@axe-core/playwright": {
+      "playwright-core": "$@playwright/test"
     }
   },
   "imports": {

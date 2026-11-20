@@ -10,7 +10,15 @@ import { loadConfig } from '@sveltejs/load-config';
 const svelteConfig = (await loadConfig('./', { traverse: false }))?.config;
 
 export default defineConfig(
-  globalIgnores(['build/', 'coverage/', '.svelte-kit/', 'node_modules/', 'src/lib/proto/']),
+  globalIgnores([
+    'build/',
+    'coverage/',
+    'test-results/',
+    'playwright-report/',
+    '.svelte-kit/',
+    'node_modules/',
+    'src/lib/proto/'
+  ]),
   js.configs.recommended,
   ts.configs.recommended,
   svelte.configs.recommended,
