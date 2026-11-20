@@ -53,6 +53,12 @@ func (s *InspectionService) CreateInspection(ctx context.Context, req *wv1.Creat
 	if err != nil {
 		return nil, err
 	}
+	if fields["source"] == int32(0) {
+		// An unset source stays out of the payload: the column defaults to 0,
+		// and a device whose app version has no such column yet can still
+		// apply the change.
+		delete(fields, "source")
+	}
 	var out map[string]any
 	err = s.w.Run(ctx, id, func(t *txWriter) error {
 		if _, err := t.hive(m.HiveId); err != nil {

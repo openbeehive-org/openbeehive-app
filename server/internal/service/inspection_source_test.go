@@ -91,7 +91,7 @@ func TestOptionalInspectionNumbersKeepNotRecorded(t *testing.T) {
 	}
 	// Devices get the same picture: no invented zeros in the payload.
 	chs := changesFor(f.pullAll(t, ctx), "inspection")
-	if p := chs[0].PayloadJson; strings.Contains(p, "temp_hive") || strings.Contains(p, `"frames"`) ||
+	if p := chs[0].PayloadJson; strings.Contains(p, "temp_hive") || strings.Contains(p, `"frames"`) || strings.Contains(p, "source") ||
 		!strings.Contains(p, `"temp_outside":0`) || !strings.Contains(p, `"queen_cells":0`) {
 		t.Fatalf("payload: %s", p)
 	}

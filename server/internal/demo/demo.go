@@ -261,7 +261,7 @@ func inspectionFields(date time.Time, hiveNo, idx int) map[string]any {
 		"varroa":    fmt.Sprintf("%d mites/day", varroaByMonth[m-1]+hiveNo%2),
 		"temp_hive": round1(hiveTemp), "temp_outside": round1(outTemp),
 		"humidity_hive": 55 + (hiveNo+idx)%8, "humidity_outside": 60 + (hiveNo+idx)%25,
-		"note": "", "source": 1, "created_at": date,
+		"note": "", "created_at": date,
 	}
 	switch {
 	case spring:
