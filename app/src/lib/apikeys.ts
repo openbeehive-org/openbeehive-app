@@ -14,7 +14,7 @@ export type ApiKeyInfo = {
   user_email?: string;
 };
 
-// tenant = true lists every key of the active tenant (tenant admins only).
+// tenant = true lists every key of the active workspace (its admins only).
 export async function listApiKeys(
   api: string,
   headers: Record<string, string>,
@@ -59,4 +59,24 @@ export async function deleteApiKey(
     body: JSON.stringify({ id })
   });
   return r.ok;
+}
+
+/** Where the API documentation for scripts and devices lives. */
+export const API_DOCS_URL = 'https://docs.openbeehive.org/using-the-api/';
+
+/** The address scripts send requests to: the API origin, else the app's own. */
+export const apiBaseUrl = (api: string, origin: string): string =>
+  (api || origin).replace(/\/+$/, '');
+
+/**
+ * A request that works as pasted: it lists the workspace's hives with the
+ * given key. Every call of the API has this shape (POST, JSON body).
+ */
+export function curlExample(baseUrl: string, token: string): string {
+  return [
+    `curl -X POST ${baseUrl}/openbeehive.v1.HiveService/ListHives`,
+    `  -H "Authorization: Bearer ${token}"`,
+    `  -H "Content-Type: application/json"`,
+    `  -d '{}'`
+  ].join(' \\\n');
 }

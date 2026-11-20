@@ -5,6 +5,7 @@ import {
   isPasskeyCancelled,
   listPasskeys,
   passkeyLogin,
+  passkeyReauth,
   PasskeyError,
   passkeysSupported
 } from './webauthn';
@@ -188,5 +189,53 @@ describe('passkey management', () => {
 
   it('knows passkeys are unavailable outside a browser', () => {
     expect(passkeysSupported()).toBe(false);
+  });
+});
+
+describe('passkeyReauth', () => {
+  const assertionResult = {
+    id: 'cred',
+    rawId: bytes(1, 2),
+    type: 'public-key',
+    response: {
+      authenticatorData: bytes(3),
+      clientDataJSON: bytes(4),
+      signature: bytes(5),
+      userHandle: null
+    }
+  };
+
+  it('confirms with a passkey of the signed-in account and returns the proof', async () => {
+    const calls = stubFetch(
+      json(200, { publicKey: { challenge: 'AAAA' } }),
+      json(200, { status: 'ok', reauth: 'proof-1' })
+    );
+    stubCredentials(async () => assertionResult);
+
+    expect(await passkeyReauth('https://api.example', { Authorization: 'Bearer s' })).toBe(
+      'proof-1'
+    );
+    expect(calls.map((c) => c.url)).toEqual([
+      'https://api.example/auth/webauthn/reauth/begin',
+      'https://api.example/auth/webauthn/reauth/finish'
+    ]);
+    for (const c of calls) {
+      expect((c.init.headers as Record<string, string>).Authorization).toBe('Bearer s');
+    }
+  });
+
+  it('is cancelled quietly when the prompt is dismissed', async () => {
+    stubFetch(json(200, { publicKey: { challenge: 'AAAA' } }));
+    stubCredentials(async () => {
+      throw domError('NotAllowedError');
+    });
+    const err = await passkeyReauth('', {}).catch((e: unknown) => e);
+    expect(isPasskeyCancelled(err)).toBe(true);
+  });
+
+  it('carries the server code when the account has no passkey', async () => {
+    stubFetch(json(409, { error: 'this account has no passkey', code: 'passkey_none' }));
+    const err = await passkeyReauth('', {}).catch((e: unknown) => e);
+    expect((err as PasskeyError).code).toBe('passkey_none');
   });
 });

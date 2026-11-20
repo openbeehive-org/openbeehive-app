@@ -12,6 +12,8 @@ export type InstanceInfo = {
   webauthn?: boolean;
   demo?: boolean;
   demo_autologin?: boolean;
+  /** How a forgotten password is recovered: by mail, through the instance admin, or not at all. */
+  password_reset?: 'email' | 'admin' | 'off';
   map?: { enabled?: boolean; tile_url?: string; geocoder_url?: string };
 };
 

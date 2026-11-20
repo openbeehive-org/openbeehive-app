@@ -18,6 +18,32 @@ const BY_CODE: Record<string, string> = {
   demo_unavailable: 'auth.err_demo_unavailable',
   passkey_failed: 'auth.err_passkey_failed',
   passkey_no_ceremony: 'auth.err_passkey_failed',
+  // Links the browser opened; the server redirects to /login?error=<code>.
+  verification_invalid: 'auth.err_verification_invalid',
+  oidc_state_missing: 'auth.err_provider_expired',
+  oidc_state_invalid: 'auth.err_provider_expired',
+  oidc_failed: 'auth.err_provider_failed',
+  oidc_no_email: 'auth.err_provider_no_email',
+  unknown_provider: 'auth.err_provider_failed',
+  account_exists: 'auth.err_account_exists',
+  // Account, password and member management.
+  wrong_password: 'account.err_wrong_password',
+  invalid_password: 'account.err_password_short',
+  no_password: 'account.err_no_password',
+  password_managed: 'account.err_password_managed',
+  reset_invalid: 'auth.reset_invalid',
+  reset_needs_admin: 'auth.forgot_needs_admin',
+  admin_only: 'account.err_admin_only',
+  account_not_found: 'account.err_account_not_found',
+  account_protected: 'account.delete_protected_admin',
+  sole_owner: 'account.err_sole_owner',
+  reauth_required: 'account.err_reauth_required',
+  reauth_unavailable: 'account.delete_unconfirmable',
+  passkey_none: 'account.delete_unconfirmable',
+  demo_read_only: 'account.err_demo',
+  last_owner: 'members.err_last_owner',
+  owner_only: 'members.err_owner_only',
+  member_not_found: 'members.err_not_found',
   // Value of the `status` field that older responses carried instead of a code.
   unverified: 'auth.err_unverified'
 };

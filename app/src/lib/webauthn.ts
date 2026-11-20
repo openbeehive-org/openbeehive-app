@@ -135,41 +135,61 @@ export async function enrollPasskey(api: string, label: string, headers: Record<
   );
 }
 
+// Asks the browser for an assertion with one of the user's passkeys and
+// returns it in the wire format the server reads.
+async function assertion(options: { publicKey: RequestJSON }): Promise<Credential | null> {
+  const j = options.publicKey;
+  const pk: PublicKeyCredentialRequestOptions = {
+    ...j,
+    challenge: b64uToBuf(j.challenge),
+    allowCredentials: (j.allowCredentials ?? []).map((c) => ({
+      ...c,
+      id: b64uToBuf(c.id)
+    }))
+  };
+  const cred = (await navigator.credentials.get({
+    publicKey: pk
+  })) as PublicKeyCredential | null;
+  if (!cred) return null;
+  const r = cred.response as AuthenticatorAssertionResponse;
+  return {
+    id: cred.id,
+    rawId: bufToB64u(cred.rawId),
+    type: cred.type,
+    response: {
+      authenticatorData: bufToB64u(r.authenticatorData),
+      clientDataJSON: bufToB64u(r.clientDataJSON),
+      signature: bufToB64u(r.signature),
+      userHandle: r.userHandle ? bufToB64u(r.userHandle) : null
+    }
+  } as unknown as Credential;
+}
+
 /** Usernameless sign-in with a discoverable passkey; returns the auth payload. */
 export async function passkeyLogin(api: string) {
   return beginFinish(
     api,
     '/auth/webauthn/login/begin',
     '/auth/webauthn/login/finish',
-    async (options: { publicKey: RequestJSON }) => {
-      const j = options.publicKey;
-      const pk: PublicKeyCredentialRequestOptions = {
-        ...j,
-        challenge: b64uToBuf(j.challenge),
-        allowCredentials: (j.allowCredentials ?? []).map((c) => ({
-          ...c,
-          id: b64uToBuf(c.id)
-        }))
-      };
-      const cred = (await navigator.credentials.get({
-        publicKey: pk
-      })) as PublicKeyCredential | null;
-      if (!cred) return null;
-      const r = cred.response as AuthenticatorAssertionResponse;
-      return {
-        id: cred.id,
-        rawId: bufToB64u(cred.rawId),
-        type: cred.type,
-        response: {
-          authenticatorData: bufToB64u(r.authenticatorData),
-          clientDataJSON: bufToB64u(r.clientDataJSON),
-          signature: bufToB64u(r.signature),
-          userHandle: r.userHandle ? bufToB64u(r.userHandle) : null
-        }
-      } as unknown as Credential;
-    },
+    assertion,
     {}
   );
+}
+
+/**
+ * Confirms that the signed-in account's owner is present, with one of the
+ * account's passkeys. Returns the single-use proof that accounts without a
+ * password send where a password would be asked for.
+ */
+export async function passkeyReauth(api: string, headers: Record<string, string>): Promise<string> {
+  const done = await beginFinish(
+    api,
+    '/auth/webauthn/reauth/begin',
+    '/auth/webauthn/reauth/finish',
+    assertion,
+    { headers }
+  );
+  return typeof done.reauth === 'string' ? done.reauth : '';
 }
 
 export type PasskeyInfo = {
