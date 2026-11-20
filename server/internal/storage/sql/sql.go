@@ -1,4 +1,5 @@
-// Package sqlstore implements storage.Store for PostgreSQL, MySQL and SQLite.
+// Package sqlstore implements storage.Store for PostgreSQL, the MySQL family
+// (MariaDB is the tested target) and SQLite.
 //
 // A single codebase serves all three dialects:
 //   - placeholders are written generically as "?" and translated by sqlx.Rebind
@@ -9,6 +10,9 @@
 //     string UUIDs - no dialect-specific AUTO_INCREMENT/SERIAL. Boolean
 //     literals are written TRUE/FALSE (valid in all three dialects; Postgres
 //     rejects 0/1).
+//   - Text compares byte for byte everywhere: SQLite and Postgres do so by
+//     default, MySQL-family tables are created with a binary collation (see
+//     mysqlBinaryCollation).
 package sqlstore
 
 import (
@@ -17,7 +21,9 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +52,8 @@ var postgresReal = regexp.MustCompile(`\bREAL\b`)
 type Store struct {
 	db     *sqlx.DB
 	driver config.DBDriver
+	// mysqlCollation is the collation of every table on the MySQL family.
+	mysqlCollation string
 }
 
 func Open(cfg *config.Config) (*Store, error) {
@@ -86,7 +94,14 @@ func Open(cfg *config.Config) (*Store, error) {
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("db ping: %w", err)
 	}
-	return &Store{db: db, driver: cfg.DB.Driver}, nil
+	s := &Store{db: db, driver: cfg.DB.Driver}
+	if s.driver == config.DriverMySQL {
+		if s.mysqlCollation, err = mysqlBinaryCollation(db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("db collation: %w", err)
+		}
+	}
+	return s, nil
 }
 
 // openPostgres opens the pool with utcTimestampCodec on every connection.
@@ -130,6 +145,27 @@ func (p utcTimestampPlan) Encode(value any, buf []byte) ([]byte, error) {
 	return p.next.Encode(pgtype.Timestamp{Time: t.UTC(), Valid: true}, buf)
 }
 
+// mysqlBinaryCollation picks the utf8mb4 collation that compares like SQLite
+// and Postgres do: case- and accent-sensitive, trailing spaces significant.
+// The server defaults (utf8mb4_uca1400_ai_ci on MariaDB, utf8mb4_0900_ai_ci
+// on MySQL 8) would treat "ABC", "abc" and, on MariaDB, "abc " as the same
+// id, token or email. MariaDB calls the collation utf8mb4_nopad_bin, MySQL 8
+// utf8mb4_0900_bin; utf8mb4_bin (binary, but trailing spaces ignored) is the
+// fallback for servers that know neither.
+func mysqlBinaryCollation(db *sqlx.DB) (string, error) {
+	var known []string
+	if err := db.Select(&known, `SELECT COLLATION_NAME FROM information_schema.COLLATIONS
+		WHERE COLLATION_NAME IN ('utf8mb4_nopad_bin', 'utf8mb4_0900_bin')`); err != nil {
+		return "", err
+	}
+	for _, name := range []string{"utf8mb4_nopad_bin", "utf8mb4_0900_bin"} {
+		if slices.Contains(known, name) {
+			return name, nil
+		}
+	}
+	return "utf8mb4_bin", nil
+}
+
 func (s *Store) Apiaries() storage.ApiaryRepo { return &apiaryRepo{s} }
 func (s *Store) Hives() storage.HiveRepo      { return &hiveRepo{s} }
 func (s *Store) Users() storage.UserRepo      { return &userRepo{s} }
@@ -147,6 +183,9 @@ func (s *Store) Migrate(ctx context.Context) error { return s.migrateUpTo(ctx, "
 // migrateUpTo applies the pending migrations in order and stops after the
 // file named last ("" applies all of them).
 func (s *Store) migrateUpTo(ctx context.Context, last string) error {
+	if err := s.convertMySQLCollation(ctx); err != nil {
+		return err
+	}
 	if _, err := s.db.ExecContext(ctx, s.translate(
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMP)`)); err != nil {
 		return err
@@ -192,6 +231,49 @@ func migrationDriver(name string) config.DBDriver {
 	return ""
 }
 
+// migrationTable matches the table a migration statement creates or renames to.
+var migrationTable = regexp.MustCompile(`(?:CREATE TABLE IF NOT EXISTS|RENAME TO) "?(\w+)`)
+
+// ownTables lists every table name the migrations have ever created.
+func ownTables() []string {
+	tables := []string{"schema_migrations"}
+	for _, name := range migrationNames() {
+		raw, _ := migrationsFS.ReadFile("migrations/" + name)
+		for _, m := range migrationTable.FindAllStringSubmatch(string(raw), -1) {
+			tables = append(tables, m[1])
+		}
+	}
+	return tables
+}
+
+// convertMySQLCollation moves tables that an earlier release created with the
+// server's default collation to the binary one. Only the application's own
+// tables are touched, in case the database is shared. Once they are
+// converted this is a single catalogue query per start.
+func (s *Store) convertMySQLCollation(ctx context.Context) error {
+	if s.driver != config.DriverMySQL {
+		return nil
+	}
+	q, args, err := sqlx.In(`SELECT TABLE_NAME FROM information_schema.TABLES
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'
+		  AND TABLE_COLLATION <> ? AND TABLE_NAME IN (?)`, s.mysqlCollation, ownTables())
+	if err != nil {
+		return err
+	}
+	var tables []string
+	if err := s.db.SelectContext(ctx, &tables, q, args...); err != nil {
+		return fmt.Errorf("read table collations: %w", err)
+	}
+	for _, table := range tables {
+		log.Printf("database: converting table %s to collation %s", table, s.mysqlCollation)
+		if _, err := s.db.ExecContext(ctx, fmt.Sprintf(
+			"ALTER TABLE `%s` CONVERT TO CHARACTER SET utf8mb4 COLLATE %s", table, s.mysqlCollation)); err != nil {
+			return fmt.Errorf("convert table %s to %s: %w", table, s.mysqlCollation, err)
+		}
+	}
+	return nil
+}
+
 // runMigration executes one .sql file and records its version, both in a
 // single transaction: a mid-file failure rolls back cleanly on Postgres and
 // SQLite (transactional DDL) instead of leaving half-applied ALTERs behind.
@@ -233,7 +315,7 @@ func (s *Store) runMigration(ctx context.Context, name string) error {
 }
 
 // isMySQLDuplicate reports duplicate column (1060) / duplicate index (1061)
-// errors, which replaying already-applied DDL raises on MySQL.
+// errors, which replaying already-applied DDL raises on MySQL and MariaDB.
 func isMySQLDuplicate(err error) bool {
 	var me *mysql.MySQLError
 	return errors.As(err, &me) && (me.Number == 1060 || me.Number == 1061)
@@ -249,7 +331,7 @@ func (s *Store) translate(stmt string) string {
 		return postgresReal.ReplaceAllString(stmt, "DOUBLE PRECISION")
 	case config.DriverMySQL:
 		r := strings.NewReplacer(
-			// MySQL cannot index TEXT without a prefix length; PK ids are
+			// The MySQL family cannot use TEXT as a primary key; PK ids are
 			// short strings. 255 keeps room for non-UUID keys (base64url
 			// WebAuthn credential ids) and stays under the 3072-byte limit.
 			"TEXT PRIMARY KEY", "VARCHAR(255) PRIMARY KEY",
@@ -259,15 +341,21 @@ func (s *Store) translate(stmt string) string {
 			"TIMESTAMP", "DATETIME(6)",
 			// Double-quoted identifiers need ANSI_QUOTES in MySQL.
 			`"user"`, "`user`",
-			// MySQL has no CREATE INDEX IF NOT EXISTS; runMigration treats
-			// the duplicate-index error as "already exists" instead.
+			// Oracle MySQL has no CREATE INDEX IF NOT EXISTS (MariaDB does);
+			// runMigration treats the duplicate-index error, which both
+			// raise, as "already exists" instead.
 			"CREATE UNIQUE INDEX IF NOT EXISTS", "CREATE UNIQUE INDEX",
 			"CREATE INDEX IF NOT EXISTS", "CREATE INDEX",
 		)
-		// MySQL forbids plain literal defaults on TEXT columns, but since
-		// 8.0.13 accepts them as (parenthesized) expression defaults.
-		return mysqlTextDefault.ReplaceAllString(r.Replace(stmt),
+		// Oracle MySQL forbids plain literal defaults on TEXT columns, but
+		// since 8.0.13 accepts them as (parenthesized) expression defaults;
+		// MariaDB accepts both forms.
+		out := mysqlTextDefault.ReplaceAllString(r.Replace(stmt),
 			"TEXT NOT NULL DEFAULT ($1)")
+		if strings.HasPrefix(out, "CREATE TABLE") {
+			out += " DEFAULT CHARACTER SET utf8mb4 COLLATE " + s.mysqlCollation
+		}
+		return out
 	case config.DriverSQLite:
 		// SQLite treats BOOLEAN as an alias and TIMESTAMP as TEXT/NUMERIC - ok.
 		return stmt

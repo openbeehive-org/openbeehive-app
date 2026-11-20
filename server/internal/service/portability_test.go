@@ -72,6 +72,25 @@ func TestFrozenContextComparesInstants(t *testing.T) {
 	}
 }
 
+// TestPushKeepsIDsApartThatDifferInCase: two entity ids that differ only in
+// case are two rows, as they are in the devices' own SQLite stores.
+func TestPushKeepsIDsApartThatDifferInCase(t *testing.T) {
+	svc := newSyncFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	for id, name := range map[string]string{"hive-x": "lower", "HIVE-X": "upper"} {
+		if err := push(svc, ctx, change("hive", id, "apiary-a",
+			`{"apiary_id":"apiary-a","name":"`+name+`","created_at":"2026-07-11T10:00:00Z","updated_at":"2026-07-11T10:00:00Z"}`)); err != nil {
+			t.Fatalf("push %s: %v", id, err)
+		}
+	}
+	for id, want := range map[string]string{"hive-x": "lower", "HIVE-X": "upper"} {
+		var name string
+		if err := svc.db.Get(&name, svc.db.Rebind(`SELECT name FROM hive WHERE id = ?`), id); err != nil || name != want {
+			t.Fatalf("hive %s: name %q, err %v; want %q", id, name, err, want)
+		}
+	}
+}
+
 // TestPushStoresLargePhoto: a hive photo of about 1 MB (inline data URL)
 // is stored and comes back through Pull byte for byte.
 func TestPushStoresLargePhoto(t *testing.T) {
