@@ -126,20 +126,16 @@ for (const colorScheme of ['light', 'dark'] as const) {
           .soft(await seriousAccessibilityProblems(page), `accessibility: ${route.name}`)
           .toEqual([]);
         expect.soft(csp(), `content security policy: ${route.name}`).toEqual([]);
-        // Settings has a known console error; see the test below.
-        if (route.name !== 'settings') {
-          expect.soft(errors(), `console: ${route.name}`).toEqual([]);
-        }
+        expect.soft(errors(), `console: ${route.name}`).toEqual([]);
       });
     }
   });
 }
 
-// BUG (app, lib/components/settings/PasskeysSection.svelte): Settings asks for
-// the account's passkeys (GET /auth/webauthn/credentials) also on a server
-// that has passkeys switched off, where that endpoint does not exist. The
-// answer is a 404, which the browser logs as a console error on every visit.
-test.fail('settings: no console error', async ({ api, device }) => {
+// Settings must not ask for the account's passkeys on a server that has
+// passkeys switched off: the endpoint does not exist there, and the 404 is
+// logged as a console error.
+test('settings: no console error', async ({ api, device }) => {
   const { account, apiary, hive } = await seed(api);
   const { page, problems } = await device({ session: account });
   const settings = routes({ apiary, hive }).find((r) => r.name === 'settings');

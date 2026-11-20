@@ -1,11 +1,13 @@
 <script lang="ts">
-  // Passkeys of the signed-in account.
+  // Passkeys of the signed-in account. Shown only when the instance has
+  // passkeys switched on; otherwise its endpoints do not exist.
   import { onMount } from 'svelte';
   import { _, locale } from 'svelte-i18n';
   import { KeyRound } from '@lucide/svelte';
   import { apiOrigin, authHeaders } from '#lib/account.js';
   import { authErrorKey, GENERIC_AUTH_ERROR, NETWORK_AUTH_ERROR } from '#lib/auth-errors.js';
   import { formatDate } from '#lib/dates.js';
+  import { fetchInstance } from '#lib/instance.js';
   import {
     enrollPasskey,
     listPasskeys,
@@ -22,11 +24,15 @@
   let msgKey = $state('');
   let isError = $state(false);
   let busy = $state(false);
+  let enabled = $state(false);
 
   async function load() {
     passkeys = await listPasskeys(apiOrigin(), authHeaders());
   }
-  onMount(load);
+  onMount(async () => {
+    enabled = !!(await fetchInstance())?.webauthn;
+    if (enabled) await load();
+  });
 
   async function add(e: Event) {
     e.preventDefault();
@@ -62,42 +68,46 @@
   }
 </script>
 
-<section class="st-card">
-  <h2>{$_('pk.title')}</h2>
-  <p class="st-help">{$_('pk.help')}</p>
-  {#if passkeys.length}
-    <ul class="st-list">
-      {#each passkeys as k (k.id)}
-        <li>
-          <div class="st-meta">
-            <strong><KeyRound size={16} aria-hidden="true" /> {k.name || $_('pk.unnamed')}</strong>
-            <span class="st-date">{$_('pk.created')} {formatDate(k.created_at, $locale)}</span>
-            {#if k.last_used_at}
-              <span class="st-date">{$_('pk.last_used')} {formatDate(k.last_used_at, $locale)}</span
+{#if enabled}
+  <section class="st-card">
+    <h2>{$_('pk.title')}</h2>
+    <p class="st-help">{$_('pk.help')}</p>
+    {#if passkeys.length}
+      <ul class="st-list">
+        {#each passkeys as k (k.id)}
+          <li>
+            <div class="st-meta">
+              <strong><KeyRound size={16} aria-hidden="true" /> {k.name || $_('pk.unnamed')}</strong
               >
-            {/if}
-          </div>
-          <div class="st-actions">
-            <button type="button" class="st-btn danger" onclick={() => remove(k.id)}>
-              {$_('pk.delete')}
-            </button>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    <p class="st-help">{$_('pk.none')}</p>
-  {/if}
-  {#if passkeysSupported()}
-    <form class="st-row" onsubmit={add}>
-      <label class="st-field">
-        <span>{$_('pk.name_label')}</span>
-        <input bind:value={name} placeholder={$_('pk.name_ph')} disabled={busy} />
-      </label>
-      <button type="submit" class="st-btn" disabled={busy}>+ {$_('pk.add')}</button>
-    </form>
-  {:else}
-    <p class="st-help">{$_('pk.not_supported')}</p>
-  {/if}
-  {#if msgKey}<p class="st-msg" class:err={isError} role="status">{$_(msgKey)}</p>{/if}
-</section>
+              <span class="st-date">{$_('pk.created')} {formatDate(k.created_at, $locale)}</span>
+              {#if k.last_used_at}
+                <span class="st-date"
+                  >{$_('pk.last_used')} {formatDate(k.last_used_at, $locale)}</span
+                >
+              {/if}
+            </div>
+            <div class="st-actions">
+              <button type="button" class="st-btn danger" onclick={() => remove(k.id)}>
+                {$_('pk.delete')}
+              </button>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="st-help">{$_('pk.none')}</p>
+    {/if}
+    {#if passkeysSupported()}
+      <form class="st-row" onsubmit={add}>
+        <label class="st-field">
+          <span>{$_('pk.name_label')}</span>
+          <input bind:value={name} placeholder={$_('pk.name_ph')} disabled={busy} />
+        </label>
+        <button type="submit" class="st-btn" disabled={busy}>+ {$_('pk.add')}</button>
+      </form>
+    {:else}
+      <p class="st-help">{$_('pk.not_supported')}</p>
+    {/if}
+    {#if msgKey}<p class="st-msg" class:err={isError} role="status">{$_(msgKey)}</p>{/if}
+  </section>
+{/if}
