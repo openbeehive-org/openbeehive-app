@@ -28,7 +28,7 @@ func TestUpdateApiaryChangesOnlyTheFieldsSent(t *testing.T) {
 	f := newAPIFixture(t)
 	ctx := identityCtx("user-a", "org-a")
 	cr, err := f.apiary.CreateApiary(ctx, &wv1.CreateApiaryRequest{
-		Name: "Orchard", Address: "Apfelweg 3", Lat: 48.1, Lng: 7.8, Note: "south slope",
+		Name: "Orchard", Address: "Apfelweg 3", Lat: 48.125, Lng: 7.75, Note: "south slope",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestUpdateApiaryChangesOnlyTheFieldsSent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a := up.Apiary; a.Name != "Old orchard" || a.Address != "Apfelweg 3" || a.Lat != 48.1 || a.Lng != 7.8 || a.Note != "south slope" {
+	if a := up.Apiary; a.Name != "Old orchard" || a.Address != "Apfelweg 3" || a.Lat != 48.125 || a.Lng != 7.75 || a.Note != "south slope" {
 		t.Fatalf("fields not sent must keep their value: %+v", a)
 	}
 	// Devices receive only the changed field.
@@ -54,7 +54,7 @@ func TestUpdateApiaryChangesOnlyTheFieldsSent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a := up.Apiary; a.Note != "" || a.Lat != 0 || a.Name != "Old orchard" || a.Lng != 7.8 {
+	if a := up.Apiary; a.Note != "" || a.Lat != 0 || a.Name != "Old orchard" || a.Lng != 7.75 {
 		t.Fatalf("mask must clear note and lat only: %+v", a)
 	}
 

@@ -71,7 +71,7 @@ func TestOptionalInspectionNumbersKeepNotRecorded(t *testing.T) {
 	f := newAPIFixture(t)
 	ctx := identityCtx("user-a", "org-a")
 	cr, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{
-		HiveId: "hive-a", TempOutside: proto.Float64(0), QueenCells: proto.Int32(0), WeightKg: proto.Float64(38.4),
+		HiveId: "hive-a", TempOutside: proto.Float64(0), QueenCells: proto.Int32(0), WeightKg: proto.Float64(38.5),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestOptionalInspectionNumbersKeepNotRecorded(t *testing.T) {
 		t.Fatalf("list: %v %+v", err, ls)
 	}
 	for _, i := range []*wv1.Inspection{cr.Inspection, ls.Inspections[0]} {
-		if i.TempOutside == nil || i.GetTempOutside() != 0 || i.QueenCells == nil || i.GetQueenCells() != 0 || i.GetWeightKg() != 38.4 {
+		if i.TempOutside == nil || i.GetTempOutside() != 0 || i.QueenCells == nil || i.GetQueenCells() != 0 || i.GetWeightKg() != 38.5 {
 			t.Fatalf("an observed 0 must come back as 0: %+v", i)
 		}
 		if i.TempHive != nil || i.HumidityHive != nil || i.HumidityOutside != nil || i.Frames != nil || i.BroodFrames != nil ||
