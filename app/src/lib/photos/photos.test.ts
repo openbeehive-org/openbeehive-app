@@ -231,6 +231,29 @@ describe('adding a photo to a visit', () => {
     );
     expect(byVisit).toEqual({ i1: [first, second], i2: [other] });
   });
+
+  it('keeps photos of the same millisecond in the order they were added', async () => {
+    // The ids sort the other way round, so ordering by id fails every time.
+    vi.useFakeTimers({ now: new Date('2026-07-01T10:00:00Z'), toFake: ['Date'] });
+    const fields = {
+      thumb: 'data:image/jpeg;base64,AA==',
+      content_type: 'image/jpeg',
+      size_bytes: 1
+    };
+    for (const id of ['photo-c', 'photo-b', 'photo-a']) {
+      await photoRecords.create(id, { entity: 'inspection', id: 'i1' }, fields);
+    }
+    for (const id of ['picture-b', 'picture-a']) {
+      await photoRecords.create(id, { entity: 'hive', id: 'h1' }, fields);
+    }
+    vi.useRealTimers();
+
+    const want = ['photo-c', 'photo-b', 'photo-a'];
+    expect((await photoRecords.of('inspection', 'i1')).map((p) => p.id)).toEqual(want);
+    expect((await photoRecords.ofVisits('h1')).get('i1')?.map((p) => p.id)).toEqual(want);
+    expect((await photoRecords.hivePicture('h1'))?.id).toBe('picture-a');
+    expect((await hives.overview()).find((h) => h.id === 'h1')?.photo).toBeTruthy();
+  });
 });
 
 describe('deleting a photo', () => {

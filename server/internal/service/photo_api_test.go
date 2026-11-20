@@ -2,12 +2,15 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect/v2"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // The photo RPCs keep their request shapes (a data URL in, a data URL or an
@@ -98,6 +101,76 @@ func TestInspectionPhotoRPCs(t *testing.T) {
 	// Removing what is not there is not an error.
 	if _, err := f.insp.RemoveInspectionPhoto(ctxA, &wv1.RemoveInspectionPhotoRequest{InspectionId: visit, Photo: photo}); err != nil {
 		t.Fatalf("removing again: %v", err)
+	}
+}
+
+// photoAt is a photo record a device pushes, created at the given time and
+// stamped with the given counter of that millisecond.
+func photoAt(t *testing.T, id, ownerEntity, ownerID string, created time.Time, counter int64) *wv1.Change {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{
+		"owner_entity": ownerEntity, "owner_id": ownerID, "thumb": testThumb(t),
+		"content_type": "image/jpeg", "size_bytes": 1234, "created_at": jsTime(created), "deleted": 0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := change("photo", id, "apiary-a", string(payload))
+	ch.Hlc = wsync.Format(created.UnixMilli(), counter, "phone")
+	return ch
+}
+
+func photoIDs(list []*wv1.Photo) []string {
+	ids := make([]string, 0, len(list))
+	for _, p := range list {
+		ids = append(ids, p.Id)
+	}
+	return ids
+}
+
+// Photos created in the same millisecond are listed in the order they were
+// created (the order of their stamps), not by their random ids. The ids here
+// sort the other way round, so ordering by id fails every time.
+func TestPhotosOfTheSameMillisecondKeepTheirOrder(t *testing.T) {
+	f := newPhotoFixture(t)
+	visit := f.newVisit(t)
+	at := time.Now().Truncate(time.Millisecond)
+	if err := push(f.sync, ctxA,
+		photoAt(t, "photo-c", ownerInspection, visit, at, 1),
+		photoAt(t, "photo-b", ownerInspection, visit, at, 2),
+		photoAt(t, "photo-a", ownerInspection, visit, at, 3),
+		photoAt(t, "picture-b", ownerHive, "hive-a", at, 4),
+		photoAt(t, "picture-a", ownerHive, "hive-a", at, 5),
+	); err != nil {
+		t.Fatalf("push photos: %v", err)
+	}
+	want := "photo-c photo-b photo-a"
+
+	list, err := f.insp.ListInspections(ctxA, &wv1.ListInspectionsRequest{HiveId: "hive-a"})
+	if err != nil || len(list.Inspections) != 1 {
+		t.Fatalf("list: %v, %+v", err, list)
+	}
+	if got := strings.Join(photoIDs(list.Inspections[0].Photos), " "); got != want {
+		t.Errorf("list: photos %s, want %s", got, want)
+	}
+	dash, err := f.stats.GetDashboard(ctxA, &wv1.DashboardRequest{})
+	if err != nil || len(dash.RecentInspections) != 1 {
+		t.Fatalf("dashboard: %v", err)
+	}
+	if got := strings.Join(photoIDs(dash.RecentInspections[0].Photos), " "); got != want {
+		t.Errorf("dashboard: photos %s, want %s", got, want)
+	}
+	rm, err := f.insp.RemoveInspectionPhoto(ctxA, &wv1.RemoveInspectionPhotoRequest{InspectionId: visit, Photo: "photo-b"})
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if got := strings.Join(photoIDs(rm.Inspection.Photos), " "); got != "photo-c photo-a" {
+		t.Errorf("after remove: photos %s, want photo-c photo-a", got)
+	}
+	// The hive's picture is the newest of its photos.
+	hive, err := f.hive.GetHive(ctxA, &wv1.GetHiveRequest{Id: "hive-a"})
+	if err != nil || hive.Hive.Picture == nil || hive.Hive.Picture.Id != "picture-a" {
+		t.Errorf("hive picture: %v, %+v", err, hive.GetHive().GetPicture())
 	}
 }
 

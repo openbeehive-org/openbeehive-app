@@ -160,14 +160,22 @@ export type PhotoRow = {
 const PHOTO_COLS =
   'p.id, p.owner_entity, p.owner_id, p.thumb, p.content_type, p.size_bytes, p.created_at';
 
+// Photos in the order they were taken. created_at has millisecond precision
+// and several photos of one record can share a millisecond; the stamp of the
+// write that set created_at breaks the tie (stamps of one device strictly
+// increase), the id is the last resort. The server lists photos the same way
+// (sortPhotos in server/internal/service/photo.go).
+const PHOTO_ORDER = `p.created_at, json_extract(p.field_hlc, '$.created_at'), p.id`;
+const PHOTO_ORDER_NEWEST = `p.created_at DESC, json_extract(p.field_hlc, '$.created_at') DESC, p.id DESC`;
+
 export const photoRecords = {
-  // The photos of one record, oldest first.
+  // The photos of one record, oldest first (PHOTO_ORDER).
   async of(owner: PhotoOwner, ownerId: string) {
     const db = await getDB();
     return db.all<PhotoRow>(
       `SELECT ${PHOTO_COLS} FROM photo p
        WHERE p.owner_id = ? AND p.owner_entity = ? AND p.deleted = 0
-       ORDER BY p.created_at, p.id`,
+       ORDER BY ${PHOTO_ORDER}`,
       [ownerId, owner]
     );
   },
@@ -177,7 +185,7 @@ export const photoRecords = {
     const rows = await db.all<PhotoRow>(
       `SELECT ${PHOTO_COLS} FROM photo p JOIN inspection i ON i.id = p.owner_id
        WHERE i.hive_id = ? AND p.owner_entity = 'inspection' AND p.deleted = 0
-       ORDER BY p.created_at, p.id`,
+       ORDER BY ${PHOTO_ORDER}`,
       [hiveId]
     );
     const byVisit = new Map<string, PhotoRow[]>();
@@ -190,7 +198,7 @@ export const photoRecords = {
     return db.get<PhotoRow>(
       `SELECT ${PHOTO_COLS} FROM photo p
        WHERE p.owner_id = ? AND p.owner_entity = 'hive' AND p.deleted = 0
-       ORDER BY p.created_at DESC, p.id DESC LIMIT 1`,
+       ORDER BY ${PHOTO_ORDER_NEWEST} LIMIT 1`,
       [hiveId]
     );
   },
@@ -273,7 +281,7 @@ export const hives = {
       `SELECT h.id, h.apiary_id, h.name, h.status,
               (SELECT p.thumb FROM photo p
                WHERE p.owner_id = h.id AND p.owner_entity = 'hive' AND p.deleted = 0
-               ORDER BY p.created_at DESC, p.id DESC LIMIT 1) AS photo,
+               ORDER BY ${PHOTO_ORDER_NEWEST} LIMIT 1) AS photo,
               a.name AS apiary_name, li.date AS last_inspection,
               q.year AS queen_year, q.marking AS queen_marking
        FROM hive h

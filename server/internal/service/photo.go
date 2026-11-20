@@ -1,12 +1,14 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -155,8 +157,30 @@ func photoByID(ctx context.Context, q queryer, orgID, id string) (*photoRow, err
 
 // livePhotosOf returns the photos of one record, oldest first.
 func livePhotosOf(ctx context.Context, q queryer, orgID, ownerEntity, ownerID string) ([]photoRow, error) {
-	return queryPhotos(ctx, q, `owner_id = ? AND owner_entity = ? AND organization_id = ? AND deleted = FALSE
-		ORDER BY `+tsSort(q.DriverName(), "created_at")+`, id`, ownerID, ownerEntity, orgID)
+	rows, err := queryPhotos(ctx, q, `owner_id = ? AND owner_entity = ? AND organization_id = ? AND deleted = FALSE`,
+		ownerID, ownerEntity, orgID)
+	sortPhotos(rows)
+	return rows, err
+}
+
+// sortPhotos puts photos in the order they were taken: oldest first, a photo
+// without a creation time before all others.
+//
+// created_at has millisecond precision (devices and the server write it that
+// way on every backend), and several photos of one record are often created
+// within the same millisecond: a device that adds a few at once, or the
+// server converting the images of one 0.4.x push. The stamp of the write
+// that set created_at breaks those ties. Stamps of one clock strictly
+// increase, so photos created on the same device or server keep their
+// order; the id is the last resort for photos from different devices. A
+// random id alone would list photos of the same millisecond in random order.
+// app/src/lib/local/repo.ts (photoRecords) sorts the same way.
+func sortPhotos(rows []photoRow) {
+	slices.SortFunc(rows, func(a, b photoRow) int {
+		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt),
+			cmp.Compare(a.Clock["created_at"], b.Clock["created_at"]),
+			cmp.Compare(a.ID, b.ID))
+	})
 }
 
 // toProto renders a photo for API responses. The path is set once the
@@ -183,8 +207,8 @@ func photosByOwner(ctx context.Context, q queryer, orgID, ownerEntity string, ow
 	if len(ownerIDs) == 0 {
 		return out, nil
 	}
-	query, args, err := sqlx.In(`owner_id IN (?) AND owner_entity = ? AND organization_id = ? AND deleted = FALSE
-		ORDER BY `+tsSort(q.DriverName(), "created_at")+`, id`, ownerIDs, ownerEntity, orgID)
+	query, args, err := sqlx.In(`owner_id IN (?) AND owner_entity = ? AND organization_id = ? AND deleted = FALSE`,
+		ownerIDs, ownerEntity, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +216,7 @@ func photosByOwner(ctx context.Context, q queryer, orgID, ownerEntity string, ow
 	if err != nil {
 		return nil, err
 	}
+	sortPhotos(rows)
 	for i := range rows {
 		out[rows[i].OwnerID] = append(out[rows[i].OwnerID], rows[i].toProto())
 	}
