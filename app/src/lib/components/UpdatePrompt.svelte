@@ -51,7 +51,7 @@
     cursor: pointer;
     border-radius: 9px;
     padding: 6px 14px;
-    min-height: 36px;
+    min-height: 44px;
   }
   button:disabled {
     opacity: 0.6;

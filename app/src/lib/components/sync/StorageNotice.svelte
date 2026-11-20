@@ -91,7 +91,7 @@
   .resynced button {
     font: inherit;
     font-weight: 700;
-    min-height: 32px;
+    min-height: 44px;
     padding: 4px 12px;
     border: 1px solid var(--border-strong);
     border-radius: 9px;

@@ -49,8 +49,8 @@
     flex: none;
     display: grid;
     place-items: center;
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
     border: none;
     border-radius: 8px;
     background: transparent;

@@ -69,16 +69,16 @@ test('a new app version waits behind a prompt while the open page keeps working'
   await expectSynced(page);
 });
 
-// BUG (app, lib/components/UpdatePrompt.svelte): "Reload" and "Later" in the
-// update banner are 36 px tall (min-height: 36px), below the 44 px the app
-// keeps for buttons everywhere else.
-test.fail(
-  'the buttons of the update prompt are at least 44 px tall',
-  async ({ startServer, apiFor, device }, testInfo) => {
-    const { page } = await openThenDeploy({ startServer, apiFor, device }, testInfo);
-    for (const name of ['Reload', 'Later']) {
-      const box = await page.getByRole('button', { name }).boundingBox();
-      expect.soft(box?.height, name).toBeGreaterThanOrEqual(44);
-    }
+// "Reload" and "Later" in the update banner are buttons like any other and
+// keep the 44 px the app uses for touch targets.
+test('the buttons of the update prompt are at least 44 px tall', async ({
+  startServer,
+  apiFor,
+  device
+}, testInfo) => {
+  const { page } = await openThenDeploy({ startServer, apiFor, device }, testInfo);
+  for (const name of ['Reload', 'Later']) {
+    const box = await page.getByRole('button', { name }).boundingBox();
+    expect.soft(box?.height, name).toBeGreaterThanOrEqual(44);
   }
-);
+});
