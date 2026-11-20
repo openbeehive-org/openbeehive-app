@@ -117,7 +117,11 @@ export const inspections = {
     const db = await getDB();
     const manualOnly = opts.sensors ? '' : `AND COALESCE(source, 0) != ${InspectionSource.SENSOR}`;
     const rows = await db.all<any>(
-      `SELECT * FROM inspection WHERE deleted = 0 AND hive_id = ? ${manualOnly} ORDER BY date DESC`,
+      // Visits recorded in the app all carry noon of their day: on the same
+      // day the one recorded last comes first, and the id keeps the order
+      // the same on every device.
+      `SELECT * FROM inspection WHERE deleted = 0 AND hive_id = ? ${manualOnly}
+       ORDER BY date DESC, created_at DESC, id DESC`,
       [hiveId]
     );
     const photos = await photoRecords.ofVisits(hiveId);

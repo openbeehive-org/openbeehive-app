@@ -8,7 +8,7 @@ vi.mock('./db', async () => {
 // repo fires a background sync after every write; irrelevant here.
 vi.mock('./sync', () => ({ syncOnce: vi.fn(async () => {}) }));
 
-import { apiaries, hives, tasks, setAdd, setRemove, patch, remove } from './repo';
+import { apiaries, hives, inspections, tasks, setAdd, setRemove, patch, remove } from './repo';
 import { parseFieldClock, parseORSet, orValues } from './merge';
 
 beforeEach(async () => {
@@ -275,5 +275,25 @@ describe('a write is all or nothing', () => {
 
     expect(await db.all<any>(`SELECT id, deleted FROM apiary`)).toEqual([{ id: 'a1', deleted: 0 }]);
     expect(await db.all(`SELECT * FROM outbox`)).toHaveLength(1);
+  });
+});
+
+describe('inspections.listByHive', () => {
+  it('lists visits of one day newest recorded first, the same on every device', async () => {
+    const noon = '2026-05-01T10:00:00.000Z';
+    const visit = (id: string, created_at: string) =>
+      patch('inspection', id, 'a1', { hive_id: 'h1', date: noon, created_at, deleted: 0 });
+    // Ids in the opposite order of recording, and two recorded at once.
+    await visit('v-a', '2026-05-01T09:00:00.000Z');
+    await visit('v-c', '2026-05-01T08:00:00.000Z');
+    await visit('v-b', '2026-05-01T09:00:00.000Z');
+    await patch('inspection', 'v-old', 'a1', {
+      hive_id: 'h1',
+      date: '2026-04-30T10:00:00.000Z',
+      created_at: '2026-05-01T12:00:00.000Z',
+      deleted: 0
+    });
+    const ids = (await inspections.listByHive('h1')).map((v: { id: string }) => v.id);
+    expect(ids).toEqual(['v-b', 'v-a', 'v-c', 'v-old']);
   });
 });
