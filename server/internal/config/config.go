@@ -44,8 +44,9 @@ type Config struct {
 	// Warnings are non-fatal remarks about the configuration, logged at boot.
 	Warnings []string
 
-	// TrustProxyHeaders takes the client IP from X-Real-IP / X-Forwarded-For.
-	// Only for deployments behind exactly one reverse proxy that sets them.
+	// TrustProxyHeaders takes the client IP for sign-in throttling from the
+	// last X-Forwarded-For entry. Only for deployments behind exactly one
+	// reverse proxy that appends it.
 	TrustProxyHeaders bool
 	// AllowedHosts are extra Host names accepted when no login is configured
 	// (see web.HostGuard); "*" disables the check.
@@ -152,8 +153,10 @@ type AuthConfig struct {
 	SMTP              SMTPConfig
 }
 
-// SMTPConfig is used to send verification emails. If Host is empty, the server
-// logs the verification link instead of sending mail (handy in dev).
+// SMTPConfig is the mail server for verification, invite and password-reset
+// emails. With an empty Host nothing is sent and no link is ever logged:
+// email verification then cannot be enabled, invite links are copied from
+// Settings, and reset links are created by the instance admin.
 type SMTPConfig struct {
 	Host string
 	Port string
