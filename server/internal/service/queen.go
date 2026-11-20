@@ -35,8 +35,10 @@ func (s *QueenService) CreateQueen(ctx context.Context, req *wv1.CreateQueenRequ
 		if err != nil {
 			return err
 		}
-		qid, err := t.setQueen(m.HiveId, rs(h["apiary_id"]), m.Year, int32(m.Marking),
-			m.Origin, m.BreederNumber, m.Note, tsOrNow(m.IntroducedAt))
+		qid, err := t.setQueen(queenInput{
+			hiveID: m.HiveId, scope: rs(h["apiary_id"]), year: m.Year, marking: int32(m.Marking),
+			origin: m.Origin, breeder: m.BreederNumber, note: m.Note, at: tsOrNow(m.IntroducedAt),
+		})
 		if err != nil {
 			return err
 		}
@@ -65,7 +67,7 @@ func (s *QueenService) ListQueens(ctx context.Context, req *wv1.ListQueensReques
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+` ORDER BY introduced_at DESC LIMIT ? OFFSET ?`,
+	rows, err := queryMaps(ctx, s.w.db, `SELECT *`+where+latestFirst("introduced_at")+` LIMIT ? OFFSET ?`,
 		append(args, limit, offset)...)
 	if err != nil {
 		return nil, writeErr(err)

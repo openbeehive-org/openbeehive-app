@@ -43,7 +43,7 @@ func (s *TreatmentService) CreateTreatment(ctx context.Context, req *wv1.CreateT
 		if _, err := t.hive(m.HiveId); err != nil {
 			return err
 		}
-		tid, err := t.recordTreatment(m.HiveId, tsOrNow(m.Date), fields)
+		tid, err := t.recordTreatment("", m.HiveId, tsOrNow(m.Date), fields)
 		if err != nil {
 			return err
 		}

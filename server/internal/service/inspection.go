@@ -47,7 +47,7 @@ func (s *InspectionService) CreateInspection(ctx context.Context, req *wv1.Creat
 		if _, err := t.hive(m.HiveId); err != nil {
 			return err
 		}
-		iid, err := t.recordInspection(m.HiveId, tsOrNow(m.Date), fields)
+		iid, err := t.recordInspection("", m.HiveId, tsOrNow(m.Date), fields)
 		if err != nil {
 			return err
 		}

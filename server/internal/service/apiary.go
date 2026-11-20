@@ -48,14 +48,8 @@ func (s *ApiaryService) CreateApiary(
 		return nil, connect.NewError(connect.CodeInvalidArgument, errEmptyName.Error()).WithCause(errEmptyName)
 	}
 	aid := uuid.NewString()
-	now := jsTimeNow()
-	// scope = own id: a new apiary opens its own sync scope, as in the app.
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		return t.upsert("apiary", aid, aid, map[string]any{
-			"organization_id": id.OrgID, "name": req.Name, "address": req.Address,
-			"lat": req.Lat, "lng": req.Lng, "note": req.Note,
-			"created_at": now, "updated_at": now, "deleted": 0,
-		})
+		return t.createApiary(aid, req.Name, req.Address, req.Lat, req.Lng, req.Note, jsTimeNow())
 	})
 	if err != nil {
 		return nil, writeErr(err)

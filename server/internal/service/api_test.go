@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect/v2"
+	"github.com/jmoiron/sqlx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
@@ -17,6 +18,7 @@ import (
 // apiFixture bundles every CRUD service over the sync fixture's store, so
 // tests can write through the API and read back through Pull like a device.
 type apiFixture struct {
+	db     *sqlx.DB
 	sync   *SyncService
 	apiary *ApiaryService
 	hive   *HiveService
@@ -35,6 +37,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	s := NewSyncService(store.DB(), wsync.NewHLC("test"))
 	w := NewWriter(store.DB(), wsync.NewHLC("api"))
 	return &apiFixture{
+		db:     store.DB(),
 		sync:   s,
 		apiary: NewApiaryService(store.Apiaries(), w),
 		hive:   NewHiveService(store.Hives(), w),

@@ -41,7 +41,11 @@ func (s *StatsService) GetDashboard(ctx context.Context, req *wv1.DashboardReque
 	if res.Hives, err = count32(ctx, db, `SELECT COUNT(*) FROM hive WHERE organization_id = ? AND deleted = FALSE`, org); err != nil {
 		return nil, writeErr(err)
 	}
-	if res.ActiveQueens, err = count32(ctx, db, `SELECT COUNT(*) FROM queen WHERE organization_id = ? AND deleted = FALSE AND active = TRUE`, org); err != nil {
+	// A hive has one current queen however many rows are flagged active (two
+	// devices that requeened offline leave two), and a deleted hive has none.
+	if res.ActiveQueens, err = count32(ctx, db, `SELECT COUNT(DISTINCT hive_id) FROM queen
+		WHERE organization_id = ? AND deleted = FALSE AND active = TRUE
+		  AND hive_id IN (SELECT id FROM hive WHERE organization_id = ? AND deleted = FALSE)`, org, org); err != nil {
 		return nil, writeErr(err)
 	}
 	for _, fill := range []func(context.Context, queryer, string, time.Time, int, *wv1.DashboardResponse) error{
@@ -103,7 +107,7 @@ func dashboardHoney(ctx context.Context, db queryer, org string, now time.Time, 
 // dashboardDue: days since the last visit per hive (never = -1), hives at or past the threshold.
 func dashboardDue(ctx context.Context, db queryer, org string, now time.Time, threshold int, res *wv1.DashboardResponse) error {
 	hives, err := queryMaps(ctx, db, `SELECT h.id, h.name, a.name AS apiary_name
-		FROM hive h LEFT JOIN apiary a ON a.id = h.apiary_id
+		FROM hive h LEFT JOIN apiary a ON a.id = h.apiary_id AND a.organization_id = h.organization_id
 		WHERE h.organization_id = ? AND h.deleted = FALSE ORDER BY h.name`, org)
 	if err != nil {
 		return err

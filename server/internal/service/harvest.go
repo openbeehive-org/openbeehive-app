@@ -38,7 +38,7 @@ func (s *HarvestService) CreateHarvest(ctx context.Context, req *wv1.CreateHarve
 		if _, err := t.hive(m.HiveId); err != nil {
 			return err
 		}
-		hid, err := t.recordHarvest(m.HiveId, tsOrNow(m.Date), fields)
+		hid, err := t.recordHarvest("", m.HiveId, tsOrNow(m.Date), fields)
 		if err != nil {
 			return err
 		}

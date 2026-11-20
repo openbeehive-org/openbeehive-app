@@ -61,8 +61,10 @@ func (s *HiveService) CreateHive(ctx context.Context, req *wv1.CreateHiveRequest
 		if !ok {
 			return storage.ErrNotFound
 		}
-		hid, err = t.createHive(req.ApiaryId, req.Name, int32(req.Type), req.Boxes,
-			req.ColonyOrigin, req.Note)
+		hid, err = t.createHive(hiveInput{
+			apiaryID: req.ApiaryId, name: req.Name, typ: int32(req.Type), boxes: req.Boxes,
+			colonyOrigin: req.ColonyOrigin, note: req.Note, at: jsTimeNow(),
+		})
 		return err
 	})
 	if err != nil {
@@ -149,11 +151,11 @@ func (s *HiveService) RelocateHive(ctx context.Context, req *wv1.RelocateHiveReq
 	if req.TargetApiaryId == "" {
 		return nil, invalid("target_apiary_id is required")
 	}
-	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	err = s.w.Run(ctx, id, func(t *txWriter) error {
+	err := s.w.Run(ctx, id, func(t *txWriter) error {
+		h, err := t.hive(req.Id)
+		if err != nil {
+			return err
+		}
 		ok, err := t.apiaryExists(req.TargetApiaryId)
 		if err != nil {
 			return err
@@ -161,14 +163,14 @@ func (s *HiveService) RelocateHive(ctx context.Context, req *wv1.RelocateHiveReq
 		if !ok {
 			return storage.ErrNotFound
 		}
-		return t.moveHive(m.ID, m.ApiaryID, req.TargetApiaryId, tsOrNow(req.Date))
+		return t.moveHive(req.Id, rs(h["apiary_id"]), req.TargetApiaryId, tsOrNow(req.Date))
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	m, err = s.repo.Get(ctx, id.OrgID, req.Id)
+	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, writeErr(err)
 	}
 	return &wv1.RelocateHiveResponse{Hive: hiveToProto(m)}, nil
 }
