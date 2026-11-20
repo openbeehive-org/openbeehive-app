@@ -8,7 +8,7 @@ vi.mock('./db', async () => {
 // repo fires a background sync after every write; irrelevant here.
 vi.mock('./sync', () => ({ syncOnce: vi.fn(async () => {}) }));
 
-import { apiaries, hives, tasks, patch, remove, ApiaryHasHivesError } from './repo';
+import { apiaries, hives, tasks, treatments, patch, remove, ApiaryHasHivesError } from './repo';
 
 beforeEach(async () => {
   setCurrentDB(await makeLocalDB());
@@ -220,5 +220,28 @@ describe('personal tasks and workspaces', () => {
       'club meeting'
     ]);
     expect(await tasks.openCount()).toBe(2);
+  });
+});
+
+describe('treatments.listByApiary', () => {
+  const treatment = (id: string, hiveId: string, date: string) =>
+    patch('treatment', id, 'a1', { organization_id: 'org1', hive_id: hiveId, date, deleted: 0 });
+
+  it('returns the treatments of the hives standing at the apiary, newest first', async () => {
+    const a1 = await apiaries.create({ organization_id: 'org1', name: 'Orchard' });
+    const a2 = await apiaries.create({ organization_id: 'org1', name: 'Meadow' });
+    await hive('h1', a1, 'Hive 1');
+    await hive('h2', a1, 'Hive 2');
+    await hive('h3', a2, 'Hive 3');
+    await hive('h4', a1, 'Hive 4', { deleted: 1 });
+    await treatment('t1', 'h1', '2026-08-01T10:00:00.000Z');
+    await treatment('t2', 'h2', '2026-12-20T10:00:00.000Z');
+    await treatment('t3', 'h3', '2026-08-02T10:00:00.000Z');
+    await treatment('t4', 'h4', '2026-08-03T10:00:00.000Z');
+    await treatment('t5', 'h1', '2026-09-01T10:00:00.000Z');
+    await remove('treatment', 't5', 'a1');
+
+    const rows = await treatments.listByApiary(a1);
+    expect(rows.map((r) => r.id)).toEqual(['t2', 't1']);
   });
 });

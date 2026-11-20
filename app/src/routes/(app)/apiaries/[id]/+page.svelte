@@ -2,9 +2,14 @@
   import { mount, onDestroy, unmount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { _ } from 'svelte-i18n';
-  import { MapPin, Pencil, Trash2, Tag } from '@lucide/svelte';
-  import { apiaries, hives, ApiaryHasHivesError } from '#lib/local/repo.js';
+  import { _, locale } from 'svelte-i18n';
+  import { MapPin, Pencil, Trash2, Tag, ClipboardList } from '@lucide/svelte';
+  import { apiaries, hives, treatments, ApiaryHasHivesError } from '#lib/local/repo.js';
+  import {
+    printTreatmentRegister,
+    type RegisterHive
+  } from '#lib/components/hive/treatmentRegister.js';
+  import { toast } from '#lib/toast.js';
   import { createHive } from '#lib/local/history.js';
   import type { ApiaryRow } from '../../rows.js';
   import { dataVersion } from '#lib/local/live.js';
@@ -19,6 +24,10 @@
   let apiary = $state<ApiaryRow | null>(null);
   let hiveRows = $state<HiveOverview[]>([]);
   let loaded = $state(false);
+  // Treatments per hive, loaded with the page so printing the register can
+  // open its window directly from the tap (browsers block a window opened
+  // after waiting for data).
+  let register = $state<RegisterHive[]>([]);
 
   let editing = $state(false);
   let eName = $state('');
@@ -41,8 +50,20 @@
   async function load() {
     apiary = (await apiaries.get(id)) ?? null;
     hiveRows = await hives.overview(id);
+    const treated = await treatments.listByApiary(id);
+    register = hiveRows
+      .map((h) => ({
+        name: h.name,
+        apiary: apiary?.name ?? '',
+        treatments: treated.filter((t) => t.hive_id === h.id)
+      }))
+      .filter((h) => h.treatments.length > 0);
     if (hiveRows.length === 0) deleteBlocked = false;
     loaded = true;
+  }
+
+  function printRegister() {
+    if (!printTreatmentRegister(register, $_, $locale ?? 'en')) toast($_('treat.print_blocked'));
   }
 
   function startEdit() {
@@ -256,6 +277,11 @@
         {#if hiveRows.length}
           <button class="ghost" onclick={printQrSheet}
             ><Tag size={16} aria-hidden="true" /> {$_('apiaries.qr_sheet')}</button
+          >
+        {/if}
+        {#if register.length}
+          <button class="ghost" onclick={printRegister}
+            ><ClipboardList size={16} aria-hidden="true" /> {$_('treat.register')}</button
           >
         {/if}
 

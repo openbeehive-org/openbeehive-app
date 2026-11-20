@@ -332,6 +332,17 @@ export const treatments = {
       [hiveId]
     );
   },
+  // Every treatment of the hives standing at an apiary, in one query, for the
+  // apiary-wide treatment register.
+  async listByApiary(apiaryId: string) {
+    const db = await getDB();
+    return db.all<any>(
+      `SELECT t.* FROM treatment t JOIN hive h ON h.id = t.hive_id
+       WHERE t.deleted = 0 AND h.deleted = 0 AND h.apiary_id = ?
+       ORDER BY t.date DESC`,
+      [apiaryId]
+    );
+  },
   update: (id: string, apiaryId: string, fields: Record<string, unknown>) =>
     patch('treatment', id, apiaryId, fields),
   remove: (id: string, apiaryId: string) => remove('treatment', id, apiaryId)
@@ -344,8 +355,6 @@ export function markingForYear(year: number): number {
   return (((year % 10) + 4) % 5) + 1;
 }
 export const MARKING_COLORS = ['', '#f4f1ea', '#e9c33b', '#c8402f', '#3f8c4f', '#3566b5'];
-// English only: screens should show the translated `queens.color.<n>` instead.
-export const MARKING_NAMES = ['', 'White', 'Yellow', 'Red', 'Green', 'Blue'];
 
 // Queens. Reads are local; set/replace go through history.setQueen (which keeps
 // the reign intervals and emits events). Edit/remove are plain per-field LWW.
