@@ -1,9 +1,24 @@
 <script lang="ts">
+  import { _, locale } from 'svelte-i18n';
+  import { page } from '$app/state';
+  import { pageTitle } from '#lib/titles.js';
   import { setupI18n } from '#lib/i18n/index.js';
   import { isLoading } from 'svelte-i18n';
   setupI18n();
   let { children } = $props();
+
+  // Screen readers, hyphenation and spell checking follow the UI language.
+  $effect(() => {
+    if ($locale) document.documentElement.lang = $locale;
+  });
+
+  // One translated title per route; see lib/titles.ts.
+  const title = $derived($isLoading ? 'Openbeehive' : pageTitle(page.route.id, $_));
 </script>
+
+<svelte:head>
+  <title>{title}</title>
+</svelte:head>
 
 {#if !$isLoading}
   {@render children()}
