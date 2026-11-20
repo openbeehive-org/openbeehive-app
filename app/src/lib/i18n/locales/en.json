@@ -629,7 +629,7 @@
     "chip_sync_now": "Sync now",
     "chip_update_required": "App out of date · update to sync",
     "update_now": "Load the new version",
-    "resynced": "The server was restored from a backup. This device has sent its records again and loaded the current data.",
+    "resynced": "The server's data was reset or restored. This device has sent its records again and loaded the current data.",
     "resynced_dismiss": "OK",
     "last_synced": "Last synced {when}",
     "never_synced": "Not synced yet",

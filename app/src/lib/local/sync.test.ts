@@ -1192,6 +1192,30 @@ describe('syncOnce and the status store', () => {
     expect(get(syncStatus).state).toBe('idle');
   });
 
+  it('uploads what a reset queued in the same run', async () => {
+    const db = getCurrentDB();
+    await db.exec(
+      `INSERT INTO sync_meta (k, v) VALUES ('cursor', '9:150:aa'), ('sync_epoch', '2')`
+    );
+    await db.exec(
+      `INSERT INTO apiary (id, organization_id, name, deleted, field_hlc) VALUES ('a1', 'org1', 'Mine', 0, ?)`,
+      [JSON.stringify({ name: t(100, 'devA') })]
+    );
+    pullMock
+      .mockResolvedValueOnce({ changes: [], nextCursor: '9:150:aa', hasMore: false, status: 2 })
+      .mockResolvedValue({ changes: [], nextCursor: '9:101:cc', hasMore: false });
+    pushMock.mockResolvedValue({});
+
+    await syncOnce();
+
+    expect(pushMock).toHaveBeenCalledOnce();
+    expect(pushMock.mock.calls[0]![0].changes).toMatchObject([
+      { entity: 'apiary', entityId: 'a1', hlc: t(100, 'devA'), payloadJson: '{"name":"Mine"}' }
+    ]);
+    expect(get(syncStatus)).toMatchObject({ state: 'idle', pending: 0 });
+    expect(get(resyncNotice)).toBe(true);
+  });
+
   it('a session that expires during pull also ends in signed_out', async () => {
     pullMock.mockRejectedValue(new ConnectError('no session', Code.Unauthenticated));
     await syncOnce();

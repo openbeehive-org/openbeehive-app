@@ -370,7 +370,10 @@ export async function pull() {
       if (reset) await requeueLocal(db, cursor);
       cursor = await loadSnapshot(db);
       if (!cursor) throw new Error('the server asked for a snapshot but offers none');
-      if (reset) await showResyncNotice();
+      if (reset) {
+        await showResyncNotice();
+        rerun = true; // upload what was queued in this run, not at the next tick
+      }
       continue;
     }
 

@@ -629,7 +629,7 @@
     "chip_sync_now": "Sincronizza ora",
     "chip_update_required": "App non aggiornata · aggiornala per sincronizzare",
     "update_now": "Carica la nuova versione",
-    "resynced": "Il server è stato ripristinato da un backup. Questo dispositivo ha inviato di nuovo i suoi dati e ha caricato quelli attuali.",
+    "resynced": "I dati del server sono stati reimpostati o ripristinati. Questo dispositivo ha inviato di nuovo i suoi dati e ha caricato quelli attuali.",
     "resynced_dismiss": "OK",
     "last_synced": "Ultima sincronizzazione {when}",
     "never_synced": "Non ancora sincronizzato",

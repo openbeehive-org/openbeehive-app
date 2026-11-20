@@ -629,7 +629,7 @@
     "chip_sync_now": "Jetzt synchronisieren",
     "chip_update_required": "App veraltet · zum Synchronisieren aktualisieren",
     "update_now": "Neue Version laden",
-    "resynced": "Der Server wurde aus einer Sicherung wiederhergestellt. Dieses Gerät hat seine Einträge erneut gesendet und den aktuellen Stand geladen.",
+    "resynced": "Die Daten des Servers wurden zurückgesetzt oder wiederhergestellt. Dieses Gerät hat seine Einträge erneut gesendet und den aktuellen Stand geladen.",
     "resynced_dismiss": "OK",
     "last_synced": "Zuletzt synchronisiert {when}",
     "never_synced": "Noch nicht synchronisiert",
