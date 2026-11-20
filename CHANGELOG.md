@@ -7,6 +7,156 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Version 0.5.0. Records can be corrected and deleted, photos move out of the
+database into blob storage, accounts get password reset, deletion and member
+management, and sync becomes robust against bad changes, wrong device clocks
+and restored backups. Installed 0.4.x apps keep working with this server.
+
+### Upgrading
+
+Back up the database **and** the blob directory or bucket first. The server
+refuses to start, and names the setting, where a required value is missing.
+Details are in the
+[upgrade notes](https://docs.openbeehive.org/self-hosting/upgrading#upgrading-to-050).
+
+- **Session secret.** With any login method, `BEEHIVE_SESSION_SECRET` must be
+  set and at least 32 bytes long. A new secret signs everyone out.
+- **`.env`** in the working directory is now read by the binary; variables
+  already set in the environment win.
+- **CORS is same-origin by default.** If the app is served from another
+  origin, list it in `BEEHIVE_CORS_ALLOWED_ORIGINS`; `*` no longer allows
+  credentials.
+- **Without login** the server answers only to `localhost`, IP addresses and
+  the host of `BEEHIVE_PUBLIC_BASE_URL`; list other names in
+  `BEEHIVE_ALLOWED_HOSTS`.
+- **Behind a reverse proxy** set `BEEHIVE_TRUST_PROXY_HEADERS=true`, or
+  sign-in throttling counts every user as the proxy's address.
+- **Email verification** (`BEEHIVE_EMAIL_VERIFICATION=true`) requires
+  `BEEHIVE_SMTP_HOST`. Links are no longer written to the log.
+- **OIDC.** Every listed provider needs an issuer and a client id. A provider
+  login is attached to an existing account only when both sides have a
+  verified email address.
+- **Compose files.** `docker-compose.yml` is the development stack and needs
+  `BEEHIVE_SESSION_SECRET` and `MINIO_ROOT_PASSWORD`. Run Openbeehive with the
+  new `docker-compose.selfhost.yml` or `docker-compose.prod.yml`.
+- **Photos move to blob storage.** The first start converts photos stored
+  inline in the database before it serves requests; with many photos this
+  takes a few minutes. `/files/` is gone and `BEEHIVE_BLOB_PUBLIC_URL` is
+  ignored. A backup is now the database plus the blobs, and a restore means:
+  stop, restore both together, start.
+- **Database migrations** rebuild the visits table and the change-log index;
+  on MariaDB the tables change to a binary collation. A failed migration on
+  MariaDB cannot be rolled back, so the backup is the way back.
+- **Change log.** Entries older than `BEEHIVE_CHANGELOG_RETENTION_DAYS`
+  (default 180) are removed daily, for the first time 180 days after the
+  upgrade at the earliest.
+- **Turning login on** for an instance that ran without login moves its
+  records into the instance admin's workspace at the next start. Sync every
+  device first.
+- **Accounts whose email addresses differ only in case** keep working, but
+  email sign-in reaches only one of them; the log names each pair at start.
+- **Scripts** that call `SyncService` must send `Openbeehive-Sync-Protocol: 1`.
+  Update calls change only the fields sent, and `DeleteApiary` fails while
+  the apiary has hives.
+- **Run exactly one server instance** per database. `BEEHIVE_NODE_ID` now
+  defaults to a random id; remove it unless you set it on purpose.
+
+### Security
+
+- Sessions can be revoked: changing or resetting a password and "Log out
+  everywhere" end the other sessions, and every request checks that the
+  account is still a member of its workspace.
+- Sign-in, password and reset attempts are throttled (10 failures per
+  account and 30 per address in 15 minutes).
+- The server sends a Content-Security-Policy and security headers, refuses
+  cross-site requests to its plain-HTTP endpoints, and checks the host name
+  when there is no login.
+- Invites expire after 7 days and work only for the invited email address.
+- Full-size photos are served only to members of their workspace, with a
+  session or API key; the app removes location and camera data from images.
+- Personal tasks reach only their owner, the author of a change is always
+  set by the server, and database errors no longer reach API responses.
+- Hive and apiary names are escaped on QR labels and map popups.
+- Email addresses are unique regardless of upper and lower case.
+
+### Fixed
+
+- One bad change no longer blocks or drops the rest of a sync: each change is
+  applied on its own, and refused changes are listed under "Sync problems".
+- Changes stamped by a device clock that runs ahead are refused, and updated
+  apps correct their clock and send them again.
+- Pull is scoped by workspace and the sync position only advances through
+  Pull, so no device skips changes of others.
+- Local writes are atomic, and only one tab works with the local database at
+  a time.
+- The installed app opens offline from a cold start, and updates no longer
+  take over silently.
+- Deleting a record also removes its timeline and statistics events;
+  apiaries that still have hives cannot be deleted.
+- The dashboard's due list ignores sensor readings and lost or dissolved
+  colonies.
+- Dates saved by earlier versions show on the day they were entered;
+  charts show levels, sub-zero temperatures and time correctly.
+- `ListHives` reports the real total; timestamps and decimals are stored
+  exactly on SQLite, Postgres and MariaDB.
+- A change refused because the account is read-only (the demo) is undone on
+  screen with a message instead of lingering on the device.
+
+### Added
+
+- **Correcting records.** Visits, harvests, treatments and queens can be
+  edited and deleted in the app, with undo; edited harvests and treatments
+  show "Amended on". The API gains `UpdateInspection`, `UpdateTreatment`,
+  `UpdateHarvest` and `UpdateTask`.
+- **Treatment register** to print per hive or for a whole apiary.
+- **Photos** as synced records with a thumbnail; the full image (up to
+  2048 px, 5 MiB) uploads in the background, opens in a viewer and is kept
+  per device. WebP is supported.
+- **Accounts.** Change password, "Forgot password?" by email or with a link
+  from the instance admin, log out everywhere, delete the account, and a
+  member list with roles, remove and leave.
+- **Units and language** (kg/lb, °C/°F) saved with the account and applied on
+  every device; records, exports and the API stay metric.
+- **Dark theme** with a System / Light / Dark switch.
+- **Sync status** chip, a "Sync problems" list with retry and discard,
+  snapshots for new devices, and automatic re-upload after the server was
+  restored from a backup. A protocol version lets the server ask outdated
+  apps to update (`BEEHIVE_SYNC_MIN_PROTOCOL`).
+- **Export and import.** Full backup as JSON or as a ZIP with photos, a
+  server copy at `GET /export`, and an import with a preview that only adds
+  by default, can overwrite or restore on request, and can be undone.
+- **Sensor readings** (`inspection.source`) are charted but do not count as
+  visits.
+- **Maps** are configurable or can be switched off (`BEEHIVE_MAPS`,
+  `BEEHIVE_MAP_TILE_URL`, `BEEHIVE_GEOCODER_URL`).
+- First-run checklist, a working "New" menu, hive list search, filters and
+  natural sorting, "Start from last visit", in-app QR scanning on every
+  browser, and a "Try the demo" button on the sign-in page.
+- MariaDB and Postgres are tested next to SQLite (`make test-db`), and a
+  browser test suite runs with `make e2e`.
+
+### Changed
+
+- The visit form starts counts empty (empty means not recorded, 0 means
+  observed none), has steppers, collapsed Climate and Activities sections,
+  and no longer records honey; use a harvest instead. Old values stay
+  visible.
+- Edit forms save only the fields that were changed.
+- The user interface says "workspace" instead of "tenant".
+- RPC messages are capped at 16 MiB and requests at 2 minutes; unset
+  inspection numbers are omitted instead of returned as 0.
+- `/auth/verify`, `/auth/login` and `/auth/callback` send the browser to the
+  sign-in page with an error instead of answering with JSON.
+- The change log is compacted daily; a device that was away longer than the
+  retention loads the current data instead.
+
+### Removed
+
+- Per-apiary sharing and the unused `apiary_share` table; the workspace is
+  the unit of sharing.
+- The `/files/` endpoint, `BEEHIVE_BLOB_PUBLIC_URL` and the unused sync
+  page-size settings.
+
 ## [0.4.1] - 2026-11-20
 
 Security and dependency release. No schema migration, no configuration
