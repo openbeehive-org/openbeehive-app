@@ -728,10 +728,12 @@ func appendChangeLog(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change, orgID str
 	if err := tx.GetContext(ctx, &seq, "SELECT val FROM seq_counter WHERE name = 'change'"); err != nil {
 		return err
 	}
+	// logged_at is the server's receive time: compaction goes by it.
 	_, err := tx.ExecContext(ctx, tx.Rebind(`
-		INSERT INTO change_log (id, seq, scope_id, entity, entity_id, op, payload, hlc, author_id, org_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
-		uuid.NewString(), seq, ch.ScopeId, ch.Entity, ch.EntityId, int32(ch.Op), ch.PayloadJson, ch.Hlc, ch.AuthorId, orgID)
+		INSERT INTO change_log (id, seq, scope_id, entity, entity_id, op, payload, hlc, author_id, org_id, logged_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+		uuid.NewString(), seq, ch.ScopeId, ch.Entity, ch.EntityId, int32(ch.Op), ch.PayloadJson, ch.Hlc, ch.AuthorId, orgID,
+		time.Now().UnixMilli())
 	return err
 }
 

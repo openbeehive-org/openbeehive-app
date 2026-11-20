@@ -262,6 +262,8 @@ func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.St
 	syncSvc := service.NewSyncService(store.DB(), hlc)
 	syncSvc.MinProtocol = cfg.Sync.MinProtocol
 	openbeehivev1connect.RegisterSyncServiceHandler(server, syncSvc)
+	// Daily clean-up of the change log; devices older than it load a snapshot.
+	go syncSvc.CompactDaily(context.Background(), cfg.Sync.ChangeLogRetentionDays)
 	// CRUD services for scripts and integrations. Their writes go through the
 	// same merge + change log as Push, so they show up on devices.
 	w := service.NewWriter(store.DB(), hlc)

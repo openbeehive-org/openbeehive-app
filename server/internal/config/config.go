@@ -134,6 +134,9 @@ type SyncConfig struct {
 	// MinProtocol is the lowest sync protocol version accepted from apps.
 	// 0 admits the 0.4.x apps, which announce none.
 	MinProtocol int
+	// ChangeLogRetentionDays is how long the change log is kept before the
+	// daily compaction removes entries; 0 keeps it forever.
+	ChangeLogRetentionDays int
 }
 
 type WebConfig struct {
@@ -381,6 +384,9 @@ func loadSync(c *Config) error {
 	var err error
 	if c.Sync.MinProtocol, err = envCount("SYNC_MIN_PROTOCOL", 0); err != nil {
 		return fmt.Errorf("%w (the lowest sync protocol version accepted from apps; 0 accepts all)", err)
+	}
+	if c.Sync.ChangeLogRetentionDays, err = envCount("CHANGELOG_RETENTION_DAYS", 180); err != nil {
+		return fmt.Errorf("%w (days the change log is kept; 0 keeps it forever)", err)
 	}
 	return nil
 }

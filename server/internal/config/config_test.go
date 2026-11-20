@@ -16,7 +16,7 @@ func clearBeehiveEnv(t *testing.T) {
 		"OIDC_GOOGLE_CLIENT_ID", "EMAIL_VERIFICATION", "SMTP_HOST", "PUBLIC_BASE_URL",
 		"CORS_ALLOWED_ORIGINS", "CORS_ALLOW_CREDENTIALS", "NODE_ID", "MAPS", "MAP_TILE_URL",
 		"GEOCODER_URL", "ALLOWED_HOSTS", "TRUST_PROXY_HEADERS", "HTTP_READ_TIMEOUT",
-		"HTTP_WRITE_TIMEOUT"} {
+		"HTTP_WRITE_TIMEOUT", "SYNC_MIN_PROTOCOL", "CHANGELOG_RETENTION_DAYS"} {
 		t.Setenv(envPrefix+v, "")
 	}
 	// Load reads .env from the working directory; tests must not pick one up.
@@ -182,20 +182,23 @@ func TestLoadNodeIDIsRandomByDefault(t *testing.T) {
 func TestLoadSyncSettings(t *testing.T) {
 	clearBeehiveEnv(t)
 	cfg, err := Load()
-	if err != nil || cfg.Sync.MinProtocol != 0 {
-		t.Fatalf("defaults: %+v %v; want legacy apps accepted", cfg.Sync, err)
+	if err != nil || cfg.Sync.MinProtocol != 0 || cfg.Sync.ChangeLogRetentionDays != 180 {
+		t.Fatalf("defaults: %+v %v; want legacy apps accepted and 180 days of change log", cfg.Sync, err)
 	}
 	t.Setenv(envPrefix+"SYNC_MIN_PROTOCOL", "1")
-	if cfg, err = Load(); err != nil || cfg.Sync.MinProtocol != 1 {
+	t.Setenv(envPrefix+"CHANGELOG_RETENTION_DAYS", "0")
+	if cfg, err = Load(); err != nil || cfg.Sync.MinProtocol != 1 || cfg.Sync.ChangeLogRetentionDays != 0 {
 		t.Fatalf("explicit values: %+v %v", cfg.Sync, err)
 	}
 	// A value that is not a number stops the boot and names the setting.
-	for key, bad := range map[string]string{"SYNC_MIN_PROTOCOL": "-1"} {
-		clearBeehiveEnv(t)
-		t.Setenv(envPrefix+key, bad)
-		if _, err := Load(); err == nil || !strings.Contains(err.Error(), envPrefix+key) {
-			t.Fatalf("%s=%q: %v", key, bad, err)
-		}
+	for key, bad := range map[string]string{"CHANGELOG_RETENTION_DAYS": "six months", "SYNC_MIN_PROTOCOL": "-1"} {
+		t.Run(key, func(t *testing.T) {
+			clearBeehiveEnv(t)
+			t.Setenv(envPrefix+key, bad)
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), envPrefix+key) {
+				t.Fatalf("%s=%q: %v", key, bad, err)
+			}
+		})
 	}
 }
 
