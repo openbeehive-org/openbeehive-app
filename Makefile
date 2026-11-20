@@ -74,7 +74,10 @@ test: gen app-test ## unit tests: Go with the race detector (shuffled) + app vit
 
 # The Go suite against one database backend. Every test creates and drops a schema (Postgres) or a
 # database (MariaDB) of its own next to the one the DSN names, so a run leaves the server as it found it.
-GO_TEST_DB = cd $(SERVER) && $(GO) test -race -shuffle=on -count=1 ./...
+# The timeout is per package. Go's default of 10 minutes is too short for MariaDB on a data directory
+# that syncs every DDL statement to disk (see CONTRIBUTING.md: use --tmpfs and the run takes seconds).
+DB_TEST_TIMEOUT ?= 30m
+GO_TEST_DB = cd $(SERVER) && $(GO) test -race -shuffle=on -count=1 -timeout $(DB_TEST_TIMEOUT) ./...
 
 test-db: test-sqlite ## Go tests on SQLite, plus Postgres and MariaDB when PG_DSN / MARIADB_DSN are set
 	if [ -n "$$PG_DSN" ]; then $(MAKE) test-postgres; else echo "PG_DSN not set: Postgres skipped"; fi

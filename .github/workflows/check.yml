@@ -83,7 +83,8 @@ jobs:
           make tools
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: make check
-      # Runs even when `make check` failed, so one push reports both.
+      # Runs even when `make check` failed, so one push reports both. The make targets set the per-package
+      # test timeout (DB_TEST_TIMEOUT); with the in-memory data directories above a run takes seconds.
       - name: Go tests on Postgres and MariaDB
         if: ${{ !cancelled() }}
         env:

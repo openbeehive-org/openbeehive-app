@@ -60,9 +60,13 @@ The targets set `BEEHIVE_TEST_DATABASE_DRIVER` (`sqlite`, `postgres` or `mysql`)
 gets a database of its own and drops it afterwards: a schema inside the given database on Postgres, a
 database named `<yours>_t…` on MariaDB. The MariaDB test user therefore needs the right to create and
 drop databases (the root user of a throwaway container has it); the database named in the DSN itself
-stays untouched. Keep the containers' data in memory (`--tmpfs`, as above): each test runs the whole
-migration chain, and on a disk that syncs every DDL statement the MariaDB run takes minutes instead of
-seconds.
+stays untouched.
+
+Keep the containers' data in memory (`--tmpfs`, as above). Each test runs the whole migration chain;
+with a tmpfs data directory the complete MariaDB run takes seconds, on a disk that syncs every DDL
+statement it takes ten minutes and more per package. The targets therefore allow 30 minutes per
+package (`DB_TEST_TIMEOUT`); pass `-timeout` yourself when you call `go test` directly against a
+disk-backed server.
 
 Anything that touches SQL, a migration or the sync write path should be green on all three before
 you open a pull request. Rules for portable SQL:
