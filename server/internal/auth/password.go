@@ -27,14 +27,21 @@ import (
 type PasswordAuth struct {
 	users    storage.UserRepo
 	invites  storage.InviteRepo
+	resets   ResetStore
 	sessions *SessionManager
 	cfg      *config.Config
 	prov     *Provisioner
 	throttle *Throttle
+	// mail delivers one message; replaced in tests.
+	mail func(to, subject, body string) error
+	// background counts the goroutines that send mail after the response.
+	background sync.WaitGroup
 }
 
-func NewPasswordAuth(users storage.UserRepo, invites storage.InviteRepo, sessions *SessionManager, cfg *config.Config, prov *Provisioner, throttle *Throttle) *PasswordAuth {
-	return &PasswordAuth{users: users, invites: invites, sessions: sessions, cfg: cfg, prov: prov, throttle: throttle}
+func NewPasswordAuth(users storage.UserRepo, invites storage.InviteRepo, resets ResetStore, sessions *SessionManager, cfg *config.Config, prov *Provisioner, throttle *Throttle) *PasswordAuth {
+	p := &PasswordAuth{users: users, invites: invites, resets: resets, sessions: sessions, cfg: cfg, prov: prov, throttle: throttle}
+	p.mail = func(to, subject, body string) error { return sendMail(cfg, to, subject, body) }
+	return p
 }
 
 // Routes registers the onboarding endpoints.
@@ -43,6 +50,10 @@ func (p *PasswordAuth) Routes(rt *Router) {
 	rt.PostJSON("/auth/signin", p.signin)
 	// Opened from the verification email, so it is a GET from another site.
 	rt.Get("/auth/verify", p.verify)
+	rt.PostJSON("/auth/password/change", p.changePassword)
+	rt.PostJSON("/auth/password/reset-request", p.requestReset)
+	rt.PostJSON("/auth/password/reset", p.completeReset)
+	rt.PostJSON("/auth/admin/reset-link", p.adminResetLink)
 	if p.cfg.Demo.Enabled {
 		rt.Post("/auth/demo-login", p.demoLogin)
 	}
@@ -76,7 +87,7 @@ func (p *PasswordAuth) signup(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Email = storage.NormalizeEmail(req.Email)
 	if !p.throttle.Allow(w, r, req.Email) {
 		return
 	}
@@ -108,6 +119,13 @@ func (p *PasswordAuth) signup(w http.ResponseWriter, r *http.Request) {
 		u.VerifyToken = randomToken()
 	}
 	if err := p.users.Create(r.Context(), u); err != nil {
+		// Two sign-ups for one address at the same moment: the database let
+		// only one through.
+		if _, lookupErr := p.users.GetByEmail(r.Context(), u.Email); lookupErr == nil {
+			p.throttle.Fail(r, req.Email)
+			respondError(w, http.StatusConflict, "email_taken", "an account with this email already exists")
+			return
+		}
 		internalError(w, "create account", err)
 		return
 	}
@@ -133,17 +151,15 @@ func (p *PasswordAuth) signup(w http.ResponseWriter, r *http.Request) {
 // signupRefusal checks a sign-up request against the instance's rules and
 // returns the error to answer with; status 0 means the account may be created.
 func (p *PasswordAuth) signupRefusal(r *http.Request, req *credsReq) (status int, code, message string) {
-	if !strings.Contains(req.Email, "@") || strings.ContainsAny(req.Email, " \t\r\n") || len(req.Password) < 8 {
+	if !strings.Contains(req.Email, "@") || strings.ContainsAny(req.Email, " \t\r\n") || len(req.Password) < minPasswordLen {
 		return http.StatusBadRequest, "invalid_signup", "a valid email and an 8+ character password are required"
 	}
-	// bcrypt reads at most 72 bytes; refuse longer input instead of silently
-	// ignoring the rest.
-	if len(req.Password) > 72 {
+	if len(req.Password) > maxPasswordLen {
 		return http.StatusBadRequest, "password_too_long", "the password may be at most 72 bytes long"
 	}
 	// The demo account is seeded, never signed up, even if the seeder has not
 	// run yet, its email must not be claimable by a visitor.
-	if p.cfg.Demo.Enabled && strings.EqualFold(req.Email, p.cfg.Demo.Email) {
+	if isDemoAccount(p.cfg, req.Email) {
 		return http.StatusForbidden, "email_reserved", "this email is reserved"
 	}
 	if _, err := p.users.GetByEmail(r.Context(), req.Email); err == nil {
@@ -178,6 +194,27 @@ func newDummyHash() []byte {
 	return h
 }
 
+// Password length limits. bcrypt reads at most 72 bytes; longer input is
+// refused instead of silently ignoring the rest.
+const (
+	minPasswordLen = 8
+	maxPasswordLen = 72
+)
+
+// isDemoAccount reports whether the address is the shared, read-only demo
+// account of this instance.
+func isDemoAccount(cfg *config.Config, email string) bool {
+	return cfg.Demo.Enabled && storage.NormalizeEmail(email) == storage.NormalizeEmail(cfg.Demo.Email)
+}
+
+// isEnvAdmin reports whether the address is the instance admin whose
+// credentials come from BEEHIVE_ADMIN_EMAIL / BEEHIVE_ADMIN_PASSWORD and are
+// written back at every start.
+func isEnvAdmin(cfg *config.Config, email string) bool {
+	return cfg.Auth.PasswordEnabled && cfg.Auth.AdminEmail != "" &&
+		storage.NormalizeEmail(email) == storage.NormalizeEmail(cfg.Auth.AdminEmail)
+}
+
 // passwordHashCost is the bcrypt work factor for every stored password. A
 // variable only so the tests, which hash hundreds of passwords, can lower it.
 var passwordHashCost = bcrypt.DefaultCost
@@ -187,7 +224,7 @@ func (p *PasswordAuth) signin(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.Email = storage.NormalizeEmail(req.Email)
 	if !p.throttle.Allow(w, r, req.Email) {
 		return
 	}
@@ -225,18 +262,20 @@ func (p *PasswordAuth) signin(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "admin": u.Role == "admin", "name": u.Name, "token": tok, "user_id": u.ID, "active_org": org})
 }
 
+// verify confirms an email address. The link is opened from the mail, so
+// every outcome is a redirect to the sign-in page.
 func (p *PasswordAuth) verify(w http.ResponseWriter, r *http.Request) {
 	u, err := p.users.GetByVerifyToken(r.Context(), r.URL.Query().Get("token"))
 	if errors.Is(err, storage.ErrNotFound) {
-		respondError(w, http.StatusBadRequest, "verification_invalid", "this verification link is not valid or was already used")
+		redirectError(w, r, "verification_invalid")
 		return
 	}
 	if err != nil {
-		internalError(w, "look up verification", err)
+		redirectInternalError(w, r, "look up verification", err)
 		return
 	}
 	if err := p.users.MarkVerified(r.Context(), u.ID); err != nil {
-		internalError(w, "mark verified", err)
+		redirectInternalError(w, r, "mark verified", err)
 		return
 	}
 	http.Redirect(w, r, "/login?verified=1", http.StatusFound)
@@ -250,7 +289,7 @@ func (p *PasswordAuth) issue(w http.ResponseWriter, u *storage.User, orgID strin
 	role := u.Role
 	// Demo sessions are read-only: the "demo" role is rejected by the RPC
 	// write guard and the tenant endpoints, however the account signs in.
-	if p.cfg.Demo.Enabled && strings.EqualFold(u.Email, p.cfg.Demo.Email) {
+	if isDemoAccount(p.cfg, u.Email) {
 		role = "demo"
 	}
 	tok, err := p.sessions.Issue(Identity{UserID: u.ID, OrgID: orgID, Email: u.Email, Role: role})
@@ -274,7 +313,7 @@ func randomToken() string {
 func (p *PasswordAuth) sendVerification(email, token string) {
 	link := fmt.Sprintf("%s/auth/verify?token=%s", strings.TrimRight(p.cfg.PublicBaseURL, "/"), token)
 	body := fmt.Sprintf("Welcome to Openbeehive!\r\n\r\nConfirm your email to finish signing up:\r\n%s\r\n", link)
-	if err := sendMail(p.cfg, email, "Verify your Openbeehive email", body); err != nil {
+	if err := p.mail(email, "Verify your Openbeehive email", body); err != nil {
 		log.Printf("auth: verification email not sent: %v", err)
 	}
 }

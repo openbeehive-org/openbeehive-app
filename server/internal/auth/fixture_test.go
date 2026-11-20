@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 	sqlstore "github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/sql/sqltest"
 )
@@ -25,6 +27,12 @@ type apiFixture struct {
 	sessions *SessionManager
 	keys     *APIKeys
 	cfg      *config.Config
+
+	passwords *PasswordAuth
+	reauth    *ReauthStore
+	mu        sync.Mutex
+	outbox    []sentMail
+	seq       int64 // last change_log.seq the tests wrote
 }
 
 // loginConfig is a password-auth instance with open registration.
@@ -62,14 +70,69 @@ func newAPIFixture(t *testing.T, cfg *config.Config) *apiFixture {
 	throttle := NewThrottle(cfg.TrustProxyHeaders)
 	rt := NewRouter(cfg)
 	rt.Get("/auth/instance", InstanceHandler(cfg))
-	NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, nil).Routes(rt)
-	NewPasswordAuth(store.Users(), store.Invites(), sessions, cfg, prov, throttle).Routes(rt)
+	tenants := NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, nil)
+	tenants.Routes(rt)
+	reauth := NewReauthStore()
+	NewAccountAPI(tenants, store, throttle, reauth).Routes(rt)
+	passwords := NewPasswordAuth(store.Users(), store.Invites(), store, sessions, cfg, prov, throttle)
+	passwords.Routes(rt)
 	sessions.Routes(rt)
 	keys := NewAPIKeys(store.DB(), sessions, store.Users(), store.Members())
 	keys.Routes(rt)
 	srv := httptest.NewServer(rt)
 	t.Cleanup(srv.Close)
-	return &apiFixture{srv: srv, store: store, sessions: sessions, keys: keys, cfg: cfg}
+	f := &apiFixture{srv: srv, store: store, sessions: sessions, keys: keys, cfg: cfg, passwords: passwords, reauth: reauth}
+	if cfg.Auth.SMTP.Host == testMailHost {
+		passwords.mail = func(to, subject, body string) error {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.outbox = append(f.outbox, sentMail{to: to, subject: subject, body: body})
+			return nil
+		}
+	}
+	return f
+}
+
+// testMailHost as BEEHIVE_SMTP_HOST makes the fixture collect mail in its
+// outbox instead of sending it.
+const testMailHost = "mail.test"
+
+// mailConfig is loginConfig with a mail server whose mail the fixture keeps.
+func mailConfig() *config.Config {
+	cfg := loginConfig()
+	cfg.Auth.SMTP.Host = testMailHost
+	return cfg
+}
+
+type sentMail struct{ to, subject, body string }
+
+// mails waits for the mail that handlers send after responding and returns
+// everything sent so far.
+func (f *apiFixture) mails() []sentMail {
+	f.passwords.background.Wait()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]sentMail(nil), f.outbox...)
+}
+
+// join makes the account a member of the workspace with the given role, the
+// way accepting an invite does.
+func (f *apiFixture) join(t *testing.T, orgID string, a account, role string) {
+	t.Helper()
+	if err := f.store.Members().Add(context.Background(), &storage.Membership{OrgID: orgID, UserID: a.userID, Role: role}); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+	f.sessions.Invalidate()
+}
+
+// adminLogin signs in as the instance admin of loginConfig.
+func (f *apiFixture) adminLogin(t *testing.T) account {
+	t.Helper()
+	res := f.call(t, http.MethodPost, "/auth/signin", "", map[string]string{"email": f.cfg.Auth.AdminEmail, "password": f.cfg.Auth.AdminPassword})
+	if res.status != http.StatusOK {
+		t.Fatalf("admin sign-in: %d %s", res.status, res.raw)
+	}
+	return account{token: res.str("token"), userID: res.str("user_id"), orgID: res.str("active_org"), email: f.cfg.Auth.AdminEmail}
 }
 
 type account struct {

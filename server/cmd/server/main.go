@@ -196,15 +196,23 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 	prov := auth.NewProvisioner(store.Users(), store.Orgs(), store.Members())
 
 	// Multi-tenant endpoints (me / switch / create / invite / accept).
-	auth.NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, blobs).Routes(rt)
+	tenants := auth.NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, blobs)
+	tenants.Routes(rt)
+	// The signed-in account itself: deletion, and a new session after losing
+	// the active workspace.
+	reauth := auth.NewReauthStore()
+	auth.NewAccountAPI(tenants, store, throttle, reauth).Routes(rt)
 
 	// Email + password sign-up (verification optional). The instance admin is
 	// not created here; auth.EnsureAdmin creates it from BEEHIVE_ADMIN_EMAIL /
 	// BEEHIVE_ADMIN_PASSWORD on boot.
 	if cfg.Auth.PasswordEnabled {
-		auth.NewPasswordAuth(store.Users(), store.Invites(), sessions, cfg, prov, throttle).Routes(rt)
+		auth.NewPasswordAuth(store.Users(), store.Invites(), store, sessions, cfg, prov, throttle).Routes(rt)
 		log.Printf("auth: email/password onboarding enabled (verification=%v, open registration=%v)",
 			cfg.Auth.EmailVerification, cfg.Auth.RegistrationOpen)
+		if cfg.Auth.SMTP.Host == "" {
+			log.Printf("auth: no mail server (BEEHIVE_SMTP_HOST): forgotten passwords are reset with a link the instance admin creates in Settings")
+		}
 	}
 	if len(cfg.OIDC.Enabled) > 0 {
 		am, err := auth.NewManager(ctx, cfg)
@@ -217,7 +225,7 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 		am.Routes(rt, sessions, store.Users(), prov, cfg)
 	}
 	if cfg.Auth.WebAuthn.Enabled {
-		wa, err := auth.NewWebAuthn(cfg, store.DB(), store.Users(), prov, sessions, throttle)
+		wa, err := auth.NewWebAuthn(cfg, store.DB(), store.Users(), prov, sessions, throttle, reauth)
 		if err != nil {
 			log.Fatalf("webauthn: %v", err)
 		}

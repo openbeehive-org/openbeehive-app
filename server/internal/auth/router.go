@@ -159,6 +159,21 @@ func internalError(w http.ResponseWriter, what string, err error) {
 	respondError(w, http.StatusInternalServerError, "internal", "something went wrong on the server")
 }
 
+// redirectError answers a request the browser opened as a page (an emailed
+// link, the return from a sign-in provider): it goes on to the sign-in page,
+// which shows the translated message for the code. JSON would leave the user
+// looking at raw text.
+func redirectError(w http.ResponseWriter, r *http.Request, code string) {
+	http.Redirect(w, r, "/login?error="+url.QueryEscape(code), http.StatusFound)
+}
+
+// redirectInternalError logs the cause and sends the browser to the sign-in
+// page with the generic server-error code.
+func redirectInternalError(w http.ResponseWriter, r *http.Request, what string, err error) {
+	log.Printf("auth: %s: %v", what, err)
+	redirectError(w, r, "internal")
+}
+
 func notSignedIn(w http.ResponseWriter) {
 	respondError(w, http.StatusUnauthorized, "not_signed_in", "not signed in")
 }

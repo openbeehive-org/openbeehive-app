@@ -270,7 +270,6 @@ func TestErrorsFollowTheContractAndHideDatabaseErrors(t *testing.T) {
 	wantError(t, f.call(t, http.MethodPost, "/auth/signin", "", map[string]string{"email": "owner@test.dev", "password": "wrong"}), http.StatusUnauthorized, "invalid_credentials")
 	wantError(t, f.call(t, http.MethodPost, "/auth/signup", "", map[string]string{"email": "owner@test.dev", "password": "password123"}), http.StatusConflict, "email_taken")
 	wantError(t, f.call(t, http.MethodPost, "/auth/signup", "", map[string]string{"email": "x@test.dev", "password": "short"}), http.StatusBadRequest, "invalid_signup")
-	wantError(t, f.call(t, http.MethodGet, "/auth/verify?token=nope", "", nil), http.StatusBadRequest, "verification_invalid")
 	wantError(t, f.call(t, http.MethodPost, "/auth/api-keys/delete", owner.token, map[string]string{"id": "nope"}), http.StatusNotFound, "key_not_found")
 	wantError(t, f.call(t, http.MethodGet, "/tenants/unknown", "", nil), http.StatusNotFound, "not_found")
 

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +25,7 @@ func newWebAuthnFixture(t *testing.T) (*httptest.Server, *SessionManager, *sqlst
 	srvBase.Close() // fixture built the store; we mount our own mux
 
 	prov := NewProvisioner(store.Users(), store.Orgs(), store.Members())
-	wa, err := NewWebAuthn(cfg, store.DB(), store.Users(), prov, sessions, NewThrottle(false))
+	wa, err := NewWebAuthn(cfg, store.DB(), store.Users(), prov, sessions, NewThrottle(false), NewReauthStore())
 	if err != nil {
 		t.Fatalf("new webauthn: %v", err)
 	}
@@ -176,7 +177,7 @@ func TestPasskeyLoginBeginDoesNotAccumulateChallenges(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Auth.WebAuthn = config.WebAuthnConfig{Enabled: true, RPID: "example.org",
 		RPOrigins: []string{"https://app.example.org"}, DisplayName: "Test"}
-	wa, err := NewWebAuthn(cfg, nil, nil, nil, nil, NewThrottle(false))
+	wa, err := NewWebAuthn(cfg, nil, nil, nil, nil, NewThrottle(false), NewReauthStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,5 +205,45 @@ func TestPasskeyLoginBeginDoesNotAccumulateChallenges(t *testing.T) {
 	rec := serve(rt, http.MethodPost, "/auth/webauthn/login/begin", "")
 	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
 		t.Fatalf("passkey login after %d failures: %d", throttlePerIP, rec.Code)
+	}
+}
+
+// Confirming with a passkey is for the signed-in account only, and only for
+// accounts that have one.
+func TestPasskeyConfirmationNeedsASessionAndAPasskey(t *testing.T) {
+	srv, sessions, store := newWebAuthnFixture(t)
+	for _, path := range []string{"/auth/webauthn/reauth/begin", "/auth/webauthn/reauth/finish"} {
+		if code, _ := postJSON(t, srv.URL+path, map[string]any{}); code != http.StatusUnauthorized {
+			t.Errorf("%s without session: code=%d, want 401", path, code)
+		}
+	}
+	seedMember(t, store, "u1", "u1@example.org", "org-1", "owner")
+	tok, err := sessions.Issue(Identity{UserID: "u1", OrgID: "org-1", Email: "u1@example.org", Role: "user"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	post := func(path, token string) (int, string) {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+path, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var body struct {
+			Code string `json:"code"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		return resp.StatusCode, body.Code
+	}
+	if status, code := post("/auth/webauthn/reauth/begin", tok); status != http.StatusConflict || code != "passkey_none" {
+		t.Fatalf("begin without a passkey: %d %q", status, code)
+	}
+	if status, code := post("/auth/webauthn/reauth/finish", tok); status != http.StatusBadRequest || code != "passkey_no_ceremony" {
+		t.Fatalf("finish without a ceremony: %d %q", status, code)
+	}
+	demo, _ := sessions.Issue(Identity{UserID: "u1", OrgID: "org-1", Email: "u1@example.org", Role: "demo"})
+	if status, code := post("/auth/webauthn/reauth/begin", demo); status != http.StatusForbidden || code != "demo_read_only" {
+		t.Fatalf("the demo account cannot confirm: %d %q", status, code)
 	}
 }

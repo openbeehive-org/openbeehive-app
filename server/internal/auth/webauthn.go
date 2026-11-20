@@ -32,6 +32,7 @@ type WebAuthn struct {
 	cfg      *config.Config
 	throttle *Throttle
 	pending  *challengeStore
+	reauth   *ReauthStore
 }
 
 type waChallenge struct {
@@ -105,7 +106,7 @@ func (s *challengeStore) len() int {
 	return len(s.byID)
 }
 
-func NewWebAuthn(cfg *config.Config, db *sqlx.DB, users storage.UserRepo, prov *Provisioner, sessions *SessionManager, throttle *Throttle) (*WebAuthn, error) {
+func NewWebAuthn(cfg *config.Config, db *sqlx.DB, users storage.UserRepo, prov *Provisioner, sessions *SessionManager, throttle *Throttle, reauth *ReauthStore) (*WebAuthn, error) {
 	w, err := webauthn.New(&webauthn.Config{
 		RPDisplayName: cfg.Auth.WebAuthn.DisplayName,
 		RPID:          cfg.Auth.WebAuthn.RPID,
@@ -116,7 +117,7 @@ func NewWebAuthn(cfg *config.Config, db *sqlx.DB, users storage.UserRepo, prov *
 	}
 	return &WebAuthn{
 		wa: w, db: db, users: users, prov: prov, sessions: sessions, cfg: cfg, throttle: throttle,
-		pending: newChallengeStore(waChallengeTTL, waChallengeMax),
+		pending: newChallengeStore(waChallengeTTL, waChallengeMax), reauth: reauth,
 	}, nil
 }
 
@@ -128,6 +129,9 @@ func (a *WebAuthn) Routes(rt *Router) {
 	rt.Post("/auth/webauthn/enroll/finish", a.enrollFinish)
 	rt.Get("/auth/webauthn/credentials", a.listCredentials)
 	rt.PostJSON("/auth/webauthn/credentials/delete", a.deleteCredential)
+	// Session-gated: confirm it is still the account's owner (reauth.go).
+	rt.Post("/auth/webauthn/reauth/begin", a.reauthBegin)
+	rt.Post("/auth/webauthn/reauth/finish", a.reauthFinish)
 	// Public: usernameless login with a discoverable credential.
 	rt.Post("/auth/webauthn/login/begin", a.loginBegin)
 	rt.Post("/auth/webauthn/login/finish", a.loginFinish)
@@ -396,7 +400,7 @@ func (a *WebAuthn) loginFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	role := account.Role
-	if a.cfg.Demo.Enabled && strings.EqualFold(account.Email, a.cfg.Demo.Email) {
+	if isDemoAccount(a.cfg, account.Email) {
 		role = "demo"
 	}
 	org := a.prov.ResolveActiveOrg(r.Context(), account)

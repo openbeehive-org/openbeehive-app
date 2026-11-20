@@ -41,6 +41,10 @@ func (t *TenantAPI) Routes(rt *Router) {
 	rt.Get("/tenants/invites", t.listInvites)
 	rt.PostJSON("/tenants/invite/revoke", t.revokeInvite)
 	rt.PostJSON("/tenants/delete", t.deleteTenant)
+	rt.Get("/tenants/members", t.listMembers)
+	rt.PostJSON("/tenants/members/remove", t.removeMember)
+	rt.PostJSON("/tenants/members/role", t.setMemberRole)
+	rt.PostJSON("/tenants/leave", t.leave)
 	rt.PostJSON("/auth/accept-invite", t.accept)
 }
 
@@ -62,6 +66,10 @@ func InstanceHandler(cfg *config.Config) http.HandlerFunc {
 			"oidc_providers":     providers,
 			"webauthn":           cfg.Auth.WebAuthn.Enabled,
 			"demo":               cfg.Demo.Enabled,
+			// How a forgotten password is recovered: "email" (a link is
+			// mailed), "admin" (no mail server: the instance admin issues
+			// the link) or "off" (no password sign-in).
+			"password_reset": passwordResetMode(cfg),
 			// Pure-showcase hosts: anonymous visitors are signed into the demo
 			// automatically instead of seeing the login screen.
 			"demo_autologin": cfg.Demo.Enabled && cfg.Demo.AutoLogin,
@@ -74,6 +82,16 @@ func InstanceHandler(cfg *config.Config) http.HandlerFunc {
 			},
 		})
 	}
+}
+
+func passwordResetMode(cfg *config.Config) string {
+	switch {
+	case !cfg.Auth.PasswordEnabled:
+		return "off"
+	case cfg.Auth.SMTP.Host != "":
+		return "email"
+	}
+	return "admin"
 }
 
 func (t *TenantAPI) me(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +113,7 @@ func (t *TenantAPI) me(w http.ResponseWriter, r *http.Request) {
 		"email":          id.Email,
 		"instance_admin": id.Role == "admin",
 		"active_org":     id.OrgID,
-		"is_demo":        t.cfg.Demo.Enabled && strings.EqualFold(id.Email, t.cfg.Demo.Email),
+		"is_demo":        isDemoAccount(t.cfg, id.Email),
 		"tenants":        list,
 	})
 }
@@ -191,7 +209,7 @@ func (t *TenantAPI) invite(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusForbidden, "owner_only", "only a workspace admin can invite")
 		return
 	}
-	email := strings.TrimSpace(strings.ToLower(req.Email))
+	email := storage.NormalizeEmail(req.Email)
 	if !strings.Contains(email, "@") || strings.ContainsAny(email, " \t\r\n") {
 		respondError(w, http.StatusBadRequest, "invalid_email", "a valid email is required")
 		return
@@ -338,29 +356,52 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 		demoReadOnly(w)
 		return
 	}
-	// Collect blob keys BEFORE the rows go away; purge after the delete
-	// commits so a failed delete never loses photos.
-	photoKeys, err := t.orgs.PhotoKeysByOrg(r.Context(), orgID)
-	if err != nil {
-		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err)
-	}
-	if err := t.orgs.Delete(r.Context(), orgID); err != nil {
+	if err := t.removeWorkspace(r.Context(), orgID, id.UserID); err != nil {
 		internalError(w, "delete workspace", err)
 		return
 	}
+	t.moveSession(w, r, id)
+}
+
+// removeWorkspace deletes a workspace with everything in it and purges its
+// photos. Used when an owner deletes it and when an account that was its
+// only member is deleted.
+func (t *TenantAPI) removeWorkspace(ctx context.Context, orgID, byUser string) error {
+	// Collect blob keys BEFORE the rows go away; purge after the delete
+	// commits so a failed delete never loses photos.
+	photoKeys, err := t.orgs.PhotoKeysByOrg(ctx, orgID)
+	if err != nil {
+		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err)
+	}
+	if err := t.orgs.Delete(ctx, orgID); err != nil {
+		return err
+	}
 	t.sessions.Invalidate() // members of the deleted workspace lose access now
-	log.Printf("tenant: %s deleted by %s", orgID, id.UserID)
+	log.Printf("tenant: %s deleted by %s", orgID, byUser)
 	if t.blobs != nil && len(photoKeys) > 0 {
 		go t.purgeBlobs(orgID, photoKeys) //nolint:gosec // G118: the purge outlives the request on purpose
 	}
-	next := t.prov.ActiveOrg(r.Context(), id.UserID)
-	if next == "" {
-		// The caller deleted their last tenant; recreate a personal one so
-		// the account never ends up orphaned.
-		if u, err := t.users.GetByID(r.Context(), id.UserID); err == nil {
-			next = t.prov.ResolveActiveOrg(r.Context(), u)
-		}
+	return nil
+}
+
+// fallbackOrg returns a workspace the account can work in: one it belongs
+// to, or a fresh personal one when none is left, so an account never ends up
+// without a workspace.
+func (t *TenantAPI) fallbackOrg(ctx context.Context, userID string) string {
+	if next := t.prov.ActiveOrg(ctx, userID); next != "" {
+		return next
 	}
+	u, err := t.users.GetByID(ctx, userID)
+	if err != nil {
+		return ""
+	}
+	return t.prov.ResolveActiveOrg(ctx, u)
+}
+
+// moveSession answers a request that took the caller's active workspace
+// away (deleted, left) with a session for another one of theirs.
+func (t *TenantAPI) moveSession(w http.ResponseWriter, r *http.Request, id Identity) {
+	next := t.fallbackOrg(r.Context(), id.UserID)
 	tok, ok := t.reissue(w, id, next)
 	if !ok {
 		return

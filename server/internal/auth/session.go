@@ -121,35 +121,48 @@ var (
 
 // Verify implements SessionVerifier.
 func (s *SessionManager) Verify(ctx context.Context, token string) (Identity, error) {
+	id, member, err := s.verifyAccount(ctx, token)
+	if err != nil {
+		return Identity{}, err
+	}
+	if !member {
+		return Identity{}, errNotMember
+	}
+	return id, nil
+}
+
+// verifyAccount checks everything about a session except membership: the
+// signature, the expiry and the account's revocation mark. member reports
+// whether the account still belongs to the workspace the token is for; a
+// session that fails only on that can be moved to another workspace (see
+// AccountAPI.recoverSession).
+func (s *SessionManager) verifyAccount(ctx context.Context, token string) (id Identity, member bool, err error) {
 	body, sig, ok := strings.Cut(token, ".")
 	if !ok {
-		return Identity{}, errors.New("malformed session token")
+		return Identity{}, false, errors.New("malformed session token")
 	}
 	if !hmac.Equal([]byte(sig), []byte(s.sign(body))) {
-		return Identity{}, errors.New("invalid session signature")
+		return Identity{}, false, errors.New("invalid session signature")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(body)
 	if err != nil {
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 	var c sessionClaims
 	if err := json.Unmarshal(raw, &c); err != nil {
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 	if time.Now().Unix() > c.Exp {
-		return Identity{}, errors.New("session expired")
+		return Identity{}, false, errors.New("session expired")
 	}
 	st, err := s.lookupState(ctx, c.UserID, c.OrgID)
 	if err != nil {
-		return Identity{}, err
+		return Identity{}, false, err
 	}
 	if c.IssuedAt < st.validAfter {
-		return Identity{}, errSessionRevoked
+		return Identity{}, false, errSessionRevoked
 	}
-	if !st.member {
-		return Identity{}, errNotMember
-	}
-	return Identity{UserID: c.UserID, OrgID: c.OrgID, Email: c.Email, Role: c.Role}, nil
+	return Identity{UserID: c.UserID, OrgID: c.OrgID, Email: c.Email, Role: c.Role}, st.member, nil
 }
 
 // lookupState returns the account's revocation mark and its membership in the
@@ -205,14 +218,30 @@ func (s *SessionManager) Invalidate() {
 // step to take after a password change) and returns a fresh token for the
 // caller, the only session that survives.
 func (s *SessionManager) RevokeAll(ctx context.Context, id Identity) (string, error) {
+	mark, err := s.revoke(ctx, id.UserID)
+	if err != nil {
+		return "", err
+	}
+	return s.issueAt(id, mark)
+}
+
+// RevokeEvery ends every session of the account without exception (after a
+// password reset: whoever asked for it holds no session worth keeping).
+func (s *SessionManager) RevokeEvery(ctx context.Context, userID string) error {
+	_, err := s.revoke(ctx, userID)
+	return err
+}
+
+// revoke moves the account's revocation mark to now and returns it.
+func (s *SessionManager) revoke(ctx context.Context, userID string) (time.Time, error) {
 	// One millisecond ahead: a token issued in this very millisecond, before
 	// the revocation, must not survive it.
 	mark := time.Now().Add(time.Millisecond)
-	if err := s.users.SetSessionsValidAfter(ctx, id.UserID, mark.UnixMilli()); err != nil {
-		return "", err
+	if err := s.users.SetSessionsValidAfter(ctx, userID, mark.UnixMilli()); err != nil {
+		return time.Time{}, err
 	}
 	s.Invalidate()
-	return s.issueAt(id, mark)
+	return mark, nil
 }
 
 // Authenticate reads and verifies the session of a plain HTTP request
@@ -220,26 +249,45 @@ func (s *SessionManager) RevokeAll(ctx context.Context, id Identity) (string, er
 // valid session it writes the error response and returns false. The Connect
 // interceptor does the same for the RPC services.
 func (s *SessionManager) Authenticate(w http.ResponseWriter, r *http.Request) (Identity, bool) {
-	token := bearer(r.Header.Get("Authorization"))
-	if token == "" {
-		if c, err := r.Cookie(SessionCookie); err == nil {
-			token = c.Value
-		}
-	}
-	if token == "" {
+	id, member, ok := s.authenticateAccount(w, r)
+	if ok && !member {
 		notSignedIn(w)
 		return Identity{}, false
 	}
-	id, err := s.Verify(r.Context(), token)
+	return id, ok
+}
+
+// authenticateAccount is Authenticate without the membership requirement:
+// member reports whether the account still belongs to the session's
+// workspace.
+func (s *SessionManager) authenticateAccount(w http.ResponseWriter, r *http.Request) (id Identity, member, ok bool) {
+	token := requestToken(r)
+	if token == "" {
+		notSignedIn(w)
+		return Identity{}, false, false
+	}
+	id, member, err := s.verifyAccount(r.Context(), token)
 	switch {
 	case errors.Is(err, errSessionUnverifiable):
 		respondError(w, http.StatusServiceUnavailable, "unavailable", err.Error())
-		return Identity{}, false
+		return Identity{}, false, false
 	case err != nil:
 		notSignedIn(w)
-		return Identity{}, false
+		return Identity{}, false, false
 	}
-	return id, true
+	return id, member, true
+}
+
+// requestToken returns the session token of a plain HTTP request: the bearer
+// header, else the session cookie.
+func requestToken(r *http.Request) string {
+	if token := bearer(r.Header.Get("Authorization")); token != "" {
+		return token
+	}
+	if c, err := r.Cookie(SessionCookie); err == nil {
+		return c.Value
+	}
+	return ""
 }
 
 // SetCookie writes the session as a secure, http-only cookie.
@@ -259,8 +307,12 @@ func (s *SessionManager) Routes(rt *Router) {
 // logout clears the session cookie. The token itself stays valid until it
 // expires or the account's sessions are revoked; clients discard it.
 func (s *SessionManager) logout(w http.ResponseWriter, _ *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func clearSessionCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 }
 
 // logoutAll ends every other session of the caller's account and hands the

@@ -41,7 +41,7 @@ func newAuthFixture(t *testing.T, cfg *config.Config) (*httptest.Server, *sqlsto
 	}
 	prov := NewProvisioner(store.Users(), store.Orgs(), store.Members())
 	rt := NewRouter(cfg)
-	NewPasswordAuth(store.Users(), store.Invites(), sessions, cfg, prov, NewThrottle(false)).Routes(rt)
+	NewPasswordAuth(store.Users(), store.Invites(), store, sessions, cfg, prov, NewThrottle(false)).Routes(rt)
 	srv := httptest.NewServer(rt)
 	t.Cleanup(srv.Close)
 	return srv, store, sessions

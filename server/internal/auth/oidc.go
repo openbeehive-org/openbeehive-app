@@ -110,7 +110,7 @@ func (m *Manager) login(w http.ResponseWriter, r *http.Request) {
 	state := randToken()
 	url, err := m.AuthCodeURL(provider, state)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "unknown_provider", "unknown sign-in provider")
+		redirectError(w, r, "unknown_provider")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -121,14 +121,15 @@ func (m *Manager) login(w http.ResponseWriter, r *http.Request) {
 }
 
 // callback completes the flow, provisions/links an in-app user, issues an
-// app session and redirects home.
+// app session and redirects home. The provider sends the browser here, so a
+// failure is a redirect to the sign-in page with an error code.
 func (m *Manager) callback(sessions *SessionManager, users storage.UserRepo, prov *Provisioner, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		code, state := q.Get("code"), q.Get("state")
 		ck, err := r.Cookie(oauthStateCookie)
 		if err != nil {
-			respondError(w, http.StatusBadRequest, "oidc_state_missing", "the sign-in attempt expired; start again from the sign-in page")
+			redirectError(w, r, "oidc_state_missing")
 			return
 		}
 		provider, wantState, _ := strings.Cut(ck.Value, ":")
@@ -136,38 +137,32 @@ func (m *Manager) callback(sessions *SessionManager, users storage.UserRepo, pro
 			provider = p
 		}
 		if state == "" || state != wantState {
-			respondError(w, http.StatusBadRequest, "oidc_state_invalid", "the sign-in attempt is not valid; start again from the sign-in page")
+			redirectError(w, r, "oidc_state_invalid")
 			return
 		}
 		claims, err := m.Exchange(r.Context(), provider, code)
 		if err != nil {
 			log.Printf("oidc: %s: code exchange failed: %v", provider, err) //nolint:gosec // G706: Exchange only succeeds or fails for a configured provider name
-			respondError(w, http.StatusUnauthorized, "oidc_failed", "the sign-in provider did not confirm your identity; try again")
+			redirectError(w, r, "oidc_failed")
 			return
 		}
 		u, err := provisionOIDCUser(r.Context(), users, prov, cfg, provider, claims)
-		switch {
-		case errors.Is(err, errInviteOnly):
-			respondError(w, http.StatusForbidden, "invite_only", err.Error())
-			return
-		case errors.Is(err, errLinkRefused):
-			respondError(w, http.StatusConflict, "account_exists", err.Error())
-			return
-		case errors.Is(err, errNoEmail):
-			respondError(w, http.StatusBadRequest, "oidc_no_email", err.Error())
-			return
-		case err != nil:
-			internalError(w, "oidc provisioning", err)
+		if err != nil {
+			if code := oidcErrorCode(err); code != "" {
+				redirectError(w, r, code)
+			} else {
+				redirectInternalError(w, r, "oidc provisioning", err)
+			}
 			return
 		}
 		org := prov.ResolveActiveOrg(r.Context(), u)
 		role := u.Role
-		if cfg.Demo.Enabled && strings.EqualFold(u.Email, cfg.Demo.Email) {
+		if isDemoAccount(cfg, u.Email) {
 			role = "demo" // demo sessions are read-only
 		}
 		tok, err := sessions.Issue(Identity{UserID: u.ID, OrgID: org, Email: u.Email, Role: role})
 		if err != nil {
-			internalError(w, "issue session", err)
+			redirectInternalError(w, r, "issue session", err)
 			return
 		}
 		sessions.SetCookie(w, tok)
@@ -186,6 +181,20 @@ var (
 	errNoEmail = errors.New("the sign-in provider did not share an email address; allow the email scope and try again")
 )
 
+// oidcErrorCode maps a refused provisioning to the code the sign-in page
+// translates; "" for anything unexpected.
+func oidcErrorCode(err error) string {
+	switch {
+	case errors.Is(err, errInviteOnly):
+		return "invite_only"
+	case errors.Is(err, errLinkRefused):
+		return "account_exists"
+	case errors.Is(err, errNoEmail):
+		return "oidc_no_email"
+	}
+	return ""
+}
+
 // provisionOIDCUser finds the in-app account for an OIDC login: by provider
 // subject, then by email address, otherwise it registers a new account.
 //
@@ -202,7 +211,7 @@ func provisionOIDCUser(ctx context.Context, users storage.UserRepo, prov *Provis
 	if u, err := users.GetBySubject(ctx, subject); err == nil {
 		return u, nil
 	}
-	email := strings.ToLower(strings.TrimSpace(c.Email))
+	email := storage.NormalizeEmail(c.Email)
 	if email == "" {
 		return nil, errNoEmail
 	}
