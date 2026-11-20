@@ -60,14 +60,11 @@ func (s *Store) DeleteAccount(ctx context.Context, userID string) error {
 func personalScope(userID string) string { return "user:" + userID }
 
 // personalTasksOf returns the condition that selects the personal tasks of
-// one account in a WHERE clause on task, with its argument. A personal task
-// has no owner column: it is the task without an apiary whose changes were
-// logged in the account's personal scope (the rule of visibleTasks in the
-// service package). This is the one place the storage layer spells that
-// rule out.
+// one account in a WHERE clause on task, with its argument: the tasks whose
+// owner_id names the account (the rule of visibleTasks in the service
+// package).
 func personalTasksOf(userID string) (cond string, arg any) {
-	return `COALESCE(apiary_id, '') = '' AND id IN
-		(SELECT entity_id FROM change_log WHERE scope_id = ? AND entity = 'task')`, personalScope(userID)
+	return `owner_id = ?`, userID
 }
 
 // deletePersonalData removes what only one account can see: its personal

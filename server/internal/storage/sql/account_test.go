@@ -341,8 +341,14 @@ func TestDeletePersonalData(t *testing.T) {
 			if apiary != "" {
 				apiaryID = apiary
 			}
-			if _, err := s.db.Exec(s.db.Rebind(`INSERT INTO task (id, organization_id, title, apiary_id, created_at) VALUES (?, ?, ?, ?, ?)`),
-				id, org, id, apiaryID, now); err != nil {
+			// A personal task names its owner; its changes are logged in
+			// that account's personal scope.
+			owner := strings.TrimPrefix(scope, "user:")
+			if owner == scope {
+				owner = ""
+			}
+			if _, err := s.db.Exec(s.db.Rebind(`INSERT INTO task (id, organization_id, title, apiary_id, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+				id, org, id, apiaryID, owner, now); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := s.db.Exec(s.db.Rebind(`INSERT INTO change_log (id, seq, scope_id, entity, entity_id, op, payload, hlc, author_id, org_id) VALUES (?, ?, ?, 'task', ?, 1, '{}', 'h', 'u1', ?)`),

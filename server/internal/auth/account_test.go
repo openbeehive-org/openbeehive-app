@@ -43,8 +43,8 @@ func (f *apiFixture) writeRecords(t *testing.T, orgID, userID, prefix string) {
 	f.exec(t, `INSERT INTO event (id, organization_id, scope_id, type, date, title, author_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		prefix+"-ev", orgID, "ap-1", 1, now, "Visit", userID)
 	logChange(prefix+"-cl-ev", "ap-1", "event", prefix+"-ev")
-	f.exec(t, `INSERT INTO task (id, organization_id, title, created_at) VALUES (?, ?, ?, ?)`,
-		prefix+"-task", orgID, "Order jars", now)
+	f.exec(t, `INSERT INTO task (id, organization_id, title, owner_id, created_at) VALUES (?, ?, ?, ?, ?)`,
+		prefix+"-task", orgID, "Order jars", userID, now)
 	logChange(prefix+"-cl-task", personal, "task", prefix+"-task")
 	f.exec(t, `INSERT INTO event (id, organization_id, scope_id, type, date, title, author_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		prefix+"-ev-own", orgID, personal, 2, now, "Task done", userID)
