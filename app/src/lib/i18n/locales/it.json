@@ -68,13 +68,25 @@
   "settings": {
     "title": "Impostazioni",
     "language": "Lingua",
-    "language_help": "Scegli la lingua dell'app. La tua scelta viene salvata su questo dispositivo.",
+    "language_help": "Scegli la lingua dell'app. La tua scelta viene salvata con il tuo account e vale su tutti i tuoi dispositivi.",
     "account": "Account",
     "user": "Accesso effettuato come",
     "logout": "Esci",
     "copy": "Copia",
     "copied": "Copiato",
     "import_format": "Formato del file"
+  },
+  "units": {
+    "title": "Unità",
+    "help": "Scegli come vengono mostrati e inseriti pesi e temperature. La tua scelta viene salvata con il tuo account e vale su tutti i tuoi dispositivi.",
+    "weight": "Peso",
+    "temperature": "Temperatura",
+    "kg": "chilogrammi",
+    "lb": "libbre",
+    "celsius": "Celsius",
+    "fahrenheit": "Fahrenheit",
+    "metric_note": "I dati vengono sempre salvati in chilogrammi e gradi Celsius, e le esportazioni restano metriche. Le unità cambiano solo ciò che vedi e inserisci.",
+    "invalid": "Non è un numero valido"
   },
   "account": {
     "workspace_lost": "Non fai più parte dello spazio in cui stavi lavorando. Ora ti trovi in un altro dei tuoi spazi.",

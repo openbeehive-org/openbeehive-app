@@ -68,13 +68,25 @@
   "settings": {
     "title": "Paramètres",
     "language": "Langue",
-    "language_help": "Choisissez la langue de l'application. Votre choix est enregistré sur cet appareil.",
+    "language_help": "Choisissez la langue de l'application. Votre choix est enregistré avec votre compte et s'applique sur tous vos appareils.",
     "account": "Compte",
     "user": "Connecté en tant que",
     "logout": "Se déconnecter",
     "copy": "Copier",
     "copied": "Copié",
     "import_format": "Format du fichier"
+  },
+  "units": {
+    "title": "Unités",
+    "help": "Choisissez comment les poids et les températures sont affichés et saisis. Votre choix est enregistré avec votre compte et s'applique sur tous vos appareils.",
+    "weight": "Poids",
+    "temperature": "Température",
+    "kg": "kilogrammes",
+    "lb": "livres",
+    "celsius": "Celsius",
+    "fahrenheit": "Fahrenheit",
+    "metric_note": "Les données sont toujours enregistrées en kilogrammes et en degrés Celsius, et les exports restent métriques. Les unités ne changent que ce que vous voyez et saisissez.",
+    "invalid": "Ce n'est pas un nombre valide"
   },
   "account": {
     "workspace_lost": "Vous n’êtes plus membre de l’espace dans lequel vous travailliez. Vous êtes maintenant dans un autre de vos espaces.",

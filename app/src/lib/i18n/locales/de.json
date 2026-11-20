@@ -68,13 +68,25 @@
   "settings": {
     "title": "Einstellungen",
     "language": "Sprache",
-    "language_help": "Wähle die Sprache der App. Deine Auswahl wird auf diesem Gerät gespeichert.",
+    "language_help": "Wähle die Sprache der App. Deine Auswahl wird mit deinem Konto gespeichert und gilt auf allen deinen Geräten.",
     "account": "Konto",
     "user": "Angemeldet als",
     "logout": "Abmelden",
     "copy": "Kopieren",
     "copied": "Kopiert",
     "import_format": "Dateiformat"
+  },
+  "units": {
+    "title": "Einheiten",
+    "help": "Wähle, wie Gewichte und Temperaturen angezeigt und eingegeben werden. Deine Auswahl wird mit deinem Konto gespeichert und gilt auf allen deinen Geräten.",
+    "weight": "Gewicht",
+    "temperature": "Temperatur",
+    "kg": "Kilogramm",
+    "lb": "angloamerikanisches Pfund",
+    "celsius": "Celsius",
+    "fahrenheit": "Fahrenheit",
+    "metric_note": "Einträge werden immer in Kilogramm und Grad Celsius gespeichert, und Exporte bleiben metrisch. Die Einheiten ändern nur, was du siehst und eingibst.",
+    "invalid": "Keine gültige Zahl"
   },
   "account": {
     "workspace_lost": "Du bist nicht mehr Mitglied des Arbeitsbereichs, in dem du gearbeitet hast. Du bist jetzt in einem anderen deiner Arbeitsbereiche.",

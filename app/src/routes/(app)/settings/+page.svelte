@@ -5,6 +5,7 @@
   import ThemeSwitch from '#lib/components/ThemeSwitch.svelte';
   import SyncProblems from '#lib/components/sync/SyncProblems.svelte';
   import LanguageSection from '#lib/components/settings/LanguageSection.svelte';
+  import UnitsSection from '#lib/components/settings/UnitsSection.svelte';
   import WorkspaceSection from '#lib/components/settings/WorkspaceSection.svelte';
   import DataSection from '#lib/components/settings/DataSection.svelte';
   import AccountSection from '#lib/components/settings/AccountSection.svelte';
@@ -60,6 +61,8 @@
     <p class="st-help">{$_('theme.help')}</p>
     <ThemeSwitch />
   </section>
+
+  <UnitsSection />
 
   {#if workspaces.length}
     <WorkspaceSection {workspaces} {activeOrg} readOnly={isDemo} />
