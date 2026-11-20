@@ -1,6 +1,7 @@
-// Internationalization. Language is taken from localStorage or the browser's
-// Accept-Language. Add more languages simply by adding a locale file and
-// registering it below.
+// Internationalization. The language is the one this device last applied
+// (kept in localStorage; it follows the account's settings, see
+// lib/local/userSettings.ts) or else the browser's. Add more languages simply
+// by adding a locale file and registering it below.
 import { register, init, getLocaleFromNavigator, locale } from 'svelte-i18n';
 import { browser } from '$app/env';
 
@@ -34,7 +35,16 @@ export function setupI18n() {
   init({ fallbackLocale: FALLBACK, initialLocale: initial });
 }
 
-export function changeLanguage(lang: Lang) {
+export const isLang = (v: unknown): v is Lang => SUPPORTED.includes(v as Lang);
+
+/** Switches the app to `lang` and remembers it on this device. */
+export function applyLanguage(lang: Lang) {
   locale.set(lang);
-  if (browser) localStorage.setItem('lang', lang);
+  if (browser) {
+    try {
+      localStorage.setItem('lang', lang);
+    } catch {
+      // storage blocked: the language applies until the page is closed
+    }
+  }
 }

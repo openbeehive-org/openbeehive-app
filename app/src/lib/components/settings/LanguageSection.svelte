@@ -1,7 +1,8 @@
 <script lang="ts">
   import { _, locale } from 'svelte-i18n';
   import { Check } from '@lucide/svelte';
-  import { changeLanguage, SUPPORTED, LANG_LABELS } from '#lib/i18n/index.js';
+  import { SUPPORTED, LANG_LABELS } from '#lib/i18n/index.js';
+  import { choose } from '#lib/local/userSettings.js';
   import './settings.css';
 </script>
 
@@ -17,7 +18,7 @@
         class:on
         aria-pressed={on}
         lang={l}
-        onclick={() => changeLanguage(l)}
+        onclick={() => void choose('language', l)}
       >
         <span class="code">{l.toUpperCase()}</span>
         <span class="name">{LANG_LABELS[l]}</span>

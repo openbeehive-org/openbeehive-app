@@ -587,6 +587,8 @@ async function requeueLocal(db: LocalDB, staleCursor: string) {
   // newer one and would refuse the scope until that apiary arrives.
   const scopeOf = (entity: string, row: Record<string, unknown>, stamp: string) => {
     if (entity === 'apiary') return text(row.id);
+    // Only the signed-in account's own settings row can be sent.
+    if (entity === 'user_settings') return text(row.id) === userId() ? `user:${userId()}` : '';
     if (entity === 'task' && !text(row.apiary_id)) return `user:${userId()}`;
     const scope =
       text(row.scope_id) || text(row.apiary_id) || hiveApiary.get(text(row.hive_id)) || oldest;

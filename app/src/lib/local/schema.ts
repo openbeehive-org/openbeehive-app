@@ -118,6 +118,12 @@ export async function migrateLocal(db: LocalDB) {
     `CREATE INDEX IF NOT EXISTS idx_inspection_last ON inspection (hive_id, deleted, date, source)`
   );
 
+  // The account's settings (units, language): one row, id = the account's id.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      id TEXT PRIMARY KEY, weight_unit TEXT, temp_unit TEXT, language TEXT,
+      field_hlc TEXT DEFAULT '{}', deleted INTEGER DEFAULT 0)`);
+
   // Changes the server refused for good (wrong workspace, invalid value, ...).
   // They leave the outbox so they stop blocking it, but stay on the device
   // until the user retries or discards them (Settings: sync problems).

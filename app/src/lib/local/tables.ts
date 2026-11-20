@@ -14,7 +14,8 @@ export const SYNCED_TABLES = [
   'harvest',
   'treatment',
   'event',
-  'photo'
+  'photo',
+  'user_settings'
 ] as const;
 
 // Columns merged as OR-Sets (add-wins) instead of per-field last-writer-wins.

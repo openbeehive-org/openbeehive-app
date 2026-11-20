@@ -4,7 +4,8 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { startSync, syncStatus } from '#lib/local/sync.js';
-  import { readOnlyRefusals } from '#lib/local/live.js';
+  import { dataVersion, initialSyncPending, readOnlyRefusals } from '#lib/local/live.js';
+  import { reconcile } from '#lib/local/userSettings.js';
   import { recoverSession, takeNotice, takeResume } from '#lib/account.js';
   import { startPhotoTransfers } from '#lib/photos/index.js';
   import NavIcon from '#lib/components/NavIcon.svelte';
@@ -26,6 +27,7 @@
   }
 
   let online = $state(true);
+  let started = $state(false);
   let email = $state('local@openbeehive');
   let isDemo = $state(false);
   let { children } = $props();
@@ -127,6 +129,7 @@
 
       startSync(); // start background sync once a session (or single-user identity) is established
       startPhotoTransfers(); // and the uploads of photos taken while offline
+      started = true;
     })();
 
     return () => {
@@ -134,6 +137,12 @@
       removeEventListener('offline', off);
       removeEventListener('unhandledrejection', onRejection);
     };
+  });
+
+  // Units and language follow the account's settings record as it arrives.
+  $effect(() => {
+    void [$dataVersion, $initialSyncPending];
+    if (started) reconcile().catch((e) => console.warn('applying account settings:', e));
   });
 
   // The server stopped accepting the session while the app was open. If only
