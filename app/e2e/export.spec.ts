@@ -102,3 +102,34 @@ test('the server copy downloads from Settings and with an API key', async ({
   expect(zip.headers.get('content-type')).toBe('application/zip');
   expect((await get(await key('read'))).status).toBe(403);
 });
+
+test('the report opens in a print window, translated and in the chosen units', async ({
+  api,
+  device
+}) => {
+  const owner = await api.signUp();
+  const as = api.as(owner);
+  const apiary = await as.createApiary('Orchard Meadow');
+  const hive = await as.createHive(apiary, 'Hive 7');
+  await as.createInspection(hive, { note: 'calm and busy', weightKg: 40 });
+
+  // en-US: pounds until the account chooses otherwise.
+  const { context, page, problems } = await device({ session: owner });
+  const printed: string[] = [];
+  await context.exposeBinding('__e2ePrinted', (source) => printed.push(source.page.url()));
+  await context.addInitScript(() => {
+    window.print = () => (window as unknown as { __e2ePrinted: () => void }).__e2ePrinted();
+  });
+  await page.goto('/settings');
+  await expectSynced(page);
+  const opened = context.waitForEvent('page');
+  await page.getByRole('button', { name: 'Report (PDF)' }).click();
+  const report = await opened;
+  await expect(report.getByRole('heading', { name: 'Apiary report' })).toBeVisible();
+  await expect(report.getByRole('heading', { name: 'Orchard Meadow' })).toBeVisible();
+  const row = report.getByRole('row', { name: /Hive 7/ });
+  await expect(row).toContainText('88.18 lb');
+  await expect(row).toContainText('calm and busy');
+  await expect.poll(() => printed.length).toBe(1);
+  expect(problems.csp).toEqual([]);
+});

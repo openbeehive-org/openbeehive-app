@@ -2,6 +2,7 @@
 // to be able to show): one table per hive, printed from its own window.
 import { escapeHtml } from '#lib/html.js';
 import { formatDate, toDateInput, todayLocal } from '#lib/dates.js';
+import { openPrintWindow, SHEET_CSS } from '#lib/print.js';
 import type { TreatmentRow } from '../../../routes/(app)/rows.js';
 
 /** True while the withdrawal period is still running (its last day included). */
@@ -64,36 +65,15 @@ export function treatmentRegisterHtml(hives: RegisterHive[], t: Translate, local
   );
 }
 
-// No colour values: the sheet prints in the reader's default ink.
-const PRINT_CSS = `
-  body { font-family: system-ui, sans-serif; margin: 24px; font-size: 12px; }
-  h1 { font-size: 20px; margin: 0 0 2px; }
-  h2 { font-size: 15px; margin: 22px 0 6px; }
-  .meta, .none { opacity: 0.7; margin: 0; }
-  table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid currentColor; padding: 5px 7px; text-align: left; vertical-align: top; }
-  th { font-weight: 700; }
-  td:first-child { white-space: nowrap; }
-  section { break-inside: avoid; }
-`;
-
 /**
  * Opens the register for one or several hives in a print window.
  * Returns false when the browser blocked the window.
  */
 export function printTreatmentRegister(hives: RegisterHive[], t: Translate, locale: string) {
-  const w = window.open('', '_blank');
-  if (!w) return false;
-  const doc = w.document;
-  doc.title = t('treat.register');
-  doc.documentElement.lang = locale;
-  doc.body.innerHTML = treatmentRegisterHtml(hives, t, locale);
-  // A constructed stylesheet is not inline markup, so it also applies under
-  // a Content-Security-Policy that forbids <style> elements.
-  const sheet = new (w as unknown as typeof globalThis).CSSStyleSheet();
-  sheet.replaceSync(PRINT_CSS);
-  doc.adoptedStyleSheets = [sheet];
-  w.focus();
-  setTimeout(() => w.print(), 150);
-  return true;
+  return openPrintWindow({
+    title: t('treat.register'),
+    lang: locale,
+    body: treatmentRegisterHtml(hives, t, locale),
+    css: SHEET_CSS
+  });
 }

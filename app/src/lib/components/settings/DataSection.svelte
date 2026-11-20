@@ -7,9 +7,11 @@
     exportXLSX,
     exportCSVZip,
     exportBeeXML,
-    printReport,
+    gatherAll,
     downloadBlob
   } from '#lib/data/portability.js';
+  import { printReport } from '#lib/data/report.js';
+  import { units } from '#lib/prefs.js';
   import {
     buildExport,
     exportReadiness,
@@ -98,6 +100,12 @@
           : $_('data.exported'),
         built.missingPhotos.length > 0
       );
+    });
+
+  const report = () =>
+    localExport(async () => {
+      const data = await gatherAll();
+      if (!printReport(data, $_, $locale ?? 'en', $units)) say($_('treat.print_blocked'), true);
     });
 
   const exportServer = () =>
@@ -236,11 +244,7 @@
       disabled={busy || !ready}
       onclick={() => localExport(exportBeeXML)}>⤓ {$_('data.beexml')}</button
     >
-    <button
-      type="button"
-      class="st-btn"
-      disabled={busy || !ready}
-      onclick={() => localExport(printReport)}
+    <button type="button" class="st-btn" disabled={busy || !ready} onclick={report}
       ><Printer size={16} aria-hidden="true" /> {$_('data.pdf')}</button
     >
   </div>
