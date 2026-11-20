@@ -143,3 +143,21 @@ func TestCORSOnlyForConfiguredOrigins(t *testing.T) {
 		t.Fatalf("wildcard origin: %v", rec.Header())
 	}
 }
+
+// The boot log states the CORS mode, and any-origin always comes with a
+// warning.
+func TestCORSModeIsLogged(t *testing.T) {
+	cfg := &config.Config{}
+	if got := corsMode(cfg); !strings.Contains(got, "same-origin") {
+		t.Errorf("no origins: %q", got)
+	}
+	cfg.CORS.AllowedOrigins = []string{"https://a.example", "https://b.example"}
+	cfg.CORS.AllowCredentials = true
+	if got := corsMode(cfg); !strings.Contains(got, "https://a.example, https://b.example") || strings.Contains(got, "WARNING") {
+		t.Errorf("listed origins: %q", got)
+	}
+	cfg.CORS.AllowedOrigins = []string{"*"}
+	if got := corsMode(cfg); !strings.HasPrefix(got, "WARNING") || !strings.Contains(got, "BEEHIVE_CORS_ALLOWED_ORIGINS") {
+		t.Errorf("any origin: %q", got)
+	}
+}

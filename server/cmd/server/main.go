@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -42,6 +44,7 @@ func main() {
 	}
 	log.Printf("Openbeehive · profile=%s · DB=%s · Blob=%s", cfg.Profile, cfg.DB.Driver, cfg.Blob.Backend)
 	logAuthMode(cfg)
+	log.Print(corsMode(cfg))
 	for _, w := range cfg.Warnings {
 		log.Printf("WARNING: %s", w)
 	}
@@ -105,6 +108,19 @@ func logAuthMode(cfg *config.Config) {
 		methods = append(methods, "OIDC:"+p)
 	}
 	log.Printf("auth: LOGIN REQUIRED (%s)", strings.Join(methods, ", "))
+}
+
+// corsMode describes at boot which other websites may call the API from a
+// browser; any origin gets a warning.
+func corsMode(cfg *config.Config) string {
+	origins := cfg.CORS.AllowedOrigins
+	switch {
+	case len(origins) == 0:
+		return "cors: same-origin only (other origins can be listed in BEEHIVE_CORS_ALLOWED_ORIGINS)"
+	case slices.Contains(origins, "*"):
+		return "WARNING: cors: BEEHIVE_CORS_ALLOWED_ORIGINS=* lets any website call the API from a browser (without credentials); list the origins instead"
+	}
+	return fmt.Sprintf("cors: allowed origins %s (credentials %v)", strings.Join(origins, ", "), cfg.CORS.AllowCredentials)
 }
 
 // harden wraps the routes in the cross-cutting HTTP rules: security headers

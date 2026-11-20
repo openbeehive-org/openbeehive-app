@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
@@ -200,12 +201,16 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 
 // ClientIP returns the address throttling counts against. Behind a reverse
 // proxy (trustProxy) that is the last X-Forwarded-For entry, the one the
-// proxy itself appended; a client cannot forge it. IPv6 addresses are reduced
+// proxy itself appended; a client cannot forge it. With a CDN in front of
+// that proxy, the last entry is the CDN's address. IPv6 addresses are reduced
 // to their /64, the block one subscriber typically controls.
 func ClientIP(r *http.Request, trustProxy bool) string {
 	ip := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		ip = host
+	}
+	if !trustProxy && r.Header.Get("X-Forwarded-For") != "" {
+		untrustedProxyOnce.Do(func() { log.Print(untrustedProxyWarning) })
 	}
 	if trustProxy {
 		parts := strings.Split(strings.Join(r.Header.Values("X-Forwarded-For"), ","), ",")
@@ -225,3 +230,10 @@ func ClientIP(r *http.Request, trustProxy bool) string {
 	}
 	return addr.String()
 }
+
+// untrustedProxyOnce logs untrustedProxyWarning once per process.
+var untrustedProxyOnce sync.Once
+
+const untrustedProxyWarning = "WARNING: requests carry X-Forwarded-For, but BEEHIVE_TRUST_PROXY_HEADERS is false: " +
+	"sign-in throttling counts every client as the proxy's address, so a few wrong passwords lock everyone out. " +
+	"Set BEEHIVE_TRUST_PROXY_HEADERS=true when a reverse proxy you run sets the header."

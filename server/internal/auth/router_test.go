@@ -1,9 +1,13 @@
 package auth
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
@@ -174,5 +178,32 @@ func TestClientIP(t *testing.T) {
 		if got := ClientIP(r, c.trust); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// A proxy header that is not trusted is named once in the log, with the
+// setting that fixes it: otherwise every user shares one throttle budget.
+func TestUntrustedProxyHeaderIsLoggedOnce(t *testing.T) {
+	var out bytes.Buffer
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	untrustedProxyOnce = sync.Once{}
+
+	direct := httptest.NewRequest(http.MethodPost, "/", nil)
+	ClientIP(direct, false)
+	if out.Len() != 0 {
+		t.Fatalf("logged without a proxy header: %s", out.String())
+	}
+	proxied := httptest.NewRequest(http.MethodPost, "/", nil)
+	proxied.Header.Set("X-Forwarded-For", "198.51.100.1")
+	ClientIP(proxied, true)
+	if out.Len() != 0 {
+		t.Fatalf("logged although the proxy is trusted: %s", out.String())
+	}
+	for range 3 {
+		ClientIP(proxied, false)
+	}
+	if got := out.String(); strings.Count(got, "Set BEEHIVE_TRUST_PROXY_HEADERS=true") != 1 {
+		t.Fatalf("log: %q, want the setting named once", got)
 	}
 }
