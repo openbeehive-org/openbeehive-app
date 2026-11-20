@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { HLC, compare, parseHLC, isHLC, formatHLC, MAX_DRIFT_MS } from './hlc';
 
 beforeEach(() => localStorage.clear());
@@ -199,4 +200,37 @@ describe('HLC', () => {
     expect(isHLC(c.now())).toBe(true);
     expect(localStorage.getItem('obh.nodeId')).toBe(c.node);
   });
+});
+
+type ClockVector = {
+  name: string;
+  now_ms: number;
+  last: string;
+  recv: string;
+  accepted: boolean;
+  next: string;
+};
+
+const clockVectors: { node: string; cases: ClockVector[] } = JSON.parse(
+  readFileSync(
+    new URL('../../../../server/internal/sync/testdata/clock_vectors.json', import.meta.url),
+    'utf8'
+  )
+);
+
+// The same cases run in server/internal/sync/hlc_test.go.
+describe('shared clock vectors', () => {
+  it('has cases', () => expect(clockVectors.cases.length).toBeGreaterThan(3));
+
+  for (const c of clockVectors.cases) {
+    it(c.name, () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(c.now_ms);
+      localStorage.setItem('obh.nodeId', clockVectors.node);
+      if (c.last) localStorage.setItem('obh.hlc', c.last);
+      const clock = new HLC();
+      expect(clock.recv(c.recv)).toBe(c.accepted);
+      expect(clock.now()).toBe(c.next);
+    });
+  }
 });

@@ -1,6 +1,8 @@
 package sync
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -135,5 +137,49 @@ func TestNewHLCCleansNodeIDs(t *testing.T) {
 	}
 	if got := NewHLC("plain-1.a_b").Now(); !strings.HasSuffix(got, ":plain-1.a_b") {
 		t.Errorf("a valid node id must be kept as is: %s", got)
+	}
+}
+
+// The clock cases shared with app/src/lib/local/hlc.test.ts.
+func TestClockVectors(t *testing.T) {
+	raw, err := os.ReadFile("testdata/clock_vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Node  string `json:"node"`
+		Cases []struct {
+			Name     string `json:"name"`
+			NowMS    int64  `json:"now_ms"`
+			Last     string `json:"last"`
+			Recv     string `json:"recv"`
+			Accepted bool   `json:"accepted"`
+			Next     string `json:"next"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Cases) == 0 {
+		t.Fatal("no cases")
+	}
+	for _, c := range f.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			h := NewHLC(f.Node)
+			h.wall = func() int64 { return c.NowMS }
+			if c.Last != "" {
+				ms, counter, _, ok := Parse(c.Last)
+				if !ok {
+					t.Fatalf("last %q is malformed", c.Last)
+				}
+				h.lastMS, h.counter = ms, counter
+			}
+			if got := h.Recv(c.Recv) == nil; got != c.Accepted {
+				t.Errorf("Recv accepted = %v, want %v", got, c.Accepted)
+			}
+			if got := h.Now(); got != c.Next {
+				t.Errorf("next stamp = %s, want %s", got, c.Next)
+			}
+		})
 	}
 }

@@ -28,11 +28,16 @@ const MaxDrift = 10 * time.Minute
 // ErrMalformed reports a stamp that does not follow the fixed-width format.
 var ErrMalformed = errors.New("malformed hlc stamp")
 
+// ErrAhead reports a stamp further ahead of the wall clock than MaxDrift.
+var ErrAhead = errors.New("hlc stamp too far ahead of the wall clock")
+
 type HLC struct {
 	mu      sync.Mutex
 	lastMS  int64
 	counter int64
 	nodeID  string
+	// wall is the wall clock in Unix milliseconds; nil means time.Now.
+	wall func() int64
 }
 
 // NewHLC returns a clock that stamps with the given node id. Characters a
@@ -57,13 +62,18 @@ func cleanNode(id string) string {
 	return string(b)
 }
 
-func nowMS() int64 { return time.Now().UnixMilli() }
+func (h *HLC) nowMS() int64 {
+	if h.wall != nil {
+		return h.wall()
+	}
+	return time.Now().UnixMilli()
+}
 
 // Now returns a fresh local timestamp (for local writes).
 func (h *HLC) Now() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if pt := nowMS(); pt > h.lastMS {
+	if pt := h.nowMS(); pt > h.lastMS {
 		h.lastMS, h.counter = pt, 0
 	} else {
 		h.tick()
@@ -73,7 +83,11 @@ func (h *HLC) Now() string {
 
 // Recv folds a foreign stamp into the clock, so that every stamp issued
 // afterwards is greater than it. A malformed stamp is refused and leaves the
-// clock untouched.
+// clock untouched, and so is one more than MaxDrift ahead of the wall clock:
+// the server clock is shared by every later server write, and following a
+// stamp from a device whose clock was years ahead would stamp all of them
+// years ahead too. app/src/lib/local/hlc.ts applies the same rule; the cases
+// in testdata/clock_vectors.json run in both.
 func (h *HLC) Recv(remote string) error {
 	rms, rc, _, ok := Parse(remote)
 	if !ok {
@@ -81,7 +95,10 @@ func (h *HLC) Recv(remote string) error {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	pt := nowMS()
+	pt := h.nowMS()
+	if rms > pt+MaxDrift.Milliseconds() {
+		return ErrAhead
+	}
 	switch {
 	case pt > h.lastMS && pt > rms:
 		h.lastMS, h.counter = pt, 0

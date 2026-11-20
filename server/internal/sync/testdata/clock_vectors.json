@@ -1,0 +1,62 @@
+{
+  "about": "Shared HLC cases, run by hlc_test.go and app/src/lib/local/hlc.test.ts. The clock stands at now_ms with last as its latest stamp (\"\" for a fresh clock), receives recv, and then issues one stamp at the same wall time.",
+  "node": "srv",
+  "cases": [
+    {
+      "name": "a stamp from the past only moves the counter",
+      "now_ms": 1000000,
+      "last": "",
+      "recv": "000000000500000:00003:dev",
+      "accepted": true,
+      "next": "000000001000000:00001:srv"
+    },
+    {
+      "name": "a stamp ahead within the drift window is followed",
+      "now_ms": 1000000,
+      "last": "",
+      "recv": "000000001060000:00007:dev",
+      "accepted": true,
+      "next": "000000001060000:00009:srv"
+    },
+    {
+      "name": "a stamp exactly at the drift limit is followed",
+      "now_ms": 1000000,
+      "last": "",
+      "recv": "000000001600000:00000:dev",
+      "accepted": true,
+      "next": "000000001600000:00002:srv"
+    },
+    {
+      "name": "a stamp beyond the drift limit leaves the clock alone",
+      "now_ms": 1000000,
+      "last": "",
+      "recv": "000000001600001:00000:dev",
+      "accepted": false,
+      "next": "000000001000000:00000:srv"
+    },
+    {
+      "name": "a stamp years ahead leaves the clock alone",
+      "now_ms": 1800000000000,
+      "last": "",
+      "recv": "001900000000000:00000:dev",
+      "accepted": false,
+      "next": "001800000000000:00000:srv"
+    },
+    {
+      "name": "a malformed stamp leaves the clock alone",
+      "now_ms": 1000000,
+      "last": "",
+      "recv": "1000000:7:dev",
+      "accepted": false,
+      "next": "000000001000000:00000:srv"
+    },
+    {
+      "name": "an older stamp after a newer own stamp only ticks",
+      "now_ms": 1000000,
+      "last": "000000001005000:00004:srv",
+      "recv": "000000001000000:00000:dev",
+      "accepted": true,
+      "next": "000000001005000:00006:srv"
+    }
+  ]
+}
