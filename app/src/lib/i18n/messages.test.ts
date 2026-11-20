@@ -84,10 +84,12 @@ describe('messages with placeholders', () => {
   });
 
   it('has the same keys in every language', () => {
-    const keys = (m: Record<string, Record<string, string>>) =>
-      Object.entries(m)
-        .flatMap(([ns, v]) => Object.keys(v).map((k) => `${ns}.${k}`))
-        .sort();
+    // Messages nest to any depth (queens.color.1), so compare full key paths.
+    const paths = (node: unknown, prefix: string): string[] =>
+      typeof node === 'object' && node !== null
+        ? Object.entries(node).flatMap(([k, v]) => paths(v, prefix ? `${prefix}.${k}` : k))
+        : [prefix];
+    const keys = (m: unknown) => paths(m, '').sort();
     for (const lang of Object.keys(LOCALES) as Lang[]) {
       expect(keys(LOCALES[lang]), lang).toEqual(keys(en));
     }
