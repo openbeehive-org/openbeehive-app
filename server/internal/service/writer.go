@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"strconv"
 	"time"
 
@@ -541,21 +542,25 @@ func b2i(b bool) int {
 
 // --- error mapping ---
 
-// writeErr maps writer errors to Connect codes.
+// writeErr maps writer and query errors to Connect codes. Caller mistakes
+// keep their precise code and message. Anything else is logged and reported
+// as a generic internal error, so database and driver messages (table names,
+// constraint names, connection details) never reach API clients.
 func writeErr(err error) error {
 	switch {
 	case err == nil:
 		return nil
 	case errors.Is(err, storage.ErrNotFound), errors.Is(err, sql.ErrNoRows):
-		return connect.NewError(connect.CodeNotFound, err.Error()).WithCause(err)
+		return connect.NewError(connect.CodeNotFound, storage.ErrNotFound.Error()).WithCause(err)
 	case errors.Is(err, errWrongTenant):
-		return connect.NewError(connect.CodePermissionDenied, err.Error()).WithCause(err)
+		return connect.NewError(connect.CodePermissionDenied, errWrongTenant.Error()).WithCause(err)
 	}
 	var ce *connect.Error
 	if errors.As(err, &ce) {
-		return err
+		return ce
 	}
-	return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
+	log.Printf("service: internal error: %v", err)
+	return connect.NewError(connect.CodeInternal, "internal error").WithCause(err)
 }
 
 func invalid(msg string) error {
