@@ -241,7 +241,8 @@
     "leave_confirm": "Den Arbeitsbereich „{name}“ verlassen? Du verlierst sofort den Zugriff auf seine Aufzeichnungen. Zum Zurückkommen brauchst du eine neue Einladung.",
     "err_last_owner": "Ein Arbeitsbereich braucht mindestens einen Admin. Mach zuerst ein anderes Mitglied zum Admin oder lösche den Arbeitsbereich.",
     "err_owner_only": "Das kann nur ein Admin dieses Arbeitsbereichs.",
-    "err_not_found": "Diese Person ist kein Mitglied des Arbeitsbereichs mehr."
+    "err_not_found": "Diese Person ist kein Mitglied des Arbeitsbereichs mehr.",
+    "err_already_member": "Diese Person ist bereits Mitglied des Arbeitsbereichs."
   },
   "data": {
     "title": "Daten & Backup",

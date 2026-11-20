@@ -67,4 +67,10 @@ describe('authErrorKey', () => {
     }
     expect(new Set(keys).size).toBe(keys.length);
   });
+
+  it('names an invite for someone who is already a member', () => {
+    const key = authErrorKey({ code: 'already_member' }, 409);
+    expect(key).toBe('members.err_already_member');
+    expect((en.members as Record<string, string>).err_already_member).toEqual(expect.any(String));
+  });
 });

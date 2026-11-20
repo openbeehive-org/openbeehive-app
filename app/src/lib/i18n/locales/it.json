@@ -241,7 +241,8 @@
     "leave_confirm": "Uscire dallo spazio «{name}»? Perdi subito l’accesso alle sue registrazioni. Per tornare ti servirà un nuovo invito.",
     "err_last_owner": "Uno spazio ha bisogno di almeno un admin. Nomina prima admin un altro membro oppure elimina lo spazio.",
     "err_owner_only": "Solo un admin di questo spazio può farlo.",
-    "err_not_found": "Questa persona non fa più parte dello spazio."
+    "err_not_found": "Questa persona non fa più parte dello spazio.",
+    "err_already_member": "Questa persona fa già parte dello spazio."
   },
   "data": {
     "title": "Dati e backup",

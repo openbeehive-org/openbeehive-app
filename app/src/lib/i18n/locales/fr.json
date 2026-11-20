@@ -241,7 +241,8 @@
     "leave_confirm": "Quitter l’espace « {name} » ? Vous perdez immédiatement l’accès à ses enregistrements. Pour revenir, il vous faudra une nouvelle invitation.",
     "err_last_owner": "Un espace a besoin d’au moins un admin. Nommez d’abord un autre membre admin ou supprimez l’espace.",
     "err_owner_only": "Seul un admin de cet espace peut faire cela.",
-    "err_not_found": "Cette personne n’est plus membre de l’espace."
+    "err_not_found": "Cette personne n’est plus membre de l’espace.",
+    "err_already_member": "Cette personne est déjà membre de l’espace."
   },
   "data": {
     "title": "Données & sauvegarde",

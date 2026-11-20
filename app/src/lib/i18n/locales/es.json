@@ -241,7 +241,8 @@
     "leave_confirm": "¿Salir del espacio «{name}»? Pierdes de inmediato el acceso a sus registros. Para volver necesitarás una nueva invitación.",
     "err_last_owner": "Un espacio necesita al menos un admin. Primero nombra admin a otro miembro o elimina el espacio.",
     "err_owner_only": "Solo un admin de este espacio puede hacer esto.",
-    "err_not_found": "Esta persona ya no es miembro del espacio."
+    "err_not_found": "Esta persona ya no es miembro del espacio.",
+    "err_already_member": "Esta persona ya es miembro del espacio."
   },
   "data": {
     "title": "Datos y copia de seguridad",

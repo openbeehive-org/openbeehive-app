@@ -328,3 +328,32 @@ func TestInstanceInfo(t *testing.T) {
 		}
 	}
 }
+
+// Inviting a member is refused; inviting an address again replaces its open
+// invite instead of piling up links.
+func TestInviteRefusesMembersAndReplacesOpenInvites(t *testing.T) {
+	f := newAPIFixture(t, loginConfig())
+	ctx := context.Background()
+	owner := f.signup(t, "owner@test.dev")
+	member := f.signup(t, "member@test.dev")
+	if err := f.store.Members().Add(ctx, &storage.Membership{OrgID: owner.orgID, UserID: member.userID, Role: "member"}); err != nil {
+		t.Fatal(err)
+	}
+	res := f.call(t, http.MethodPost, "/tenants/invite", owner.token, map[string]string{"email": "Member@test.dev", "org_id": owner.orgID})
+	wantError(t, res, http.StatusConflict, "already_member")
+	res = f.call(t, http.MethodPost, "/tenants/invite", owner.token, map[string]string{"email": "owner@test.dev", "org_id": owner.orgID})
+	wantError(t, res, http.StatusConflict, "already_member")
+
+	first := f.call(t, http.MethodPost, "/tenants/invite", owner.token, map[string]string{"email": "friend@test.dev", "org_id": owner.orgID})
+	if first.status != http.StatusOK || first.body["renewed"] != false {
+		t.Fatalf("first invite: %d %s", first.status, first.raw)
+	}
+	second := f.call(t, http.MethodPost, "/tenants/invite", owner.token, map[string]string{"email": "FRIEND@test.dev", "org_id": owner.orgID})
+	if second.status != http.StatusOK || second.body["renewed"] != true || second.str("token") == first.str("token") {
+		t.Fatalf("second invite: %d %s", second.status, second.raw)
+	}
+	open, err := f.store.Invites().ListByOrg(ctx, owner.orgID)
+	if err != nil || len(open) != 1 || open[0].Token != second.str("token") {
+		t.Fatalf("open invites: %+v (%v), want only the second", open, err)
+	}
+}

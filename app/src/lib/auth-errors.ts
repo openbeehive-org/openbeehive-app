@@ -44,6 +44,7 @@ const BY_CODE: Record<string, string> = {
   last_owner: 'members.err_last_owner',
   owner_only: 'members.err_owner_only',
   member_not_found: 'members.err_not_found',
+  already_member: 'members.err_already_member',
   // Value of the `status` field that older responses carried instead of a code.
   unverified: 'auth.err_unverified'
 };

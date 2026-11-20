@@ -241,7 +241,8 @@
     "leave_confirm": "Leave the workspace “{name}”? You lose access to its records immediately. To come back you need a new invite.",
     "err_last_owner": "A workspace needs at least one admin. Make another member an admin first, or delete the workspace.",
     "err_owner_only": "Only an admin of this workspace can do this.",
-    "err_not_found": "This person is no longer a member of the workspace."
+    "err_not_found": "This person is no longer a member of the workspace.",
+    "err_already_member": "This person is already a member of the workspace."
   },
   "data": {
     "title": "Data & backup",

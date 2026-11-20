@@ -219,6 +219,19 @@ func (t *TenantAPI) invite(w http.ResponseWriter, r *http.Request) {
 	if role != "owner" {
 		role = "member"
 	}
+	if u, err := t.users.GetByEmail(r.Context(), email); err == nil {
+		if _, err := t.members.Get(r.Context(), req.OrgID, u.ID); err == nil {
+			respondError(w, http.StatusConflict, "already_member", "this person is already a member of the workspace")
+			return
+		}
+	}
+	// Inviting the same address again replaces its open invite: one link
+	// per person, with a fresh expiry; the earlier link stops working.
+	renewed, err := t.dropOpenInvites(r, req.OrgID, email)
+	if err != nil {
+		internalError(w, "replace invite", err)
+		return
+	}
 	now := time.Now().UTC()
 	expires := now.Add(storage.InviteTTL)
 	inv := &storage.Invite{ID: uuid.NewString(), OrgID: req.OrgID, Email: email, Role: role, Token: randomToken(), CreatedAt: now, ExpiresAt: &expires}
@@ -241,7 +254,28 @@ func (t *TenantAPI) invite(w http.ResponseWriter, r *http.Request) {
 			log.Printf("tenant: invite email for invite %s not sent (%v); copy the link from Settings", inv.ID, err)
 		}
 	}()
-	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "token": inv.Token, "link": link, "expires_at": inv.Expiry()})
+	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "token": inv.Token, "link": link,
+		"expires_at": inv.Expiry(), "renewed": renewed})
+}
+
+// dropOpenInvites deletes the workspace's open invites for the address and
+// reports whether there were any.
+func (t *TenantAPI) dropOpenInvites(r *http.Request, orgID, email string) (bool, error) {
+	open, err := t.invites.ListByOrg(r.Context(), orgID)
+	if err != nil {
+		return false, err
+	}
+	dropped := false
+	for _, inv := range open {
+		if storage.NormalizeEmail(inv.Email) != email {
+			continue
+		}
+		if err := t.invites.Delete(r.Context(), inv.ID); err != nil {
+			return dropped, err
+		}
+		dropped = true
+	}
+	return dropped, nil
 }
 
 func (t *TenantAPI) inviteLink(token string) string {
