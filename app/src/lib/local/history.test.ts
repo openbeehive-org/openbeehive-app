@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeLocalDB, setCurrentDB, getCurrentDB } from '../../tests/localdb';
+import { fromDateInput } from '../dates';
 
 vi.mock('./db', async () => {
   const { getCurrentDB } = await import('../../tests/localdb');
@@ -490,6 +491,18 @@ describe('honeyByYear', () => {
       { year: '2025', kg: 7 },
       { year: '2026', kg: 7 }
     ]);
+  });
+
+  it('counts a harvest in the local year it was taken', async () => {
+    const original = process.env.TZ;
+    process.env.TZ = 'Pacific/Kiritimati';
+    try {
+      // 1 January at local noon is still 31 December in UTC here.
+      await recordHarvest({ hiveId: hive, date: fromDateInput('2026-01-01'), amount_kg: 5 });
+      expect(await honeyByYear()).toEqual([{ year: '2026', kg: 5 }]);
+    } finally {
+      process.env.TZ = original;
+    }
   });
 
   it('leaves out the harvests of deleted hives', async () => {

@@ -15,6 +15,7 @@
 //      other change. What it created is remembered so that undoLastImport
 //      can delete exactly that again, also offline.
 import { getDB } from '../local/db';
+import { toDateInput } from '../dates';
 import { unit } from '../local/write';
 import { columnsOf, toScalar } from '../local/tables';
 import { photoRecords } from '../local/repo';
@@ -342,9 +343,10 @@ const nameKey = (s: unknown) =>
     .trim()
     .toLowerCase();
 
+// The local calendar day of a stored date or a file's date, as YYYY-MM-DD.
 const dayOf = (s: unknown) => {
   const v = String(s ?? '').trim();
-  return /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : v;
+  return toDateInput(v) || v;
 };
 
 // A visit of the file is the same as a recorded one when the hive and day

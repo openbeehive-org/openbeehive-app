@@ -24,6 +24,7 @@ import {
   type ImageSink
 } from './importer';
 import { readZip } from './unzip';
+import { fromDateInput } from '../dates';
 import { buildZip } from './zip';
 
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5]);
@@ -357,6 +358,38 @@ describe('CSV import', () => {
       note: 'Calm'
     });
   });
+
+  it.each(['Pacific/Kiritimati', 'Pacific/Tongatapu'])(
+    'recognises a visit recorded in the app on the same local day (%s)',
+    async (tz) => {
+      const original = process.env.TZ;
+      process.env.TZ = tz;
+      try {
+        const a = await apiaries.create({ organization_id: 'org1', name: 'Orchard' });
+        await patch('hive', 'h1', a, {
+          organization_id: 'org1',
+          apiary_id: a,
+          name: 'Hive 1',
+          deleted: 0
+        });
+        // Recorded in the app for 1 May: local noon, another UTC day here.
+        await inspections.add(
+          {
+            hive_id: 'h1',
+            date: fromDateInput('2026-05-01'),
+            note: 'calm',
+            varroa: '3',
+            weight_kg: 40.5
+          },
+          a
+        );
+        const plan = await planImport(await readImportFile(new Blob([CSV])));
+        expect(plan.counts.inspection).toMatchObject({ skip: 1, create: 1 });
+      } finally {
+        process.env.TZ = original;
+      }
+    }
+  );
 
   it('records a visit again when its values differ', async () => {
     await applyImport(await planImport(await readImportFile(new Blob([CSV]))));

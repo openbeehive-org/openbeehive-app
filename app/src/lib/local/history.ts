@@ -4,6 +4,7 @@
 // for statistics (no joins, permanently correct).
 
 import { getDB } from './db';
+import { toDateInput } from '../dates';
 import { markingForYear, InspectionSource, type InspectionInput } from './repo';
 import { unit, type Unit } from './write';
 
@@ -640,12 +641,22 @@ export async function updateHive(
 
 // --- Statistics straight from the fact table (type = HARVEST) ---
 
-// Honey per year. Harvests of deleted hives no longer count.
-export async function honeyByYear() {
+// Honey per local calendar year, oldest first. Harvests of deleted hives no
+// longer count. The year is taken in the device's time zone: a harvest on
+// 1 January is stored as local noon, which is still 31 December in UTC east
+// of +12.
+export async function honeyByYear(): Promise<{ year: string; kg: number }[]> {
   const db = await getDB();
-  return db.all(`SELECT substr(e.date,1,4) AS year, SUM(e.amount_kg) AS kg
-                 FROM event e
-                 WHERE e.type = ${EventType.HARVEST} AND e.deleted = 0
-                   AND NOT EXISTS (SELECT 1 FROM hive h WHERE h.id = e.hive_id AND h.deleted = 1)
-                 GROUP BY year ORDER BY year`);
+  const rows = await db.all<{ date: string; kg: number }>(
+    `SELECT e.date AS date, e.amount_kg AS kg
+     FROM event e
+     WHERE e.type = ${EventType.HARVEST} AND e.deleted = 0
+       AND NOT EXISTS (SELECT 1 FROM hive h WHERE h.id = e.hive_id AND h.deleted = 1)`
+  );
+  const perYear = new Map<string, number>();
+  for (const r of rows) {
+    const year = toDateInput(String(r.date ?? '')).slice(0, 4);
+    if (year) perYear.set(year, (perYear.get(year) ?? 0) + Number(r.kg ?? 0));
+  }
+  return [...perYear].sort(([a], [b]) => a.localeCompare(b)).map(([year, kg]) => ({ year, kg }));
 }
