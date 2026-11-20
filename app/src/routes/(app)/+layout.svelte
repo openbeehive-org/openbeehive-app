@@ -6,6 +6,7 @@
   import { startSync } from '#lib/local/sync.js';
   import NavIcon from '#lib/components/NavIcon.svelte';
   import Toasts from '#lib/components/Toasts.svelte';
+  import SyncChip from '#lib/components/sync/SyncChip.svelte';
   import { toast } from '#lib/toast.js';
   import { fetchInstance } from '#lib/instance.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
@@ -172,9 +173,7 @@
       <span class="avatar" aria-hidden="true">{initial}</span>
       <span class="acc-info">
         <strong>{email}</strong>
-        <span class="status" class:off={!online}>
-          <span class="dot"></span>{online ? 'Online' : 'Offline'}
-        </span>
+        <SyncChip passive />
       </span>
     </a>
   </aside>
@@ -187,6 +186,7 @@
     {#if !online}
       <div class="offline-bar">{$_('app.offline_banner')}</div>
     {/if}
+    <div class="sync-row"><SyncChip problemsHref="/settings" /></div>
     <main class="content">
       {@render children()}
     </main>
@@ -215,6 +215,13 @@
   .content {
     min-height: 100vh;
     padding-bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+
+  /* Sync status on phones; the desktop sidebar shows it in the account block. */
+  .sync-row {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 14px 0;
   }
 
   .offline-bar {
@@ -303,7 +310,8 @@
       display: flex;
       align-items: stretch;
     }
-    .tabbar {
+    .tabbar,
+    .sync-row {
       display: none;
     }
     .content {
@@ -439,23 +447,6 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-    }
-    .status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: var(--ink-soft);
-      font-size: 0.76rem;
-      font-weight: 600;
-    }
-    .status .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--moss);
-    }
-    .status.off .dot {
-      background: #b5402f;
     }
   }
 </style>
