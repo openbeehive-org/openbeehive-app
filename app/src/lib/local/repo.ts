@@ -265,6 +265,18 @@ export const hives = {
     );
     return Object.fromEntries(rows.map((r) => [r.apiary_id, r.n])) as Record<string, number>;
   },
+  // Hives whose printed label code (the first six characters of the id)
+  // matches, for typing the code when the QR cannot be scanned.
+  async findByShortCode(code: string) {
+    const clean = code.replace(/[^0-9a-f]/gi, '').toLowerCase();
+    if (clean.length < 6) return [];
+    const db = await getDB();
+    return db.all<{ id: string; name: string }>(
+      `SELECT id, name FROM hive
+       WHERE deleted = 0 AND substr(replace(lower(id), '-', ''), 1, 6) = ?`,
+      [clean.slice(0, 6)]
+    );
+  },
   // edit = only the changed scalar fields (per-field LWW). scope = apiary id.
   update: (id: string, apiaryId: string, fields: Record<string, unknown>) =>
     patch('hive', id, apiaryId, { ...fields, updated_at: new Date().toISOString() }),

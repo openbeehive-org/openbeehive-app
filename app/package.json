@@ -47,6 +47,8 @@
     "@connectrpc/connect-web": "^2.2.0",
     "@lucide/svelte": "^1.59.0",
     "@sqlite.org/sqlite-wasm": "^3.54.1-build1",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "leaflet": "^1.9.4",
     "qrcode": "^1.5.4",
     "svelte-i18n": "^4.0.1"

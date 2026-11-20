@@ -3,8 +3,6 @@
 // The hive id is a stable offline-first UUID, so the printed code never
 // changes; access is still gated by sync/sharing (an id alone grants nothing).
 
-import QRCode from 'qrcode';
-
 // Base URL the QR points to. Falls back to the current origin so a
 // self-hosted instance prints codes that point back to itself.
 export function publicBase(): string {
@@ -55,6 +53,8 @@ function beeMark(): string {
 // Openbeehive bee mark centred and the brand name below. Uses error-correction
 // level H so the centre logo (it covers ~7% of the code) never breaks scanning.
 export async function qrSvg(text: string, size = 256): Promise<string> {
+  // Loaded on demand: only the pages that draw a code pay for the encoder.
+  const { default: QRCode } = await import('qrcode');
   const qr = QRCode.create(text, { errorCorrectionLevel: 'H' });
   const n: number = qr.modules.size;
   const data = qr.modules.data;
@@ -90,12 +90,56 @@ export async function qrSvg(text: string, size = 256): Promise<string> {
 </svg>`;
 }
 
-// Extract a hive id from a scanned payload: full URL, custom scheme, or raw id.
+// Extract a hive id from a scanned payload: a label link (`.../h/<id>`, on any
+// host, so labels survive a move to another domain, or as a bare path), the
+// custom scheme, or a bare id. Anything else (other websites, text, Wi-Fi
+// codes) yields null.
 export function parseHiveId(payload: string): string | null {
-  const url = payload.match(/\/h\/([A-Za-z0-9-]+)/);
-  if (url) return url[1] ?? null;
-  const scheme = payload.match(/^openbeehive:\/\/hive\/([A-Za-z0-9-]+)/i);
+  const text = payload.trim();
+  const scheme = /^openbeehive:\/\/hive\/([A-Za-z0-9_-]+)\/?$/i.exec(text);
   if (scheme) return scheme[1] ?? null;
-  if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(payload)) return payload; // bare UUID
+  if (/^(https?:\/\/|\/)/i.test(text)) {
+    try {
+      const { pathname } = new URL(text, 'http://label.invalid');
+      return /\/h\/([A-Za-z0-9_-]+)\/?$/.exec(pathname)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f-]{20,}$/i.test(text)) return text; // bare UUID
   return null;
+}
+
+// A scanned label can lead to the sign-in page first. The hive it pointed to
+// is kept for this tab, so the app can open it once the user is signed in.
+const SCAN_TARGET_KEY = 'obh.scanTarget';
+
+export function rememberScanTarget(hiveId: string) {
+  try {
+    sessionStorage.setItem(SCAN_TARGET_KEY, hiveId);
+  } catch {
+    /* storage blocked: the user simply lands on the overview */
+  }
+}
+
+/** Returns the remembered hive id once, then forgets it. */
+export function takeScanTarget(): string | null {
+  try {
+    const id = sessionStorage.getItem(SCAN_TARGET_KEY);
+    if (id) sessionStorage.removeItem(SCAN_TARGET_KEY);
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+// Why the camera could not be opened, reduced to what the user can act on.
+export type CameraProblem = 'denied' | 'nocamera' | 'failed';
+
+/** Maps a getUserMedia error to the state the scanner shows. */
+export function cameraProblem(err: unknown): CameraProblem {
+  const name = (err as { name?: string } | null)?.name ?? '';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'nocamera';
+  return 'failed'; // camera in use by another app, hardware error, ...
 }

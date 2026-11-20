@@ -181,6 +181,20 @@ describe('apiaries.remove', () => {
   });
 });
 
+describe('hives.findByShortCode', () => {
+  it('finds a hive by the code printed on its label', async () => {
+    await hive('3f9a1c22-0000-4000-8000-000000000001', 'a1', 'Labelled');
+    await hive('aaaaaaaa-0000-4000-8000-000000000002', 'a1', 'Other');
+    await hive('3f9a1cff-0000-4000-8000-000000000003', 'a1', 'Deleted twin');
+    await remove('hive', '3f9a1cff-0000-4000-8000-000000000003', 'a1');
+
+    expect((await hives.findByShortCode(' 3f9a1c ')).map((h) => h.name)).toEqual(['Labelled']);
+    expect((await hives.findByShortCode('3F9A1C')).map((h) => h.name)).toEqual(['Labelled']);
+    expect(await hives.findByShortCode('3F9')).toEqual([]);
+    expect(await hives.findByShortCode('000000')).toEqual([]);
+  });
+});
+
 describe('personal tasks and workspaces', () => {
   it('shows a personal task only in the workspace it was created in', async () => {
     await tasks.create({ title: 'buy jars' });
