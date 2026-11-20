@@ -66,28 +66,69 @@ plus a data folder on one host.
 - **Database (pluggable):** PostgreSQL · MySQL · SQLite.
 - **Blob storage (pluggable):** MinIO/S3 · local filesystem.
 
-## Quick start — self-hosted (single binary)
+## Quick start — self-hosted
+
+One container, SQLite and your files in a named volume:
+
+```bash
+docker run -d --name openbeehive \
+  -p 127.0.0.1:8080:8080 \
+  -v openbeehive-data:/data \
+  ghcr.io/openbeehive-org/openbeehive-app:latest
+```
+
+Open <http://localhost:8080>. Out of the box there is **no login**: this is
+single-user mode, meant for your own machine, so the port is published on
+`127.0.0.1` only and the server answers only to `localhost`, IP addresses and
+the host of `BEEHIVE_PUBLIC_BASE_URL` (add names with `BEEHIVE_ALLOWED_HOSTS`).
+
+To reach it from other devices or share it, turn login on.
+[`docker-compose.selfhost.yml`](docker-compose.selfhost.yml) is the same
+setup as a compose file; put the settings in an `.env` file next to it:
+
+```bash
+BEEHIVE_BIND=0.0.0.0
+BEEHIVE_PUBLIC_BASE_URL=https://bees.example.org
+BEEHIVE_PASSWORD_AUTH=true
+BEEHIVE_ADMIN_EMAIL=you@example.org
+BEEHIVE_ADMIN_PASSWORD=change-me-please
+BEEHIVE_SESSION_SECRET=...    # openssl rand -base64 32
+```
+
+```bash
+docker compose -f docker-compose.selfhost.yml up -d
+```
+
+Records made before login was switched on move into the admin's workspace at
+the next start. Put a reverse proxy with TLS in front for anything beyond your
+LAN, and set `BEEHIVE_TRUST_PROXY_HEADERS=true` behind it.
+
+### Without Docker (single binary)
 
 Requires Go (`server/go.mod`), Node (`app/.nvmrc`) and [**buf**](https://buf.build) (`make tools`).
 
 ```bash
-cp .env.example .env          # BEEHIVE_DEPLOYMENT_PROFILE=selfhost
+cp .env.example .env          # BEEHIVE_DEPLOYMENT_PROFILE=selfhost; edit as needed
 make proto                    # generate Go + TypeScript stubs from the .proto contract
 make build                    # build the app, embed it, compile the server
-./server/bin/openbeehive      # serves the app + API at :8080
+./server/bin/openbeehive      # reads .env from the current directory; serves the app + API at :8080
 ```
 
-## Quick start — Docker (cloud profile)
+## Quick start — several users (Postgres + MinIO)
+
+[`docker-compose.prod.yml`](docker-compose.prod.yml) runs the released image
+with Postgres and MinIO, login always on and nothing but the app port
+published (on `127.0.0.1`, for your reverse proxy). It refuses to start until
+every secret is set; the file lists them:
 
 ```bash
-docker compose up -d          # Postgres + MinIO + the server (which serves the SPA)
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-A prebuilt image is published to the GitHub Container Registry on each release:
-
-```bash
-docker run -p 8080:8080 ghcr.io/openbeehive-org/openbeehive-app:latest
-```
+Run exactly one server instance per database.
+[`docker-compose.demo.yml`](docker-compose.demo.yml) is the same plus the
+public read-only demo; [`docker-compose.yml`](docker-compose.yml) builds the
+server from this checkout for development and is not a production template.
 
 See the [self-hosting guide](https://docs.openbeehive.org) for full configuration.
 
@@ -96,8 +137,8 @@ See the [self-hosting guide](https://docs.openbeehive.org) for full configuratio
 ```bash
 make tools                    # pinned gate tools (golangci-lint, govulncheck, go-licenses, fleetlint, buf)
 make proto                    # generate stubs
-make run-server               # backend on :8080
-make dev-app                  # Vite dev server on :5173
+make run-server               # backend on :8080 (reads .env)
+make dev-app                  # Vite dev server on :5173; set BEEHIVE_CORS_ALLOWED_ORIGINS=http://localhost:5173 in .env
 make check                    # the definition of green: lint, tests, coverage, audit, build, fleetlint
 ```
 
