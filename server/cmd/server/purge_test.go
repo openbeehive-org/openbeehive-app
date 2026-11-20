@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,11 +17,30 @@ import (
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
+// lockedBuffer collects the log; the server's goroutines write while the
+// test reads.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 // Deleting a workspace removes its blobs and nobody else's, and the log
 // names no image data.
 func TestDeletingAWorkspacePurgesItsBlobs(t *testing.T) {
-	var logged bytes.Buffer
-	log.SetOutput(&logged)
+	logged := &lockedBuffer{}
+	log.SetOutput(logged)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 
 	w := newWired(t, loginConfig())
