@@ -18,10 +18,6 @@ type InspectionService struct {
 
 func NewInspectionService(w *Writer) *InspectionService { return &InspectionService{w: w} }
 
-// maxPhotoBytes bounds an inline photo. The app stores ~480px JPEG
-// thumbnails (tens of KB); a data URL is replicated to every device.
-const maxPhotoBytes = 512 * 1024
-
 // inspectionCols lists the observation fields of an inspection, named alike
 // in CreateInspectionRequest, in Inspection and in the table. The optional
 // numbers among them (counts, amounts, climate readings) are stored as NULL
@@ -107,6 +103,9 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListIn
 	for _, r := range rows {
 		out = append(out, inspectionFromRow(r))
 	}
+	if err := attachInspectionPhotos(ctx, s.w.db, id.OrgID, out); err != nil {
+		return nil, writeErr(err)
+	}
 	return &wv1.ListInspectionsResponse{Inspections: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
@@ -125,15 +124,18 @@ func (s *InspectionService) UpdateInspection(ctx context.Context, req *wv1.Updat
 	if err := requireValue(fields, "date"); err != nil {
 		return nil, err
 	}
-	var out map[string]any
+	var out *wv1.Inspection
 	err = s.w.Run(ctx, id, func(t *txWriter) error {
-		out, err = t.amendRecord("inspection", p.Id, fields)
+		if _, err := t.amendRecord("inspection", p.Id, fields); err != nil {
+			return err
+		}
+		out, err = t.inspectionWithPhotos(p.Id)
 		return err
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return &wv1.UpdateInspectionResponse{Inspection: inspectionFromRow(out)}, nil
+	return &wv1.UpdateInspectionResponse{Inspection: out}, nil
 }
 
 // DeleteInspection soft-deletes the inspection and its timeline event.
@@ -156,52 +158,130 @@ func (s *InspectionService) DeleteInspection(ctx context.Context, req *wv1.Delet
 	return &wv1.DeleteInspectionResponse{}, nil
 }
 
+// attachInspectionPhotos fills in the photos of the given inspections.
+func attachInspectionPhotos(ctx context.Context, q queryer, orgID string, inspections []*wv1.Inspection) error {
+	ids := make([]string, 0, len(inspections))
+	for _, in := range inspections {
+		ids = append(ids, in.Id)
+	}
+	photos, err := photosByOwner(ctx, q, orgID, ownerInspection, ids)
+	if err != nil {
+		return err
+	}
+	for _, in := range inspections {
+		in.Photos = photos[in.Id]
+	}
+	return nil
+}
+
+// inspectionWithPhotos renders one inspection row inside a writer transaction.
+func (t *txWriter) inspectionWithPhotos(id string) (*wv1.Inspection, error) {
+	row, err := t.row("inspection", id)
+	if err != nil {
+		return nil, err
+	}
+	out := inspectionFromRow(row)
+	return out, attachInspectionPhotos(t.ctx, t.tx, t.id.OrgID, []*wv1.Inspection{out})
+}
+
+// AddInspectionPhoto stores the image as a photo of the inspection: the
+// image in the blob store, a record with a thumbnail in the sync feed.
 func (s *InspectionService) AddInspectionPhoto(ctx context.Context, req *wv1.AddInspectionPhotoRequest) (*wv1.AddInspectionPhotoResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	if !strings.HasPrefix(req.Photo, "data:image/") {
 		return nil, invalid("photo must be a data URL (data:image/...)")
 	}
-	if len(req.Photo) > maxPhotoBytes {
-		return nil, invalid("photo exceeds 512 KiB; send a thumbnail")
+	if sniffPhotoType(decodeDataURL(req.Photo, MaxPhotoBytes)) == "" {
+		return nil, invalid("photo must be a base64 data URL of a JPEG, PNG or WebP image of at most 5 MiB")
 	}
-	out, err := s.photoDelta(ctx, id, req.InspectionId, map[string]any{"add": []string{req.Photo}})
-	if err != nil {
-		return nil, err
+	photos := s.w.photos
+	if photos.blobs == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, "photo storage is not configured")
 	}
-	return &wv1.AddInspectionPhotoResponse{Inspection: out}, nil
-}
-
-func (s *InspectionService) RemoveInspectionPhoto(ctx context.Context, req *wv1.RemoveInspectionPhotoRequest) (*wv1.RemoveInspectionPhotoResponse, error) {
-	id, _ := auth.FromContext(ctx)
-	// No removed_tags: the server is the origin and tombstones every add tag
-	// it currently holds (the legacy remove-all form both sides accept).
-	out, err := s.photoDelta(ctx, id, req.InspectionId, map[string]any{"remove": []string{req.Photo}})
-	if err != nil {
-		return nil, err
-	}
-	return &wv1.RemoveInspectionPhotoResponse{Inspection: out}, nil
-}
-
-// photoDelta applies an OR-Set delta to photo_keys in the inspection's scope.
-func (s *InspectionService) photoDelta(ctx context.Context, id auth.Identity, inspectionID string, delta map[string]any) (*wv1.Inspection, error) {
-	var out map[string]any
+	var out *wv1.Inspection
 	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		cur, err := t.row("inspection", inspectionID)
+		cur, err := t.row("inspection", req.InspectionId)
 		if err != nil {
 			return err
 		}
-		scope, _, err := t.resolveContext(rs(cur["hive_id"]), rs(cur["date"]))
+		scope, err := t.recordScope("inspection", cur)
 		if err != nil {
 			return err
 		}
-		if err := t.upsert("inspection", inspectionID, scope, map[string]any{"photo_keys": delta}); err != nil {
+		same, err := queryPhotos(t.ctx, t.tx, `owner_id = ? AND owner_entity = ? AND organization_id = ?
+			AND legacy_key = ? AND deleted = FALSE`, req.InspectionId, ownerInspection, id.OrgID, legacyKey(req.Photo))
+		if err != nil {
 			return err
 		}
-		out, err = t.row("inspection", inspectionID)
+		if len(same) == 0 {
+			cause := &wv1.Change{ScopeId: scope, AuthorId: id.UserID}
+			if err := photos.createFromInline(t.ctx, t.tx, cause, id.OrgID, ownerInspection, req.InspectionId, req.Photo, photos.now()); err != nil {
+				return err
+			}
+		}
+		out, err = t.inspectionWithPhotos(req.InspectionId)
 		return err
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return inspectionFromRow(out), nil
+	return &wv1.AddInspectionPhotoResponse{Inspection: out}, nil
+}
+
+// RemoveInspectionPhoto deletes a photo of the inspection, named by its id
+// or by the data URL it was added with.
+func (s *InspectionService) RemoveInspectionPhoto(ctx context.Context, req *wv1.RemoveInspectionPhotoRequest) (*wv1.RemoveInspectionPhotoResponse, error) {
+	id, _ := auth.FromContext(ctx)
+	if req.Photo == "" {
+		return nil, invalid("photo is required: a photo id or the data URL it was added with")
+	}
+	var out *wv1.Inspection
+	err := s.w.Run(ctx, id, func(t *txWriter) error {
+		cur, err := t.row("inspection", req.InspectionId)
+		if err != nil {
+			return err
+		}
+		scope, err := t.recordScope("inspection", cur)
+		if err != nil {
+			return err
+		}
+		matches, err := queryPhotos(t.ctx, t.tx, `owner_id = ? AND owner_entity = ? AND organization_id = ?
+			AND (id = ? OR legacy_key = ?) AND deleted = FALSE`,
+			req.InspectionId, ownerInspection, id.OrgID, req.Photo, legacyKey(req.Photo))
+		if err != nil {
+			return err
+		}
+		for i := range matches {
+			if err := t.del("photo", matches[i].ID, scope); err != nil {
+				return err
+			}
+		}
+		if len(matches) == 0 {
+			if err := t.removeInlineElement(cur, scope, req.Photo); err != nil {
+				return err
+			}
+		}
+		out, err = t.inspectionWithPhotos(req.InspectionId)
+		return err
+	})
+	if err != nil {
+		return nil, writeErr(err)
+	}
+	return &wv1.RemoveInspectionPhotoResponse{Inspection: out}, nil
+}
+
+// removeInlineElement removes an element of photo_keys that has no photo
+// record (an inline value of a 0.4.x app that is not an image the server
+// could convert). Removing a value the inspection does not have changes
+// nothing.
+func (t *txWriter) removeInlineElement(inspection map[string]any, scope, elem string) error {
+	for _, have := range rset(inspection["photo_keys"]) {
+		if have == elem {
+			// No removed_tags: the server is the origin and tombstones every
+			// add tag it currently holds.
+			return t.upsert("inspection", rs(inspection["id"]), scope,
+				map[string]any{"photo_keys": map[string]any{"remove": []string{elem}}})
+		}
+	}
+	return nil
 }

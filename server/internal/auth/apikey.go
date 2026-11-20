@@ -93,6 +93,7 @@ func (k *APIKeys) Verify(ctx context.Context, token string) (Identity, error) {
 	if _, err := k.members.Get(ctx, row.OrgID, row.UserID); err != nil {
 		return Identity{}, errBadAPIKey
 	}
+	//nolint:gosec // G701: the statement is constant; the key's id is a bound argument
 	_, _ = k.db.ExecContext(ctx, k.db.Rebind(`UPDATE api_key SET last_used_at = ? WHERE id = ?`),
 		time.Now().UTC(), row.ID)
 	return Identity{UserID: u.ID, OrgID: row.OrgID, Email: u.Email, Role: u.Role, ReadOnly: row.Scope == ScopeRead}, nil

@@ -99,6 +99,15 @@ var entityCols = map[string]entitySpec{
 		ints:  []string{"type"},
 		times: []string{"date"},
 	},
+	// A photo carries only its thumbnail; the full image is transferred
+	// through /photos/ (see photo.go).
+	"photo": {
+		table: "photo",
+		cols:  []string{"id", "organization_id", "owner_entity", "owner_id", "thumb", "content_type", "size_bytes", "created_at", "deleted"},
+		bools: []string{"deleted"},
+		ints:  []string{"size_bytes"},
+		times: []string{"created_at"},
+	},
 }
 
 func isSetCol(spec entitySpec, col string) bool {
@@ -133,8 +142,9 @@ const (
 )
 
 type SyncService struct {
-	db  *sqlx.DB
-	hlc *wsync.HLC
+	db     *sqlx.DB
+	hlc    *wsync.HLC
+	photos *Photos
 
 	// MinProtocol is the lowest sync protocol version a client may speak;
 	// 0 also admits 0.4.x apps, which announce none.
@@ -149,8 +159,12 @@ type SyncService struct {
 }
 
 func NewSyncService(db *sqlx.DB, hlc *wsync.HLC) *SyncService {
-	return &SyncService{db: db, hlc: hlc, poll: subscribePoll, pageBytes: snapshotPageBytes, streams: map[string]int{}}
+	return &SyncService{db: db, hlc: hlc, photos: NewPhotos(db, hlc, nil), poll: subscribePoll, pageBytes: snapshotPageBytes, streams: map[string]int{}}
 }
+
+// UsePhotos attaches the photo store with its blob backend; without it the
+// service converts no inline photos of 0.4.x apps.
+func (s *SyncService) UsePhotos(p *Photos) { s.photos = p }
 
 func internalErr(err error) error {
 	return connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
@@ -354,6 +368,7 @@ func (s *SyncService) Push(
 			"a push carries at most %d changes", maxPushChanges)
 	}
 	now := time.Now()
+	ctx = withPhotos(ctx, s.photos)
 
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -480,12 +495,20 @@ func pushOne(ctx context.Context, tx *sqlx.Tx, scopes *scopeSet, orgID string, c
 
 // applyLogged merges one change (per-field LWW + OR-Set; stale fields are
 // dropped individually, newer fields from other devices are kept) and appends
-// it to the change log.
+// it to the change log. Photos get their own rules before and after that
+// (photo_sync.go).
 func applyLogged(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) error {
+	photos := photosFrom(ctx)
+	if skip, err := photos.beforeChange(ctx, tx, ch, orgID); err != nil || skip {
+		return err
+	}
 	if err := applyChange(ctx, tx, spec, ch, orgID); err != nil {
 		return err
 	}
-	return appendChangeLog(ctx, tx, ch, orgID)
+	if err := appendChangeLog(ctx, tx, ch, orgID); err != nil {
+		return err
+	}
+	return photos.afterChange(ctx, tx, ch, orgID)
 }
 
 // --- Subscribe: optional live channel. Polls the latest change the caller

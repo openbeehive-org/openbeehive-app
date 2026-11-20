@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package openbeehive.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// A photo attached to an inspection, or the picture of a hive.
+//
+// The record carries a small preview. The full-size image is fetched with a
+// plain HTTP GET of `path` on the same host, with the same credentials as
+// the API (session or API key); it is served only to members of the
+// workspace.
+message Photo {
+  string id = 1;
+  string thumbnail = 2;    // preview as a data URL (about 200 px); may be empty
+  string content_type = 3; // of the full-size image: image/jpeg, image/png or image/webp
+  int64 size_bytes = 4;    // of the full-size image
+  // Where to GET the full-size image, e.g. "/photos/<id>". Empty while the
+  // device that took the photo has not uploaded it yet.
+  string path = 5;
+  google.protobuf.Timestamp created_at = 6;
+}

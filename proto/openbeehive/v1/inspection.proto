@@ -5,6 +5,7 @@ package openbeehive.v1;
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
+import "openbeehive/v1/photo.proto";
 
 // Who recorded an inspection. Sensor readings (a hive scale, a climate probe)
 // are measurements, not visits: they appear in charts but do not count as
@@ -35,7 +36,9 @@ message Inspection {
   string varroa = 12;   // e.g. "3 mites/day debris count"
   optional double honey_kg = 13; // harvested during this inspection (superseded by Harvest records)
   string note = 14;
-  repeated string photo_keys = 15; // photos as data-URL thumbnails (OR-Set)
+  // Inline photos written by 0.4.x apps, as data URLs. Kept for those apps;
+  // read `photos` instead, which lists these and every other photo.
+  repeated string photo_keys = 15;
   google.protobuf.Timestamp created_at = 16;
 
   // Stockkarte detail: colony state, a calmness/steadiness rating (Wabensitz)
@@ -59,6 +62,8 @@ message Inspection {
   optional double humidity_outside = 30;
 
   InspectionSource source = 31;
+
+  repeated Photo photos = 32; // oldest first; output only
 }
 
 // The server freezes the context (apiary and reigning queen at `date`) and
@@ -112,8 +117,8 @@ message ListInspectionsResponse {
 // changed.
 //
 // With update_mask, exactly the listed fields are written (paths: every
-// Inspection field except id, organization_id, hive_id, photo_keys and
-// created_at), including to their zero value; an optional field that is in
+// Inspection field except id, organization_id, hive_id, photo_keys, photos
+// and created_at), including to their zero value; an optional field that is in
 // the mask but unset is cleared to "not recorded". Without update_mask, the
 // optional fields that are set and every other field that is not at its
 // zero value are written.
@@ -131,14 +136,17 @@ message UpdateInspectionResponse { Inspection inspection = 1; }
 message DeleteInspectionRequest { string id = 1; }
 message DeleteInspectionResponse {}
 
-// Photos are stored inline as data-URL thumbnails in the inspection's
-// photo_keys OR-Set (the app downsizes to ~480px before saving; keep uploads
-// small). Removing passes the exact stored value.
+// Adds a photo to an inspection. The image is passed as a data URL (JPEG, PNG
+// or WebP, at most 5 MiB decoded); the server stores it as a Photo with a
+// thumbnail and returns the inspection with its photos. Adding the same
+// image twice has no further effect.
 message AddInspectionPhotoRequest {
   string inspection_id = 1;
   string photo = 2; // data URL, e.g. "data:image/jpeg;base64,..."
 }
 message AddInspectionPhotoResponse { Inspection inspection = 1; }
+// Deletes a photo of an inspection for good, on every device. `photo` is the
+// Photo id, or the data URL the photo was added with.
 message RemoveInspectionPhotoRequest {
   string inspection_id = 1;
   string photo = 2;

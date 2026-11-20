@@ -39,6 +39,35 @@ func hiveToProto(m *storage.Hive) *wv1.Hive {
 	}
 }
 
+// attachHivePictures fills in the picture of the given hives: the newest
+// photo that belongs to the hive itself.
+func attachHivePictures(ctx context.Context, q queryer, orgID string, hives []*wv1.Hive) error {
+	ids := make([]string, 0, len(hives))
+	for _, h := range hives {
+		ids = append(ids, h.Id)
+	}
+	photos, err := photosByOwner(ctx, q, orgID, ownerHive, ids)
+	if err != nil {
+		return err
+	}
+	for _, h := range hives {
+		if list := photos[h.Id]; len(list) > 0 {
+			h.Picture = list[len(list)-1]
+		}
+	}
+	return nil
+}
+
+// hiveResponse loads a hive with its picture.
+func (s *HiveService) hiveResponse(ctx context.Context, orgID, id string) (*wv1.Hive, error) {
+	m, err := s.repo.Get(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	out := hiveToProto(m)
+	return out, attachHivePictures(ctx, s.w.db, orgID, []*wv1.Hive{out})
+}
+
 // CreateHive mirrors the app: hive row, open placement interval and a
 // CREATED event, so the location history starts on day one.
 func (s *HiveService) CreateHive(ctx context.Context, req *wv1.CreateHiveRequest) (*wv1.CreateHiveResponse, error) {
@@ -70,20 +99,20 @@ func (s *HiveService) CreateHive(ctx context.Context, req *wv1.CreateHiveRequest
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	m, err := s.repo.Get(ctx, id.OrgID, hid)
+	out, err := s.hiveResponse(ctx, id.OrgID, hid)
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return &wv1.CreateHiveResponse{Hive: hiveToProto(m)}, nil
+	return &wv1.CreateHiveResponse{Hive: out}, nil
 }
 
 func (s *HiveService) GetHive(ctx context.Context, req *wv1.GetHiveRequest) (*wv1.GetHiveResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
+	out, err := s.hiveResponse(ctx, id.OrgID, req.Id)
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return &wv1.GetHiveResponse{Hive: hiveToProto(m)}, nil
+	return &wv1.GetHiveResponse{Hive: out}, nil
 }
 
 func (s *HiveService) ListHives(ctx context.Context, req *wv1.ListHivesRequest) (*wv1.ListHivesResponse, error) {
@@ -97,6 +126,9 @@ func (s *HiveService) ListHives(ctx context.Context, req *wv1.ListHivesRequest) 
 	for i := range rows {
 		out = append(out, hiveToProto(&rows[i]))
 	}
+	if err := attachHivePictures(ctx, s.w.db, id.OrgID, out); err != nil {
+		return nil, writeErr(err)
+	}
 	return &wv1.ListHivesResponse{Hives: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
@@ -105,7 +137,7 @@ var hiveUpdatable = []string{"name", "type", "status", "boxes", "colony_origin",
 
 // UpdateHive changes only the fields sent (see UpdateHiveRequest). It does
 // not move the hive (use RelocateHive, which keeps the location history) and
-// does not touch the photo the app stores.
+// does not touch its picture.
 func (s *HiveService) UpdateHive(ctx context.Context, req *wv1.UpdateHiveRequest) (*wv1.UpdateHiveResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	p := req.Hive
@@ -133,11 +165,11 @@ func (s *HiveService) UpdateHive(ctx context.Context, req *wv1.UpdateHiveRequest
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	m, err := s.repo.Get(ctx, id.OrgID, p.Id)
+	out, err := s.hiveResponse(ctx, id.OrgID, p.Id)
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return &wv1.UpdateHiveResponse{Hive: hiveToProto(m)}, nil
+	return &wv1.UpdateHiveResponse{Hive: out}, nil
 }
 
 // DeleteHive soft-deletes the hive and its open tasks: a task for a hive that
@@ -184,9 +216,9 @@ func (s *HiveService) RelocateHive(ctx context.Context, req *wv1.RelocateHiveReq
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	m, err := s.repo.Get(ctx, id.OrgID, req.Id)
+	out, err := s.hiveResponse(ctx, id.OrgID, req.Id)
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	return &wv1.RelocateHiveResponse{Hive: hiveToProto(m)}, nil
+	return &wv1.RelocateHiveResponse{Hive: out}, nil
 }

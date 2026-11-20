@@ -149,7 +149,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"apiary_id\":\"apiary-a\",\"deleted\":0,\"end_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"start_at\":\"2026-01-02T03:04:05.000Z\"}",
-    "hlc": "001767225600021:00000:new"
+    "hlc": "001767225600026:00000:new"
   },
   {
     "entity": "placement",
@@ -157,7 +157,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"apiary_id\":\"apiary-a\",\"deleted\":0,\"end_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"organization_id\":\"org-a\",\"start_at\":\"2026-01-02T03:04:05.000Z\"}",
-    "hlc": "001767225600022:00000:new"
+    "hlc": "001767225600027:00000:new"
   },
   {
     "entity": "placement",
@@ -165,7 +165,7 @@
     "scopeId": "apiary-a",
     "op": 2,
     "payloadJson": "{\"deleted\":1}",
-    "hlc": "001767225600023:00000:new"
+    "hlc": "001767225600028:00000:new"
   },
   {
     "entity": "queen",
@@ -173,7 +173,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"active\":1,\"breeder_number\":\"s-breeder_number\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"hive_id\":\"hive-a\",\"introduced_at\":\"2026-01-02T03:04:05.000Z\",\"marking\":3,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"origin\":\"s-origin\",\"replaced_at\":\"2026-01-02T03:04:05.000Z\",\"updated_at\":\"2026-01-02T03:04:05.000Z\",\"year\":3}",
-    "hlc": "001767225600024:00000:new"
+    "hlc": "001767225600029:00000:new"
   },
   {
     "entity": "queen",
@@ -181,7 +181,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"active\":1,\"breeder_number\":\"s-breeder_number\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"hive_id\":\"hive-a\",\"introduced_at\":\"2026-01-02T03:04:05.000Z\",\"marking\":3,\"note\":\"s-note\",\"organization_id\":\"org-a\",\"origin\":\"s-origin\",\"replaced_at\":\"2026-01-02T03:04:05.000Z\",\"updated_at\":\"2026-01-02T03:04:05.000Z\",\"year\":3}",
-    "hlc": "001767225600025:00000:new"
+    "hlc": "001767225600030:00000:new"
   },
   {
     "entity": "queen",
@@ -189,7 +189,7 @@
     "scopeId": "apiary-a",
     "op": 2,
     "payloadJson": "{\"deleted\":1}",
-    "hlc": "001767225600026:00000:new"
+    "hlc": "001767225600031:00000:new"
   },
   {
     "entity": "task",
@@ -197,7 +197,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"apiary_id\":\"apiary-a\",\"assigned_to\":\"s-assigned_to\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"done\":1,\"due_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"priority\":3,\"recurrence\":\"s-recurrence\",\"title\":\"s-title\"}",
-    "hlc": "001767225600027:00000:new"
+    "hlc": "001767225600032:00000:new"
   },
   {
     "entity": "task",
@@ -205,7 +205,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"apiary_id\":\"apiary-a\",\"assigned_to\":\"s-assigned_to\",\"created_at\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"done\":1,\"due_at\":\"2026-01-02T03:04:05.000Z\",\"hive_id\":\"hive-a\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"priority\":3,\"recurrence\":\"s-recurrence\",\"title\":\"s-title\"}",
-    "hlc": "001767225600028:00000:new"
+    "hlc": "001767225600033:00000:new"
   },
   {
     "entity": "task",
@@ -213,7 +213,7 @@
     "scopeId": "apiary-a",
     "op": 2,
     "payloadJson": "{\"deleted\":1}",
-    "hlc": "001767225600029:00000:new"
+    "hlc": "001767225600034:00000:new"
   },
   {
     "entity": "treatment",
@@ -221,7 +221,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"active_ingredient\":\"s-active_ingredient\",\"apiary_id\":\"apiary-a\",\"batch_number\":\"s-batch_number\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"dose\":\"s-dose\",\"hive_id\":\"hive-a\",\"method\":\"s-method\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"product\":\"s-product\",\"queen_id\":\"s-queen_id\",\"reason\":\"s-reason\",\"withdrawal_until\":\"2026-01-02T03:04:05.000Z\"}",
-    "hlc": "001767225600030:00000:new"
+    "hlc": "001767225600035:00000:new"
   },
   {
     "entity": "treatment",
@@ -229,7 +229,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"active_ingredient\":\"s-active_ingredient\",\"apiary_id\":\"apiary-a\",\"batch_number\":\"s-batch_number\",\"date\":\"2026-01-02T03:04:05.000Z\",\"deleted\":0,\"dose\":\"s-dose\",\"hive_id\":\"hive-a\",\"method\":\"s-method\",\"note\":\"s-note\",\"organization_id\":\"org-a\",\"product\":\"s-product\",\"queen_id\":\"s-queen_id\",\"reason\":\"s-reason\",\"withdrawal_until\":\"2026-01-02T03:04:05.000Z\"}",
-    "hlc": "001767225600031:00000:new"
+    "hlc": "001767225600036:00000:new"
   },
   {
     "entity": "treatment",
@@ -237,7 +237,7 @@
     "scopeId": "apiary-a",
     "op": 1,
     "payloadJson": "{\"deleted\":0}",
-    "hlc": "001767225600032:00000:new"
+    "hlc": "001767225600037:00000:new"
   },
   {
     "entity": "treatment",
@@ -245,6 +245,6 @@
     "scopeId": "apiary-a",
     "op": 2,
     "payloadJson": "{\"deleted\":1}",
-    "hlc": "001767225600034:00000:new"
+    "hlc": "001767225600039:00000:new"
   }
 ]

@@ -5,6 +5,7 @@ package openbeehive.v1;
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
+import "openbeehive/v1/photo.proto";
 
 enum HiveType {
   HIVE_TYPE_UNSPECIFIED = 0;
@@ -39,7 +40,8 @@ message Hive {
   string qr_code = 10;          // for the hive's stock card
   google.protobuf.Timestamp created_at = 11;
   google.protobuf.Timestamp updated_at = 12;
-  string photo = 13;            // representative photo (data URL)
+  string photo = 13;            // never set; see picture
+  Photo picture = 14;           // the hive's picture, if it has one; output only
 }
 
 message CreateHiveRequest {

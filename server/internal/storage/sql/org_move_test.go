@@ -133,6 +133,8 @@ func seedOrg(t *testing.T, s *Store, org, user string, logEntries int, seq *int6
 			[]any{p + "ha", org, p + "a", now}},
 		{`INSERT INTO placement (id, organization_id, hive_id, apiary_id, start_at) VALUES (?, ?, ?, ?, ?)`,
 			[]any{p + "p", org, p + "h", p + "a", now}},
+		{`INSERT INTO photo (id, organization_id, owner_entity, owner_id) VALUES (?, ?, ?, ?)`,
+			[]any{p + "ph", org, "inspection", p + "i"}},
 		{`INSERT INTO event (id, organization_id, scope_id, type, date, author_id) VALUES (?, ?, ?, ?, ?, ?)`,
 			[]any{p + "e1", org, p + "a", 1, now, user}},
 		{`INSERT INTO event (id, organization_id, scope_id, type, date, author_id) VALUES (?, ?, ?, ?, ?, ?)`,

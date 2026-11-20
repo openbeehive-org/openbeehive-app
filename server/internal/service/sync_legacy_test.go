@@ -28,6 +28,10 @@ import (
 // produce are the same on every run.
 func pastStamp(n int) string { return wsync.Format(1767225600000+int64(n), 0, "new") }
 
+// sampleThumb is the smallest thing that passes as a photo thumbnail: a
+// data URL whose bytes start like a JPEG file.
+const sampleThumb = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ=="
+
 // sampleValue is a value of the column's kind that every backend stores.
 func sampleValue(col string, kind colKind) any {
 	switch col {
@@ -39,6 +43,13 @@ func sampleValue(col string, kind colKind) any {
 		return "hive-a"
 	case "deleted":
 		return 0
+	// A photo's own rules (photo_sync.go).
+	case "owner_entity":
+		return ownerInspection
+	case "content_type":
+		return "image/jpeg"
+	case "thumb":
+		return sampleThumb
 	}
 	switch kind {
 	case kindBool:

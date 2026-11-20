@@ -13,7 +13,7 @@ import (
 // through organization_id. A synced table that is missing here would be left
 // behind by MoveOrgData; TestOrgScopedTablesAreComplete guards the list.
 var orgScopedTables = []string{
-	"apiary", "hive", "queen", "inspection", "task", "treatment", "harvest", "placement", "event",
+	"apiary", "hive", "queen", "inspection", "task", "treatment", "harvest", "placement", "event", "photo",
 }
 
 // OrgMove describes moving a workspace's records to another workspace and

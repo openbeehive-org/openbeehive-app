@@ -183,7 +183,7 @@ func dashboardRecent(ctx context.Context, q dashboardQuery, res *wv1.DashboardRe
 	for _, r := range recent {
 		res.RecentInspections = append(res.RecentInspections, inspectionFromRow(r))
 	}
-	return nil
+	return attachInspectionPhotos(ctx, q.db, q.org, res.RecentInspections)
 }
 
 func (s *StatsService) GetHoneyStats(ctx context.Context, req *wv1.HoneyStatsRequest) (*wv1.HoneyStatsResponse, error) {

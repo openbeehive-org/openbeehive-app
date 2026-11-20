@@ -166,32 +166,6 @@ func TestListInspectionsFiltersAndPaginates(t *testing.T) {
 	}
 }
 
-func TestInspectionPhotosUseTheORSet(t *testing.T) {
-	f := newAPIFixture(t)
-	ctx := identityCtx("user-a", "org-a")
-	cr, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{HiveId: "hive-a"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	const photo = "data:image/jpeg;base64,AAAA"
-	res, err := f.insp.AddInspectionPhoto(ctx, &wv1.AddInspectionPhotoRequest{InspectionId: cr.Inspection.Id, Photo: photo})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(res.Inspection.PhotoKeys) != 1 || res.Inspection.PhotoKeys[0] != photo {
-		t.Fatalf("photo not stored: %v", res.Inspection.PhotoKeys)
-	}
-	_, err = f.insp.AddInspectionPhoto(ctx, &wv1.AddInspectionPhotoRequest{InspectionId: cr.Inspection.Id, Photo: "http://x"})
-	wantCode(t, err, connect.CodeInvalidArgument)
-	rm, err := f.insp.RemoveInspectionPhoto(ctx, &wv1.RemoveInspectionPhotoRequest{InspectionId: cr.Inspection.Id, Photo: photo})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rm.Inspection.PhotoKeys) != 0 {
-		t.Fatalf("photo not removed: %v", rm.Inspection.PhotoKeys)
-	}
-}
-
 func TestCreateQueenReplacesThePreviousOne(t *testing.T) {
 	f := newAPIFixture(t)
 	ctx := identityCtx("user-a", "org-a")

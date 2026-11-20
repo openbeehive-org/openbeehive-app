@@ -50,13 +50,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("blob: %v", err)
 	}
+	// One clock for every server-side write, shared with the sync endpoint.
+	hlc := wsync.NewHLC(cfg.Sync.NodeID)
+	photos := startPhotos(ctx, store, hlc, blobs)
 
 	mux := http.NewServeMux()
-	interceptors := setupAuth(ctx, cfg, store, blobs, mux)
-	registerServices(mux, cfg, store, interceptors)
+	interceptors := setupAuth(ctx, cfg, store, blobs, photos, mux)
+	registerServices(mux, cfg, store, interceptors, hlc, photos)
 	registerWeb(mux, cfg)
 
 	serve(ctx, cfg, harden(cfg, mux))
+}
+
+// startPhotos prepares photo storage: inline photos left by 0.4.x are
+// converted once, before any request is served, and the upkeep loop starts.
+func startPhotos(ctx context.Context, store *sqlstore.Store, hlc *wsync.HLC, blobs blob.Store) *service.Photos {
+	photos := service.NewPhotos(store.DB(), hlc, blobs)
+	if err := photos.ConvertInlinePhotos(ctx); err != nil {
+		log.Printf("photos: converting inline photos: %v (continued at the next start)", err)
+	}
+	go photos.Run(ctx)
+	return photos
 }
 
 // logAuthMode states at boot who can use this server, the one fact an
@@ -176,7 +190,7 @@ func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 
 // setupAuth mounts the auth endpoints (session, password, OIDC, WebAuthn,
 // API keys) and returns the interceptors the RPC handlers run behind.
-func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, blobs blob.Store, mux *http.ServeMux) []connect.ServerInterceptor {
+func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, blobs blob.Store, photos *service.Photos, mux *http.ServeMux) []connect.ServerInterceptor {
 	// Every plain-HTTP auth and workspace endpoint goes through one router,
 	// which enforces methods, the cross-site check and the body limit.
 	rt := auth.NewRouter(cfg)
@@ -187,6 +201,8 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 	if !cfg.LoginEnabled() {
 		// Self-host single-user mode: no auth configured -> inject a fixed
 		// local identity so the offline-first app works without login.
+		mux.Handle(service.PhotoPathPrefix, photos.Handler(
+			func(*http.Request) (auth.Identity, int) { return auth.LocalUser, 0 }, rt.SameSite))
 		return []connect.ServerInterceptor{auth.DevInterceptor()}
 	}
 
@@ -242,6 +258,10 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 	// Settings, accepted on RPCs alongside session tokens.
 	keys := auth.NewAPIKeys(store.DB(), sessions, store.Users(), store.Members())
 	keys.Routes(rt)
+	// Full-size photos: the same credentials as the RPCs, and the router's
+	// cross-site rule for uploads.
+	mux.Handle(service.PhotoPathPrefix, photos.Handler(
+		func(r *http.Request) (auth.Identity, int) { return auth.RequestIdentity(r, keys) }, rt.SameSite))
 	// Demo sessions and read-scoped API keys are read-only: reject mutating
 	// RPCs server-side.
 	return []connect.ServerInterceptor{auth.SessionInterceptor(keys), auth.ReadOnlyGuard()}
@@ -257,20 +277,20 @@ func mountRPC(mux *http.ServeMux, server *connect.Server) {
 }
 
 // registerServices mounts the Connect-RPC handlers and health.
-func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.ServerInterceptor) {
+func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.ServerInterceptor, hlc *wsync.HLC, photos *service.Photos) {
 	server := connect.NewServer(interceptors...)
 
-	// One clock for every server-side write, shared with the sync endpoint.
-	hlc := wsync.NewHLC(cfg.Sync.NodeID)
 	// Offline sync: central push/pull endpoint (the app's write path).
 	syncSvc := service.NewSyncService(store.DB(), hlc)
 	syncSvc.MinProtocol = cfg.Sync.MinProtocol
+	syncSvc.UsePhotos(photos)
 	openbeehivev1connect.RegisterSyncServiceHandler(server, syncSvc)
 	// Daily clean-up of the change log; devices older than it load a snapshot.
 	go syncSvc.CompactDaily(context.Background(), cfg.Sync.ChangeLogRetentionDays)
 	// CRUD services for scripts and integrations. Their writes go through the
 	// same merge + change log as Push, so they show up on devices.
 	w := service.NewWriter(store.DB(), hlc)
+	w.UsePhotos(photos)
 	openbeehivev1connect.RegisterApiaryServiceHandler(server, service.NewApiaryService(store.Apiaries(), w))
 	openbeehivev1connect.RegisterHiveServiceHandler(server, service.NewHiveService(store.Hives(), w))
 	openbeehivev1connect.RegisterQueenServiceHandler(server, service.NewQueenService(w))

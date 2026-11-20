@@ -30,11 +30,17 @@ import (
 // so the history a device sees is the same whether a record was entered in
 // the app or through the API.
 type Writer struct {
-	db  *sqlx.DB
-	hlc *wsync.HLC
+	db     *sqlx.DB
+	hlc    *wsync.HLC
+	photos *Photos
 }
 
-func NewWriter(db *sqlx.DB, hlc *wsync.HLC) *Writer { return &Writer{db: db, hlc: hlc} }
+func NewWriter(db *sqlx.DB, hlc *wsync.HLC) *Writer {
+	return &Writer{db: db, hlc: hlc, photos: NewPhotos(db, hlc, nil)}
+}
+
+// UsePhotos attaches the photo store with its blob backend.
+func (w *Writer) UsePhotos(p *Photos) { w.photos = p }
 
 // Event types, mirroring history.ts.
 const (
@@ -78,6 +84,7 @@ func orNew(id string) string {
 
 // Run executes fn in one transaction and commits if it returns nil.
 func (w *Writer) Run(ctx context.Context, id auth.Identity, fn func(t *txWriter) error) error {
+	ctx = withPhotos(ctx, w.photos)
 	tx, err := w.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
@@ -121,10 +128,7 @@ func (t *txWriter) apply(ch *wv1.Change) error {
 	}
 	ch.Hlc = t.w.hlc.Now()
 	ch.AuthorId = t.id.UserID
-	if err := applyChange(t.ctx, t.tx, spec, ch, t.id.OrgID); err != nil {
-		return err
-	}
-	return appendChangeLog(t.ctx, t.tx, ch, t.id.OrgID)
+	return applyLogged(t.ctx, t.tx, spec, ch, t.id.OrgID)
 }
 
 // emit records a history event with frozen context under the given id.

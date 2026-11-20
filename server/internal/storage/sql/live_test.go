@@ -37,7 +37,7 @@ import (
 var syncedTables = []string{
 	"organization", "users", "member", "apiary", "hive", "queen", "inspection", "sync_state", "sync_boot",
 	"task", "treatment", "harvest", "placement", "event", "change_log",
-	"seq_counter", "user_passkey", "invite", "api_key", "password_reset",
+	"seq_counter", "user_passkey", "invite", "api_key", "password_reset", "photo", "photo_migration",
 }
 
 type backend struct {
