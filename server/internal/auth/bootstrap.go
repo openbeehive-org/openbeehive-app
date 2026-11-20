@@ -49,12 +49,13 @@ func EnsureAdmin(ctx context.Context, users storage.UserRepo, cfg *config.Config
 // LocalDataMover is the storage side of AdoptLocalData.
 type LocalDataMover interface {
 	OrgHasData(ctx context.Context, orgID string) (bool, error)
+	UserHasSettings(ctx context.Context, userID string) (bool, error)
 	MoveOrgData(ctx context.Context, m sqlstore.OrgMove) (int64, error)
 }
 
 // AdoptLocalData moves the records written in single-user mode (no login,
 // everything under the fixed "local" workspace) into the instance admin's
-// workspace, so that turning login on does not hide existing data. It runs at
+// workspace, and the settings of the "local" user to the admin's account, so that turning login on does not hide existing data. It runs at
 // every boot with a login method enabled and does nothing once no row is
 // left under "local". The move is one transaction; a failure leaves the data
 // where it was and is retried at the next boot.
@@ -63,6 +64,10 @@ type LocalDataMover interface {
 // the data stays put and the log says how to adopt it.
 func AdoptLocalData(ctx context.Context, store LocalDataMover, users storage.UserRepo, members storage.MemberRepo, prov *Provisioner, cfg *config.Config) error {
 	has, err := store.OrgHasData(ctx, LocalUser.OrgID)
+	if err == nil && !has {
+		// Units or a language chosen in single-user mode move along too.
+		has, err = store.UserHasSettings(ctx, LocalUser.UserID)
+	}
 	if err != nil {
 		return fmt.Errorf("single-user data: %w", err)
 	}

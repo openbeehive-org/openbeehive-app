@@ -17,7 +17,8 @@ var orgScopedTables = []string{
 }
 
 // OrgMove describes moving a workspace's records to another workspace and
-// re-attributing what one user wrote to another user.
+// re-attributing what one user wrote to another user, including the user's
+// account settings (user_move.go).
 type OrgMove struct {
 	FromOrg, ToOrg   string
 	FromUser, ToUser string
@@ -90,6 +91,10 @@ func (s *Store) MoveOrgData(ctx context.Context, m OrgMove) (int64, error) {
 	n, err := moveChangeLog(ctx, tx, m)
 	if err != nil {
 		return 0, fmt.Errorf("change_log: %w", err)
+	}
+	moved += n
+	if n, err = moveUserSettings(ctx, tx, m.FromUser, m.ToUser); err != nil {
+		return 0, fmt.Errorf("user_settings: %w", err)
 	}
 	moved += n
 	return moved, tx.Commit()

@@ -102,3 +102,30 @@ func TestAdoptLocalDataWaitsForAnAdmin(t *testing.T) {
 		t.Fatal("the records were moved although nobody can own them")
 	}
 }
+
+// Units or a language chosen in single-user mode are enough to adopt: they
+// become the admin's settings, even without any record.
+func TestAdoptLocalDataCarriesSettingsToTheAdmin(t *testing.T) {
+	f := newAPIFixture(t, loginConfig())
+	ctx := context.Background()
+	db := f.store.DB()
+	if _, err := db.Exec(db.Rebind(`INSERT INTO user_settings (id, weight_unit, field_hlc) VALUES (?, 'lb', ?)`),
+		LocalUser.UserID, `{"weight_unit":"001767225600000:00000:dev"}`); err != nil {
+		t.Fatal(err)
+	}
+	prov := NewProvisioner(f.store.Users(), f.store.Orgs(), f.store.Members())
+	if err := AdoptLocalData(ctx, f.store, f.store.Users(), f.store.Members(), prov, f.cfg); err != nil {
+		t.Fatalf("adopt: %v", err)
+	}
+	admin, err := f.store.Users().GetByEmail(ctx, f.cfg.Auth.AdminEmail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var weight string
+	if err := db.Get(&weight, db.Rebind(`SELECT weight_unit FROM user_settings WHERE id = ?`), admin.ID); err != nil || weight != "lb" {
+		t.Fatalf("admin's weight unit = %q, %v", weight, err)
+	}
+	if has, _ := f.store.UserHasSettings(ctx, LocalUser.UserID); has {
+		t.Fatal("settings left under the single-user account")
+	}
+}
