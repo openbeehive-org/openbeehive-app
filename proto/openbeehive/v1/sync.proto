@@ -2,37 +2,61 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
-// Generic sync protocol with per-field LWW.
-// payload_json contains only the CHANGED fields (partial delta):
-//   Scalar:  {"name": "Orchard Meadow", "note": "..."}
-//   Set:     {"photo_keys": {"add": ["k1"], "remove": ["k2"]}}  (OR-Set delta)
-// hlc stamps the whole delta; per field the field clock decides (LWW),
-// set fields are merged by union.
+// Sync protocol: devices upload their local changes with Push and download
+// everybody else's with Pull. Rows are merged field by field (last writer
+// wins per field), list columns as observed-remove sets.
+//
+// payload_json is a JSON object holding only the CHANGED columns of one row
+// (a partial delta), never the whole row:
+//   Scalars:  {"name": "Orchard Meadow", "note": "..."}
+//             Values are strings, numbers, booleans or null. Booleans travel
+//             as 0/1, timestamps as ISO-8601 strings ("" = not set).
+//   Sets:     {"photo_keys": {"add": ["k1"], "remove": ["k2"],
+//                             "removed_tags": {"k2": ["<hlc>", ...]}}}
+//             removed_tags lists, per removed element, the add tags the
+//             origin device had observed; only those are tombstoned, so a
+//             concurrent add elsewhere survives. A delta WITHOUT
+//             removed_tags (older apps) removes every tag the receiver
+//             knows; a present but empty list removes nothing.
+//
+// The server keeps only the columns it knows (unknown keys are dropped), in
+// a normalised form, and that normalised payload is what Pull returns.
+// Receivers must ignore keys they do not know.
+//
+// hlc stamps the whole delta: "<unix ms, 15 digits>:<counter, 5 digits>:<node>".
+// Per field the newer stamp wins; equal stamps do not overwrite.
 
 enum ChangeOp {
   CHANGE_OP_UNSPECIFIED = 0;
   CHANGE_OP_UPSERT = 1;
-  CHANGE_OP_DELETE = 2; // Tombstone
+  CHANGE_OP_DELETE = 2; // Tombstone: sets the row's "deleted" column
 }
 
 message Change {
-  string entity = 1;     // "apiary" | "hive" | "queen" | "inspection" | "task"
+  // "apiary" | "hive" | "queen" | "inspection" | "task" | "placement" |
+  // "harvest" | "treatment" | "event"
+  string entity = 1;
   string entity_id = 2;
-  string scope_id = 3;   // Apiary id or "user:<id>"
+  // Id of the apiary the row belongs to, or "user:<id>" for rows only their
+  // author sees. Every change is additionally bound to the caller's workspace.
+  string scope_id = 3;
   ChangeOp op = 4;
-  string payload_json = 5; // full row as JSON (empty on delete)
-  string hlc = 6;          // Hybrid Logical Clock, lexicographically sortable
+  string payload_json = 5; // partial delta, see above (ignored on delete)
+  string hlc = 6;          // Hybrid Logical Clock stamp of the delta
+  // Set by the server from the authenticated caller; what a client sends
+  // here on Push is ignored.
   string author_id = 7;
 }
 
 message PullRequest {
-  string cursor = 1;     // last seen server sequence ("" = from the start)
+  string cursor = 1;     // next_cursor of the previous Pull ("" = from the start)
   int32 limit = 2;       // 0 => server default
 }
 message PullResponse {
   repeated Change changes = 1;
   string next_cursor = 2;
   bool has_more = 3;     // more pages available -> pull again immediately
+  int64 server_time_ms = 4; // server wall clock (unix ms); devices correct their own clock with it
 }
 
 message PushRequest {
@@ -43,17 +67,41 @@ message Conflict {
   string entity_id = 2;
   string winning_hlc = 3; // the server-side winning version
 }
+// One change of a Push that the server did not apply. Every other change of
+// the same request is applied normally.
+message RejectedChange {
+  int32 index = 1; // position in PushRequest.changes
+  // Machine-readable cause:
+  //   "wrong_tenant"    the row belongs to another workspace
+  //   "forbidden_scope" scope_id is not writable for the caller
+  //   "unknown_entity"  entity is not a synced table
+  //   "invalid"         malformed stamp, payload, value or id
+  //   "clock_ahead"     hlc is more than 10 minutes ahead of the server;
+  //                     re-stamp with a corrected clock and send again
+  string code = 2;
+  string reason = 3; // plain English, for logs
+}
 message PushResponse {
-  string server_cursor = 1;     // current cursor after the push
-  repeated Conflict conflicts = 2; // rejected (stale) changes
+  // Always empty. The pull cursor only ever advances through Pull;
+  // kept so older apps keep decoding the response.
+  string server_cursor = 1;
+  repeated Conflict conflicts = 2; // unused, always empty
+  // Changes that were not applied. A change not listed here was accepted
+  // (accepted does not mean it won: older fields lose the per-field merge).
+  repeated RejectedChange rejected = 3;
+  int64 server_time_ms = 4; // server wall clock (unix ms)
 }
 
-// Optional live channel: nudges the device to pull on new changes.
+// Optional live channel: nudges the device to pull when its workspace has
+// new changes.
 message SubscribeRequest { string cursor = 1; }
 message SubscribeEvent { string server_cursor = 1; }
 
 service SyncService {
   rpc Pull(PullRequest) returns (PullResponse);
+  // Applies each change on its own: one bad change neither blocks nor drops
+  // the others (see PushResponse.rejected). The whole request fails with
+  // PERMISSION_DENIED only for read-only identities.
   rpc Push(PushRequest) returns (PushResponse);
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeEvent);
 }
