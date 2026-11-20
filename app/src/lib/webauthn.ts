@@ -19,6 +19,30 @@ export const passkeysSupported = (): boolean =>
 
 type Fetchish = { headers?: Record<string, string> };
 
+/**
+ * A failed passkey ceremony. `code` is 'cancelled' when the user dismissed the
+ * browser's prompt (or let it time out), otherwise the `code` of the server's
+ * error response, or '' when there was none. `status` is the HTTP status.
+ */
+export class PasskeyError extends Error {
+  readonly code: string;
+  readonly status: number;
+  constructor(message: string, code: string, status = 0) {
+    super(message);
+    this.name = 'PasskeyError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
+/** True when the user backed out of the passkey prompt: nothing to report. */
+export const isPasskeyCancelled = (e: unknown): boolean =>
+  e instanceof PasskeyError && e.code === 'cancelled';
+
+const cancelled = () => new PasskeyError('passkey: cancelled', 'cancelled');
+const serverCode = (body: { code?: unknown }): string =>
+  typeof body.code === 'string' ? body.code : '';
+
 // Wire shapes from go-webauthn: the DOM option types with binary fields as base64url.
 type DescriptorJSON = Omit<PublicKeyCredentialDescriptor, 'id'> & { id: string };
 type CreationJSON = Omit<
@@ -54,12 +78,23 @@ async function beginFinish<O>(
   if (opts.headers) common.headers = opts.headers;
   const b = await fetch(`${api}${beginPath}`, common);
   const bj = await b.json().catch(() => ({}));
-  if (!b.ok) throw new Error(bj.error || 'passkey: begin failed');
-  const cred = await run(bj);
-  if (!cred) throw new Error('passkey: cancelled');
+  if (!b.ok) throw new PasskeyError(bj.error || 'passkey: begin failed', serverCode(bj), b.status);
+  let cred: Credential | null;
+  try {
+    cred = await run(bj);
+  } catch (e) {
+    // Browsers reject with NotAllowedError when the prompt is closed or times
+    // out, and with AbortError when it is aborted.
+    const name = (e as { name?: string } | null)?.name;
+    if (name === 'NotAllowedError' || name === 'AbortError') throw cancelled();
+    throw e;
+  }
+  if (!cred) throw cancelled();
   const f = await fetch(`${api}${finishPath}`, { ...common, body: JSON.stringify(cred) });
   const fj = await f.json().catch(() => ({}));
-  if (!f.ok) throw new Error(fj.error || 'passkey: verification failed');
+  if (!f.ok) {
+    throw new PasskeyError(fj.error || 'passkey: verification failed', serverCode(fj), f.status);
+  }
   return fj;
 }
 

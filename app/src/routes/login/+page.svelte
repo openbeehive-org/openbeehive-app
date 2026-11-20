@@ -1,10 +1,17 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { _ } from 'svelte-i18n';
   import { KeyRound, Mail } from '@lucide/svelte';
-  import { passkeyLogin, passkeysSupported } from '#lib/webauthn.js';
+  import { authErrorKey, GENERIC_AUTH_ERROR, NETWORK_AUTH_ERROR } from '#lib/auth-errors.js';
+  import { fetchInstance } from '#lib/instance.js';
+  import {
+    isPasskeyCancelled,
+    passkeyLogin,
+    PasskeyError,
+    passkeysSupported
+  } from '#lib/webauthn.js';
 
   // Auth endpoints are on the API origin. Empty = same origin (single-binary prod).
   const API = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
@@ -17,6 +24,7 @@
     active_org?: string;
     status?: string;
     error?: string;
+    code?: string;
   };
   let mode = $state<Mode>('loading');
   let hasPassword = $state(true);
@@ -28,7 +36,9 @@
   let password = $state('');
   let name = $state('');
   let busy = $state(false);
-  let error = $state('');
+  // Translation key of the current error; never the server's raw text.
+  let errorKey = $state('');
+  let heading = $state<HTMLHeadingElement>();
 
   const justVerified = $derived(page.url.searchParams.get('verified') === '1');
   // Invite links land here as /login?invite=<token> (see server tenant.go).
@@ -36,31 +46,36 @@
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   onMount(async () => {
-    try {
-      const r = await fetch(`${API}/auth/instance`, { credentials: 'include' });
-      if (!r.ok) throw new Error('no auth');
-      const j = await r.json();
-      hasPassword = !!j.password_auth;
-      registration = j.registration !== false;
-      providers = j.oidc_providers ?? [];
-      webauthn = !!j.webauthn;
-      demoEnabled = !!j.demo;
-      // Nothing to log into (single-user self-host): go straight to the app.
-      if (!hasPassword && !providers.length && !webauthn && !demoEnabled) {
-        mode = 'single';
-        goto('/');
-        return;
-      }
-
-      if (inviteToken && hasPassword) mode = 'signup';
-      else
-        // invited: most likely a fresh account
-        mode = 'signin';
-    } catch {
+    const j = await fetchInstance();
+    // Server unreachable (offline): the app itself still opens from the device.
+    if (!j) {
       mode = 'single';
       goto('/');
+      return;
     }
+    hasPassword = !!j.password_auth;
+    registration = j.registration !== false;
+    providers = j.oidc_providers ?? [];
+    webauthn = !!j.webauthn;
+    demoEnabled = !!j.demo;
+    // Nothing to log into (single-user self-host): go straight to the app.
+    if (!hasPassword && !providers.length && !webauthn && !demoEnabled) {
+      mode = 'single';
+      goto('/');
+      return;
+    }
+    // Invited: most likely a fresh account.
+    mode = inviteToken && hasPassword ? 'signup' : 'signin';
   });
+
+  // Switches the form and moves focus to its heading, so keyboard and screen
+  // reader users notice that the page changed.
+  async function show(next: Mode) {
+    mode = next;
+    errorKey = '';
+    await tick();
+    heading?.focus();
+  }
 
   function persist(j: AuthPayload, fallbackEmail = '') {
     if (j.token) localStorage.setItem('session', j.token);
@@ -91,35 +106,46 @@
     return j;
   }
 
-  async function submit(path: 'signup' | 'signin') {
-    if (busy) return;
-    busy = true;
-    error = '';
+  // POSTs to an auth endpoint. Returns the payload, or null after setting
+  // errorKey. `on401` is what a 401 without an error code means here.
+  async function post(path: string, body: string, on401?: string): Promise<AuthPayload | null> {
+    let r: Response;
     try {
-      const r = await fetch(`${API}/auth/${path}`, {
+      r = await fetch(`${API}/auth/${path}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          name: name.trim(),
-          invite: inviteToken
-        })
+        body
       });
-      let j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        error = j.error || $_('auth.err_generic');
-        return;
-      }
+    } catch {
+      errorKey = NETWORK_AUTH_ERROR;
+      return null;
+    }
+    const j: AuthPayload = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      errorKey = authErrorKey(j, r.status, on401);
+      return null;
+    }
+    return j;
+  }
+
+  async function submit(path: 'signup' | 'signin') {
+    if (busy) return;
+    busy = true;
+    errorKey = '';
+    try {
+      let j = await post(
+        path,
+        JSON.stringify({ email: email.trim(), password, name: name.trim(), invite: inviteToken }),
+        'auth.err_invalid_credentials'
+      );
+      if (!j) return;
       if (j.status === 'verify') {
-        mode = 'verify';
+        await show('verify');
         return;
       }
       if (inviteToken) j = await acceptInvite(j);
       persist(j);
-    } catch {
-      error = $_('auth.err_generic');
     } finally {
       busy = false;
     }
@@ -128,13 +154,20 @@
   async function passkeySignin() {
     if (busy) return;
     busy = true;
-    error = '';
+    errorKey = '';
     try {
       let j = await passkeyLogin(API);
       if (inviteToken) j = await acceptInvite(j);
       persist(j, j.email ?? '');
     } catch (e) {
-      error = String((e as Error)?.message ?? e) || $_('auth.err_generic');
+      // Closing the browser's passkey prompt is a decision, not an error.
+      if (isPasskeyCancelled(e)) return;
+      errorKey =
+        e instanceof PasskeyError
+          ? authErrorKey({ code: e.code }, e.status, 'auth.err_passkey_failed')
+          : e instanceof TypeError
+            ? NETWORK_AUTH_ERROR
+            : GENERIC_AUTH_ERROR;
     } finally {
       busy = false;
     }
@@ -143,22 +176,10 @@
   async function demoLogin() {
     if (busy) return;
     busy = true;
-    error = '';
+    errorKey = '';
     try {
-      const r = await fetch(`${API}/auth/demo-login`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}'
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        error = j.error || $_('auth.err_generic');
-        return;
-      }
-      persist(j, 'demo');
-    } catch {
-      error = $_('auth.err_generic');
+      const j = await post('demo-login', '{}');
+      if (j) persist(j, 'demo');
     } finally {
       busy = false;
     }
@@ -172,17 +193,19 @@
 </script>
 
 <div class="wrap">
-  <div class="card">
-    <span class="mark">⬡</span>
+  <main class="card">
+    <span class="mark" aria-hidden="true">⬡</span>
 
     {#if mode === 'loading' || mode === 'single'}
-      <p class="muted">{$_('auth.entering')}</p>
+      <p class="muted" role="status">{$_('auth.entering')}</p>
     {:else if mode === 'verify'}
-      <h1>{$_('auth.verify_title')}</h1>
+      <h1 tabindex="-1" bind:this={heading}>{$_('auth.verify_title')}</h1>
       <p class="muted">{$_('auth.verify_sent')}</p>
-      <button class="link" onclick={() => (mode = 'signin')}>{$_('auth.back_to_signin')}</button>
+      <button type="button" class="link" onclick={() => show('signin')}>
+        {$_('auth.back_to_signin')}
+      </button>
     {:else}
-      <h1>
+      <h1 tabindex="-1" bind:this={heading}>
         {#if mode === 'signup'}{$_('auth.create_title')}
         {:else}{$_('auth.signin_title')}{/if}
       </h1>
@@ -195,21 +218,27 @@
       {/if}
 
       {#if justVerified}
-        <p class="ok">{$_('auth.verified_ok')}</p>
+        <p class="ok" role="status">{$_('auth.verified_ok')}</p>
       {/if}
 
-      {#if error}
-        <p class="err">{error}</p>
+      {#if errorKey}
+        <p class="err" role="alert">{$_(errorKey)}</p>
       {/if}
 
       {#if demoEnabled}
-        <button class="primary demo" onclick={demoLogin} disabled={busy}
-          ><img class="logo" src="/favicon.svg" alt="" /> {$_('auth.try_demo')}</button
-        >
+        <div class="demo">
+          <p>{$_('auth.demo_hint')}</p>
+          <button type="button" class="primary" onclick={demoLogin} disabled={busy}>
+            {$_('auth.try_demo')}
+          </button>
+        </div>
+        {#if hasPassword || providers.length || webauthn}
+          <div class="or"><span>{$_('auth.or')}</span></div>
+        {/if}
       {/if}
 
       {#if webauthn && mode === 'signin' && passkeysSupported()}
-        <button class="provider pk" onclick={passkeySignin} disabled={busy}
+        <button type="button" class="provider pk" onclick={passkeySignin} disabled={busy}
           ><KeyRound size={16} aria-hidden="true" /> {$_('auth.passkey_signin')}</button
         >
       {/if}
@@ -217,29 +246,35 @@
       {#if hasPassword}
         <form onsubmit={onSubmit}>
           {#if isSignup}
-            <label
-              ><span>{$_('auth.name')}</span>
-              <input bind:value={name} autocomplete="name" /></label
-            >
+            <label>
+              <span>{$_('auth.name')}</span>
+              <input type="text" bind:value={name} autocomplete="name" autocapitalize="words" />
+            </label>
           {/if}
 
           <label>
             <span>{$_('auth.email')}</span>
-
-            <input type="email" bind:value={email} autocomplete="email" required />
+            <input
+              type="email"
+              inputmode="email"
+              bind:value={email}
+              autocomplete={isSignup ? 'email' : 'username'}
+              autocapitalize="none"
+              spellcheck="false"
+              required
+            />
           </label>
 
           <label>
             <span>{$_('auth.password')}</span>
-
             <input
               type="password"
               bind:value={password}
-              minlength="8"
+              minlength={isSignup ? 8 : undefined}
               autocomplete={isSignup ? 'new-password' : 'current-password'}
               required
-            /></label
-          >
+            />
+          </label>
           <button class="primary" type="submit" disabled={busy}>
             {#if mode === 'signup'}{$_('auth.signup')}
             {:else}{$_('auth.signin')}{/if}
@@ -259,24 +294,16 @@
       {/if}
 
       {#if hasPassword && mode === 'signin' && (registration || inviteToken)}
-        <button
-          class="link"
-          onclick={() => {
-            mode = 'signup';
-            error = '';
-          }}>{$_('auth.no_account')}</button
-        >
+        <button type="button" class="link" onclick={() => show('signup')}>
+          {$_('auth.no_account')}
+        </button>
       {:else if hasPassword && mode === 'signup'}
-        <button
-          class="link"
-          onclick={() => {
-            mode = 'signin';
-            error = '';
-          }}>{$_('auth.have_account')}</button
-        >
+        <button type="button" class="link" onclick={() => show('signin')}>
+          {$_('auth.have_account')}
+        </button>
       {/if}
     {/if}
-  </div>
+  </main>
 </div>
 
 <style>
@@ -289,8 +316,8 @@
   .card {
     width: 100%;
     max-width: 360px;
-    background: var(--cream2, #fffdf7);
-    border: 1px solid var(--line, #e5dcc6);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 20px;
     padding: 30px 26px;
     display: flex;
@@ -301,7 +328,7 @@
   }
   .mark {
     font-size: 2.6rem;
-    color: var(--honey, #c77f22);
+    color: var(--accent);
     line-height: 1;
   }
   h1 {
@@ -309,35 +336,46 @@
     font-size: 1.5rem;
     margin: 6px 0 0;
   }
+  h1:focus {
+    outline: none;
+  }
   .muted {
-    color: var(--ink-soft, #6b5e48);
+    color: var(--text-soft);
     font-size: 0.9rem;
     margin: 0 0 8px;
   }
   .ok {
-    color: var(--moss, #5c6b4a);
+    color: var(--ok);
     font-weight: 600;
     font-size: 0.88rem;
   }
-  .wrap :global(.lucide-icon),
-  .wrap .logo {
+  .wrap :global(.lucide-icon) {
     vertical-align: -0.15em;
   }
-  .logo {
-    width: 18px;
-    height: 18px;
-  }
   .notice {
-    background: var(--cream, #fbf6ea);
-    border: 1px solid var(--line, #e5dcc6);
-    border-left: 3px solid var(--honey, #c77f22);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
     border-radius: 10px;
     padding: 10px 12px;
-    color: var(--ink-soft, #6b5e48);
+    color: var(--text-soft);
     font-size: 0.85rem;
     margin: 4px 0;
     text-align: left;
     align-self: stretch;
+  }
+  .demo {
+    align-self: stretch;
+    background: var(--warn-bg);
+    color: var(--warn-text);
+    border-radius: 14px;
+    padding: 14px;
+    margin-top: 4px;
+  }
+  .demo p {
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 8px;
   }
   form {
     width: 100%;
@@ -353,25 +391,27 @@
     text-align: left;
   }
   label span {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    color: var(--ink-soft, #6b5e48);
+    color: var(--text-soft);
   }
+  /* 16px at least: iOS zooms the page when a smaller field gets focus. */
   input {
     font: inherit;
+    font-size: 1rem;
     padding: 11px 13px;
-    border: 1px solid var(--line, #e5dcc6);
+    border: 1px solid var(--border-strong);
     border-radius: 11px;
-    background: #fff;
-    color: var(--ink, #2c2316);
+    background: var(--bg);
+    color: var(--text);
   }
-  input:focus {
-    outline: none;
-    border-color: var(--honey, #c77f22);
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
   .err {
-    color: #b5402f;
-    font-size: 0.85rem;
+    color: var(--danger);
+    font-size: 0.88rem;
     font-weight: 600;
     margin: 0;
     text-align: left;
@@ -384,8 +424,8 @@
     border: none;
     border-radius: 12px;
     padding: 12px;
-    background: var(--honey, #c77f22);
-    color: #fff;
+    background: var(--accent);
+    color: var(--on-accent);
     margin-top: 4px;
     width: 100%;
   }
@@ -393,16 +433,13 @@
     opacity: 0.6;
     cursor: default;
   }
-  .primary.demo {
-    background: linear-gradient(90deg, var(--honey-l, #e9a744), var(--honey, #c77f22));
-  }
   .or {
     width: 100%;
     display: flex;
     align-items: center;
     gap: 10px;
-    color: var(--ink-soft, #6b5e48);
-    font-size: 0.78rem;
+    color: var(--text-soft);
+    font-size: 0.8rem;
     margin: 14px 0 2px;
   }
   .or::before,
@@ -410,7 +447,7 @@
     content: '';
     flex: 1;
     height: 1px;
-    background: var(--line, #e5dcc6);
+    background: var(--border);
   }
   .providers {
     width: 100%;
@@ -421,15 +458,15 @@
   .provider {
     display: block;
     padding: 11px;
-    border: 1px solid var(--line, #e5dcc6);
+    border: 1px solid var(--border-strong);
     border-radius: 12px;
     text-decoration: none;
-    color: var(--ink, #2c2316);
+    color: var(--text);
     font-weight: 600;
-    background: #fff;
+    background: var(--bg);
   }
   .provider:hover {
-    border-color: var(--honey, #c77f22);
+    border-color: var(--accent);
   }
   .provider.pk {
     font: inherit;
@@ -446,7 +483,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: var(--honey-d, #a4641a);
+    color: var(--accent-text);
     font: inherit;
     font-weight: 600;
     font-size: 0.88rem;
