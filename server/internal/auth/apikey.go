@@ -7,8 +7,8 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -39,9 +39,10 @@ func NewAPIKeys(db *sqlx.DB, sessions *SessionManager, users storage.UserRepo, m
 }
 
 // Routes registers the management endpoints (session-authenticated).
-func (k *APIKeys) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("/auth/api-keys", k.listOrCreate)
-	mux.HandleFunc("/auth/api-keys/delete", k.remove)
+func (k *APIKeys) Routes(rt *Router) {
+	rt.Get("/auth/api-keys", k.list)
+	rt.PostJSON("/auth/api-keys", k.create)
+	rt.PostJSON("/auth/api-keys/delete", k.remove)
 }
 
 var (
@@ -77,7 +78,8 @@ func (k *APIKeys) Verify(ctx context.Context, token string) (Identity, error) {
 		return Identity{}, errBadAPIKey
 	}
 	if err != nil {
-		return Identity{}, err
+		log.Printf("auth: api key lookup: %v", err)
+		return Identity{}, errSessionUnverifiable
 	}
 	if row.ExpiresAt != nil && !row.ExpiresAt.After(time.Now()) {
 		return Identity{}, errExpiredAPIKey
@@ -135,27 +137,15 @@ func (k *APIKeys) canManageTenant(ctx context.Context, id Identity) bool {
 
 // identity requires a real session (not a key) and refuses the demo account.
 func (k *APIKeys) identity(w http.ResponseWriter, r *http.Request) (Identity, bool) {
-	id, ok := k.sessions.IdentityFromRequest(r)
+	id, ok := k.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "not signed in"})
 		return Identity{}, false
 	}
 	if id.Role == "demo" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": ErrDemoReadOnly.Error()})
+		demoReadOnly(w)
 		return Identity{}, false
 	}
 	return id, true
-}
-
-func (k *APIKeys) listOrCreate(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		k.list(w, r)
-	case http.MethodPost:
-		k.create(w, r)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
 }
 
 // list returns the caller's keys for the active tenant, or with ?tenant=1
@@ -170,7 +160,7 @@ func (k *APIKeys) list(w http.ResponseWriter, r *http.Request) {
 	rows := []apiKeyRow{}
 	if r.URL.Query().Get("tenant") == "1" {
 		if !k.canManageTenant(r.Context(), id) {
-			respondJSON(w, http.StatusForbidden, map[string]any{"error": "tenant admin only"})
+			respondError(w, http.StatusForbidden, "owner_only", "only a workspace admin can list every key")
 			return
 		}
 		if err := k.db.SelectContext(r.Context(), &rows, k.db.Rebind(
@@ -178,7 +168,7 @@ func (k *APIKeys) list(w http.ResponseWriter, r *http.Request) {
 			        k.user_id, COALESCE(u.email, '') AS user_email
 			 FROM api_key k LEFT JOIN users u ON u.id = k.user_id
 			 WHERE k.organization_id = ? ORDER BY u.email, k.created_at`), id.OrgID); err != nil {
-			respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			internalError(w, "list api keys", err)
 			return
 		}
 		for i := range rows {
@@ -190,7 +180,7 @@ func (k *APIKeys) list(w http.ResponseWriter, r *http.Request) {
 	if err := k.db.SelectContext(r.Context(), &rows, k.db.Rebind(
 		`SELECT id, name, key_prefix, scope, created_at, expires_at, last_used_at FROM api_key
 		 WHERE user_id = ? AND organization_id = ? ORDER BY created_at`), id.UserID, id.OrgID); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "list api keys", err)
 		return
 	}
 	for i := range rows {
@@ -211,23 +201,25 @@ func (k *APIKeys) create(w http.ResponseWriter, r *http.Request) {
 		Scope         string `json:"scope"`
 		ExpiresInDays int    `json:"expires_in_days"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	scope := ScopeWrite
 	switch req.Scope {
 	case "", ScopeWrite:
 	case ScopeRead:
 		scope = ScopeRead
 	default:
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "scope must be \"write\" or \"read\""})
+		respondError(w, http.StatusBadRequest, "invalid_scope", "scope must be \"write\" or \"read\"")
 		return
 	}
 	if req.ExpiresInDays < 0 || req.ExpiresInDays > maxKeyLifetimeDays {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "expires_in_days out of range"})
+		respondError(w, http.StatusBadRequest, "invalid_expiry", "expires_in_days out of range")
 		return
 	}
 	token, err := newKeyToken()
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "generate api key", err)
 		return
 	}
 	now := time.Now().UTC()
@@ -240,7 +232,7 @@ func (k *APIKeys) create(w http.ResponseWriter, r *http.Request) {
 		`INSERT INTO api_key (id, user_id, organization_id, name, key_prefix, key_hash, scope, created_at, expires_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 		row.ID, id.UserID, id.OrgID, row.Name, row.Prefix, hashKey(token), row.Scope, row.CreatedAt, row.ExpiresAt); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "store api key", err)
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]any{
@@ -253,10 +245,6 @@ func (k *APIKeys) create(w http.ResponseWriter, r *http.Request) {
 // when the caller is its owner or the instance admin; scripts using it fail
 // from now on.
 func (k *APIKeys) remove(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	id, ok := k.identity(w, r)
 	if !ok {
 		return
@@ -264,8 +252,11 @@ func (k *APIKeys) remove(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ID string `json:"id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "key id required"})
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.ID == "" {
+		respondError(w, http.StatusBadRequest, "id_required", "key id required")
 		return
 	}
 	q, args := `DELETE FROM api_key WHERE id = ? AND user_id = ?`, []any{req.ID, id.UserID}
@@ -274,11 +265,11 @@ func (k *APIKeys) remove(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := k.db.ExecContext(r.Context(), k.db.Rebind(q), args...)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "delete api key", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		respondJSON(w, http.StatusNotFound, map[string]any{"error": "no such key"})
+		respondError(w, http.StatusNotFound, "key_not_found", "no such key")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -8,8 +8,8 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
 )
 
-// errSMTPUnset signals that no SMTP host is configured; callers fall back to
-// logging the message content (links stay reachable on dev/self-host setups).
+// errSMTPUnset signals that no SMTP host is configured. Callers must not fall
+// back to logging the message: it carries sign-in links.
 var errSMTPUnset = errors.New("smtp not configured")
 
 // sendMail delivers a plain-text email via the configured SMTP server.

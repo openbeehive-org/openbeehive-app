@@ -17,6 +17,9 @@ import (
 type tokenVerifier string
 
 func (t tokenVerifier) Verify(_ context.Context, token string) (Identity, error) {
+	if token == "db-down" {
+		return Identity{}, errSessionUnverifiable
+	}
 	if token != string(t) {
 		return Identity{}, errors.New("bad token")
 	}
@@ -49,6 +52,8 @@ func TestSessionInterceptorOverHTTP(t *testing.T) {
 	}{
 		{"no token", "", "", connect.CodeUnauthenticated},
 		{"bad bearer", "Authorization", "Bearer nope", connect.CodeUnauthenticated},
+		// A session that could not be checked is not a sign-out.
+		{"unverifiable", "Authorization", "Bearer db-down", connect.CodeUnavailable},
 		{"bearer", "Authorization", "Bearer good", 0},
 		{"cookie", "Cookie", "other=x; " + SessionCookie + "=good", 0},
 	} {

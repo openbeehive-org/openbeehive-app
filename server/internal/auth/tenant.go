@@ -2,7 +2,7 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -33,45 +33,59 @@ func NewTenantAPI(s *SessionManager, u storage.UserRepo, o storage.OrgRepo, m st
 	return &TenantAPI{sessions: s, users: u, orgs: o, members: m, invites: i, prov: prov, cfg: cfg, blobs: blobs}
 }
 
-func (t *TenantAPI) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("/auth/instance", t.instance)
-	mux.HandleFunc("/auth/me", t.me)
-	mux.HandleFunc("/auth/switch", t.switchTenant)
-	mux.HandleFunc("/tenants/create", t.create)
-	mux.HandleFunc("/tenants/invite", t.invite)
-	mux.HandleFunc("/tenants/invites", t.listInvites)
-	mux.HandleFunc("/tenants/invite/revoke", t.revokeInvite)
-	mux.HandleFunc("/tenants/delete", t.deleteTenant)
-	mux.HandleFunc("/auth/accept-invite", t.accept)
+func (t *TenantAPI) Routes(rt *Router) {
+	rt.Get("/auth/me", t.me)
+	rt.PostJSON("/auth/switch", t.switchTenant)
+	rt.PostJSON("/tenants/create", t.create)
+	rt.PostJSON("/tenants/invite", t.invite)
+	rt.Get("/tenants/invites", t.listInvites)
+	rt.PostJSON("/tenants/invite/revoke", t.revokeInvite)
+	rt.PostJSON("/tenants/delete", t.deleteTenant)
+	rt.PostJSON("/auth/accept-invite", t.accept)
 }
 
-// instance advertises onboarding state + every enabled sign-in method, so the
-// login screen can render exactly what's available.
-func (t *TenantAPI) instance(w http.ResponseWriter, r *http.Request) {
-	providers := t.cfg.OIDC.Enabled
-	if providers == nil {
-		providers = []string{}
+// InstanceHandler serves GET /auth/instance: the onboarding state, every
+// enabled sign-in method and the map settings, so the app renders exactly
+// what this server offers. It is public, and also mounted when no login is
+// configured (every sign-in method then reads false).
+func InstanceHandler(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		providers := cfg.OIDC.Enabled
+		if providers == nil {
+			providers = []string{}
+		}
+		login := cfg.LoginEnabled()
+		respondJSON(w, http.StatusOK, map[string]any{
+			"password_auth":      cfg.Auth.PasswordEnabled,
+			"registration":       login && cfg.Auth.RegistrationOpen,
+			"email_verification": login && cfg.Auth.EmailVerification,
+			"oidc_providers":     providers,
+			"webauthn":           cfg.Auth.WebAuthn.Enabled,
+			"demo":               cfg.Demo.Enabled,
+			// Pure-showcase hosts: anonymous visitors are signed into the demo
+			// automatically instead of seeing the login screen.
+			"demo_autologin": cfg.Demo.Enabled && cfg.Demo.AutoLogin,
+			// Map tiles and address search are the only remote resources the
+			// app loads; switched off, both URLs are empty.
+			"map": map[string]any{
+				"enabled":      cfg.Maps.Enabled,
+				"tile_url":     cfg.Maps.TileURL,
+				"geocoder_url": cfg.Maps.GeocoderURL,
+			},
+		})
 	}
-	respondJSON(w, http.StatusOK, map[string]any{
-		"password_auth":      t.cfg.Auth.PasswordEnabled,
-		"registration":       t.cfg.Auth.RegistrationOpen,
-		"email_verification": t.cfg.Auth.EmailVerification,
-		"oidc_providers":     providers,
-		"webauthn":           t.cfg.Auth.WebAuthn.Enabled,
-		"demo":               t.cfg.Demo.Enabled,
-		// Pure-showcase hosts: anonymous visitors are signed into the demo
-		// automatically instead of seeing the login screen.
-		"demo_autologin": t.cfg.Demo.Enabled && t.cfg.Demo.AutoLogin,
-	})
 }
 
 func (t *TenantAPI) me(w http.ResponseWriter, r *http.Request) {
-	id, ok := t.sessions.IdentityFromRequest(r)
+	id, ok := t.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "not signed in"})
 		return
 	}
-	tenants, _ := t.members.ListByUser(r.Context(), id.UserID)
+	tenants, err := t.members.ListByUser(r.Context(), id.UserID)
+	if err != nil {
+		internalError(w, "list workspaces", err)
+		return
+	}
 	list := make([]map[string]any, 0, len(tenants))
 	for _, m := range tenants {
 		list = append(list, map[string]any{"id": m.OrgID, "name": m.Name, "role": m.Role})
@@ -91,18 +105,22 @@ type switchReq struct {
 }
 
 func (t *TenantAPI) switchTenant(w http.ResponseWriter, r *http.Request) {
-	id, ok := t.sessions.IdentityFromRequest(r)
+	id, ok := t.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "not signed in"})
 		return
 	}
 	var req switchReq
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	if _, err := t.members.Get(r.Context(), req.OrgID, id.UserID); err != nil {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "not a member of that tenant"})
+	if !decodeJSON(w, r, &req) {
 		return
 	}
-	tok := t.reissue(w, id, req.OrgID)
+	if _, err := t.members.Get(r.Context(), req.OrgID, id.UserID); err != nil {
+		respondError(w, http.StatusForbidden, "not_a_member", "not a member of that workspace")
+		return
+	}
+	tok, ok := t.reissue(w, id, req.OrgID)
+	if !ok {
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "active_org": req.OrgID, "token": tok})
 }
 
@@ -111,33 +129,37 @@ type createReq struct {
 }
 
 func (t *TenantAPI) create(w http.ResponseWriter, r *http.Request) {
-	id, ok := t.sessions.IdentityFromRequest(r)
+	id, ok := t.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "not signed in"})
 		return
 	}
 	if id.Role == "demo" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": ErrDemoReadOnly.Error()})
+		demoReadOnly(w)
 		return
 	}
 	var req createReq
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "a tenant name is required"})
+		respondError(w, http.StatusBadRequest, "name_required", "a workspace name is required")
 		return
 	}
 	org := &storage.Organization{ID: uuid.NewString(), Name: name, CreatedAt: time.Now().UTC()}
 	if err := t.orgs.Create(r.Context(), org); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "create workspace", err)
 		return
 	}
 	// Creator becomes the tenant admin (owner) and switches into the new tenant.
 	if err := t.members.Add(r.Context(), &storage.Membership{OrgID: org.ID, UserID: id.UserID, Role: "owner"}); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "create workspace: add owner", err)
 		return
 	}
-	tok := t.reissue(w, id, org.ID)
+	tok, ok := t.reissue(w, id, org.ID)
+	if !ok {
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "org_id": org.ID, "name": org.Name, "active_org": org.ID, "token": tok})
 }
 
@@ -148,55 +170,59 @@ type inviteReq struct {
 }
 
 func (t *TenantAPI) invite(w http.ResponseWriter, r *http.Request) {
-	id, ok := t.sessions.IdentityFromRequest(r)
+	id, ok := t.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "not signed in"})
 		return
 	}
 	if id.Role == "demo" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": ErrDemoReadOnly.Error()})
+		demoReadOnly(w)
 		return
 	}
 	var req inviteReq
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	if req.OrgID == "" {
 		req.OrgID = id.OrgID
 	}
 	// Only a tenant admin (owner) may invite.
 	m, err := t.members.Get(r.Context(), req.OrgID, id.UserID)
 	if err != nil || m.Role != "owner" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "only the tenant admin can invite"})
+		respondError(w, http.StatusForbidden, "owner_only", "only a workspace admin can invite")
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(req.Email))
-	if !strings.Contains(email, "@") {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "a valid email is required"})
+	if !strings.Contains(email, "@") || strings.ContainsAny(email, " \t\r\n") {
+		respondError(w, http.StatusBadRequest, "invalid_email", "a valid email is required")
 		return
 	}
 	role := req.Role
 	if role != "owner" {
 		role = "member"
 	}
-	inv := &storage.Invite{ID: uuid.NewString(), OrgID: req.OrgID, Email: email, Role: role, Token: randomToken(), CreatedAt: time.Now().UTC()}
+	now := time.Now().UTC()
+	expires := now.Add(storage.InviteTTL)
+	inv := &storage.Invite{ID: uuid.NewString(), OrgID: req.OrgID, Email: email, Role: role, Token: randomToken(), CreatedAt: now, ExpiresAt: &expires}
 	if err := t.invites.Create(r.Context(), inv); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "create invite", err)
 		return
 	}
 	link := t.inviteLink(inv.Token)
-	// Email the invitee; when SMTP is unset (or fails) log the link instead so
-	// it stays recoverable; the UI shows it to the inviting admin either way.
+	// Email the invitee. The link is a credential, so it is never logged:
+	// when the mail cannot be sent, the inviting admin still has it in this
+	// response and in the open-invites list.
 	orgName := req.OrgID
 	if org, err := t.orgs.Get(r.Context(), req.OrgID); err == nil {
 		orgName = org.Name
 	}
 	go func() {
 		body := fmt.Sprintf("You have been invited to join %q on Openbeehive.\r\n\r\n"+
-			"Open this link to accept the invitation:\r\n%s\r\n", orgName, link)
-		if err := sendMail(t.cfg, email, "You're invited to Openbeehive", body); err != nil {
-			log.Printf("tenant: invite email to %s not sent (%v); link: %s", email, err, link)
+			"Open this link to accept the invitation (valid for 7 days):\r\n%s\r\n", orgName, link)
+		if err := sendMail(t.cfg, email, "You're invited to Openbeehive", body); err != nil && !errors.Is(err, errSMTPUnset) {
+			log.Printf("tenant: invite email for invite %s not sent (%v); copy the link from Settings", inv.ID, err)
 		}
 	}()
-	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "token": inv.Token, "link": link})
+	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "token": inv.Token, "link": link, "expires_at": inv.Expiry()})
 }
 
 func (t *TenantAPI) inviteLink(token string) string {
@@ -206,9 +232,8 @@ func (t *TenantAPI) inviteLink(token string) string {
 // requireOwner resolves the caller's identity and checks they are the admin
 // (owner) of the given tenant; org defaults to the active one.
 func (t *TenantAPI) requireOwner(w http.ResponseWriter, r *http.Request, orgID string) (Identity, string, bool) {
-	id, ok := t.sessions.IdentityFromRequest(r)
+	id, ok := t.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "not signed in"})
 		return Identity{}, "", false
 	}
 	if orgID == "" {
@@ -216,7 +241,7 @@ func (t *TenantAPI) requireOwner(w http.ResponseWriter, r *http.Request, orgID s
 	}
 	m, err := t.members.Get(r.Context(), orgID, id.UserID)
 	if err != nil || m.Role != "owner" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "only the tenant admin can manage invites"})
+		respondError(w, http.StatusForbidden, "owner_only", "only a workspace admin can do this")
 		return Identity{}, "", false
 	}
 	return id, orgID, true
@@ -224,7 +249,8 @@ func (t *TenantAPI) requireOwner(w http.ResponseWriter, r *http.Request, orgID s
 
 // listInvites returns the tenant's open (not yet accepted) invites, including
 // the signup link so the admin can re-copy it; accepting deletes the row, so
-// everything listed here is still pending.
+// everything listed here is still pending. Expired invites stay listed,
+// flagged, until the admin revokes them.
 func (t *TenantAPI) listInvites(w http.ResponseWriter, r *http.Request) {
 	_, orgID, ok := t.requireOwner(w, r, r.URL.Query().Get("org_id"))
 	if !ok {
@@ -232,9 +258,10 @@ func (t *TenantAPI) listInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	invites, err := t.invites.ListByOrg(r.Context(), orgID)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "list invites", err)
 		return
 	}
+	now := time.Now()
 	list := make([]map[string]any, 0, len(invites))
 	for _, inv := range invites {
 		list = append(list, map[string]any{
@@ -242,6 +269,8 @@ func (t *TenantAPI) listInvites(w http.ResponseWriter, r *http.Request) {
 			"email":      inv.Email,
 			"role":       inv.Role,
 			"created_at": inv.CreatedAt,
+			"expires_at": inv.Expiry(),
+			"expired":    inv.Expired(now),
 			"link":       t.inviteLink(inv.Token),
 		})
 	}
@@ -255,7 +284,9 @@ type revokeReq struct {
 
 func (t *TenantAPI) revokeInvite(w http.ResponseWriter, r *http.Request) {
 	var req revokeReq
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	_, orgID, ok := t.requireOwner(w, r, req.OrgID)
 	if !ok {
 		return
@@ -264,20 +295,20 @@ func (t *TenantAPI) revokeInvite(w http.ResponseWriter, r *http.Request) {
 	// cannot delete tenant B's invites by guessing ids.
 	invites, err := t.invites.ListByOrg(r.Context(), orgID)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "list invites", err)
 		return
 	}
 	for _, inv := range invites {
 		if inv.ID == req.ID {
 			if err := t.invites.Delete(r.Context(), inv.ID); err != nil {
-				respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+				internalError(w, "revoke invite", err)
 				return
 			}
 			respondJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 			return
 		}
 	}
-	respondJSON(w, http.StatusNotFound, map[string]any{"error": "invite not found"})
+	respondError(w, http.StatusNotFound, "invite_not_found", "invite not found")
 }
 
 type deleteTenantReq struct {
@@ -285,30 +316,40 @@ type deleteTenantReq struct {
 }
 
 // deleteTenant permanently removes a tenant and everything in it: for every
-// member, not just the caller. Owner-only. The caller's session is moved to
-// another tenant they belong to (a fresh personal one if none is left).
+// member, not just the caller. Owner-only. The workspace must be named in the
+// body; there is no default, so no request can delete "whatever is active".
+// The caller's session is moved to another tenant they belong to (a fresh
+// personal one if none is left); every other session for the deleted
+// workspace stops working.
 func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 	var req deleteTenantReq
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.OrgID == "" {
+		respondError(w, http.StatusBadRequest, "org_id_required", "org_id is required: name the workspace to delete")
+		return
+	}
 	id, orgID, ok := t.requireOwner(w, r, req.OrgID)
 	if !ok {
 		return
 	}
 	if id.Role == "demo" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": ErrDemoReadOnly.Error()})
+		demoReadOnly(w)
 		return
 	}
 	// Collect blob keys BEFORE the rows go away; purge after the delete
 	// commits so a failed delete never loses photos.
 	photoKeys, err := t.orgs.PhotoKeysByOrg(r.Context(), orgID)
 	if err != nil {
-		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err) //nolint:gosec // G706: orgID is an existing organization id (requireOwner)
+		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err)
 	}
 	if err := t.orgs.Delete(r.Context(), orgID); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "delete workspace", err)
 		return
 	}
-	log.Printf("tenant: %s deleted by %s", orgID, id.UserID) //nolint:gosec // G706: ids come from the verified session and the owner check
+	t.sessions.Invalidate() // members of the deleted workspace lose access now
+	log.Printf("tenant: %s deleted by %s", orgID, id.UserID)
 	if t.blobs != nil && len(photoKeys) > 0 {
 		go t.purgeBlobs(orgID, photoKeys) //nolint:gosec // G118: the purge outlives the request on purpose
 	}
@@ -320,7 +361,10 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 			next = t.prov.ResolveActiveOrg(r.Context(), u)
 		}
 	}
-	tok := t.reissue(w, id, next)
+	tok, ok := t.reissue(w, id, next)
+	if !ok {
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "active_org": next, "token": tok})
 }
 
@@ -334,53 +378,83 @@ func (t *TenantAPI) purgeBlobs(orgID string, keys []string) {
 	for _, key := range keys {
 		if err := t.blobs.Delete(ctx, key); err != nil {
 			failed++
-			log.Printf("tenant: %s: blob %s not deleted: %v", orgID, key, err) //nolint:gosec // G706: orgID and key come from our own rows
+			log.Printf("tenant: %s: blob %s not deleted: %v", orgID, key, err)
 		}
 	}
-	log.Printf("tenant: %s: purged %d/%d photo blobs", orgID, len(keys)-failed, len(keys)) //nolint:gosec // G706: orgID is an existing organization id (requireOwner)
+	log.Printf("tenant: %s: purged %d/%d photo blobs", orgID, len(keys)-failed, len(keys))
 }
 
 type acceptReq struct {
 	Token string `json:"token"`
 }
 
+// accept joins the workspace an invite was issued for. The invite only works
+// for the account whose email it names: a forwarded or leaked link cannot be
+// redeemed by someone else.
 func (t *TenantAPI) accept(w http.ResponseWriter, r *http.Request) {
-	id, ok := t.sessions.IdentityFromRequest(r)
+	id, ok := t.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "not signed in"})
 		return
 	}
 	if id.Role == "demo" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": ErrDemoReadOnly.Error()})
+		demoReadOnly(w)
 		return
 	}
 	var req acceptReq
-	_ = json.NewDecoder(r.Body).Decode(&req)
-	inv, err := t.invites.GetByToken(r.Context(), req.Token)
-	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid or expired invite"})
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	inv, ok := usableInvite(w, r, t.invites, req.Token)
+	if !ok {
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(inv.Email), strings.TrimSpace(id.Email)) {
+		respondError(w, http.StatusForbidden, "invite_email_mismatch", "this invite was issued for a different email address")
 		return
 	}
 	if _, err := t.members.Get(r.Context(), inv.OrgID, id.UserID); err != nil {
 		// not yet a member -> add
 		if err := t.members.Add(r.Context(), &storage.Membership{OrgID: inv.OrgID, UserID: id.UserID, Role: inv.Role}); err != nil {
-			respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			internalError(w, "accept invite", err)
 			return
 		}
+		t.sessions.Invalidate() // a cached "not a member" must not outlive the join
 	}
 	_ = t.invites.Delete(r.Context(), inv.ID)
-	tok := t.reissue(w, id, inv.OrgID) // switch into the joined tenant
+	tok, ok := t.reissue(w, id, inv.OrgID) // switch into the joined tenant
+	if !ok {
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "org_id": inv.OrgID, "active_org": inv.OrgID, "token": tok})
 }
 
+// usableInvite looks an invite up by its token and answers 400 when it does
+// not exist or has expired.
+func usableInvite(w http.ResponseWriter, r *http.Request, invites storage.InviteRepo, token string) (*storage.Invite, bool) {
+	inv, err := invites.GetByToken(r.Context(), strings.TrimSpace(token))
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		respondError(w, http.StatusBadRequest, "invite_invalid", "this invite is not valid; ask for a new one")
+		return nil, false
+	case err != nil:
+		internalError(w, "look up invite", err)
+		return nil, false
+	case inv.Expired(time.Now()):
+		respondError(w, http.StatusBadRequest, "invite_expired", "this invite has expired; ask for a new one")
+		return nil, false
+	}
+	return inv, true
+}
+
 // reissue mints a fresh session for the same user with a new active tenant,
-// sets the cookie and returns the token (for Bearer clients).
-func (t *TenantAPI) reissue(w http.ResponseWriter, id Identity, orgID string) string {
+// sets the cookie and returns the token (for Bearer clients). On failure it
+// writes the error response and returns false.
+func (t *TenantAPI) reissue(w http.ResponseWriter, id Identity, orgID string) (string, bool) {
 	tok, err := t.sessions.Issue(Identity{UserID: id.UserID, OrgID: orgID, Email: id.Email, Role: id.Role})
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return ""
+		internalError(w, "issue session", err)
+		return "", false
 	}
 	t.sessions.SetCookie(w, tok)
-	return tok
+	return tok, true
 }

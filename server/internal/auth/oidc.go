@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -33,9 +34,19 @@ type Manager struct {
 }
 
 type Claims struct {
-	Subject string `json:"sub"`
-	Email   string `json:"email"`
-	Name    string `json:"name"`
+	Subject       string       `json:"sub"`
+	Email         string       `json:"email"`
+	EmailVerified claimBoolean `json:"email_verified"`
+	Name          string       `json:"name"`
+}
+
+// claimBoolean reads a boolean claim that some providers send as the string
+// "true" instead of a JSON boolean. Anything else, or a missing claim, is false.
+type claimBoolean bool
+
+func (b *claimBoolean) UnmarshalJSON(data []byte) error {
+	*b = claimBoolean(string(data) == "true" || string(data) == `"true"`)
+	return nil
 }
 
 // NewManager initializes all providers enabled in the config.
@@ -48,7 +59,8 @@ func NewManager(ctx context.Context, cfg *config.Config) (*Manager, error) {
 		}
 		op, err := oidc.NewProvider(ctx, pc.IssuerURL)
 		if err != nil {
-			return nil, fmt.Errorf("OIDC %q: %w", name, err)
+			return nil, fmt.Errorf("OIDC provider %q: cannot reach the issuer %s (check BEEHIVE_OIDC_%s_ISSUER): %w",
+				name, pc.IssuerURL, strings.ToUpper(name), err)
 		}
 		m.providers[name] = &Provider{
 			Name:     name,
@@ -82,36 +94,41 @@ func randToken() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// LoginHandler starts the OIDC auth-code flow: GET /auth/login?provider=google
-func (m *Manager) LoginHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		provider := r.URL.Query().Get("provider")
-		if provider == "" {
-			provider = m.firstName()
-		}
-		state := randToken()
-		http.SetCookie(w, &http.Cookie{
-			Name: oauthStateCookie, Value: provider + ":" + state, Path: "/",
-			HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: true, MaxAge: 600,
-		})
-		url, err := m.AuthCodeURL(provider, state)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		http.Redirect(w, r, url, http.StatusFound)
-	}
+// Routes registers the OIDC endpoints. Both are browser navigations: the
+// login link on the sign-in page, and the provider's redirect back.
+func (m *Manager) Routes(rt *Router, sessions *SessionManager, users storage.UserRepo, prov *Provisioner, cfg *config.Config) {
+	rt.Get("/auth/login", m.login)
+	rt.Get("/auth/callback", m.callback(sessions, users, prov, cfg))
 }
 
-// CallbackHandler completes the flow, provisions/links an in-app user, issues an
+// login starts the OIDC auth-code flow: GET /auth/login?provider=google
+func (m *Manager) login(w http.ResponseWriter, r *http.Request) {
+	provider := r.URL.Query().Get("provider")
+	if provider == "" {
+		provider = m.firstName()
+	}
+	state := randToken()
+	url, err := m.AuthCodeURL(provider, state)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "unknown_provider", "unknown sign-in provider")
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: oauthStateCookie, Value: provider + ":" + state, Path: "/",
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: true, MaxAge: 600,
+	})
+	http.Redirect(w, r, url, http.StatusFound)
+}
+
+// callback completes the flow, provisions/links an in-app user, issues an
 // app session and redirects home.
-func (m *Manager) CallbackHandler(sessions *SessionManager, users storage.UserRepo, prov *Provisioner, cfg *config.Config) http.HandlerFunc {
+func (m *Manager) callback(sessions *SessionManager, users storage.UserRepo, prov *Provisioner, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		code, state := q.Get("code"), q.Get("state")
 		ck, err := r.Cookie(oauthStateCookie)
 		if err != nil {
-			http.Error(w, "missing state", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "oidc_state_missing", "the sign-in attempt expired; start again from the sign-in page")
 			return
 		}
 		provider, wantState, _ := strings.Cut(ck.Value, ":")
@@ -119,21 +136,28 @@ func (m *Manager) CallbackHandler(sessions *SessionManager, users storage.UserRe
 			provider = p
 		}
 		if state == "" || state != wantState {
-			http.Error(w, "invalid state", http.StatusBadRequest)
+			respondError(w, http.StatusBadRequest, "oidc_state_invalid", "the sign-in attempt is not valid; start again from the sign-in page")
 			return
 		}
 		claims, err := m.Exchange(r.Context(), provider, code)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			log.Printf("oidc: %s: code exchange failed: %v", provider, err) //nolint:gosec // G706: Exchange only succeeds or fails for a configured provider name
+			respondError(w, http.StatusUnauthorized, "oidc_failed", "the sign-in provider did not confirm your identity; try again")
 			return
 		}
 		u, err := provisionOIDCUser(r.Context(), users, prov, cfg, provider, claims)
-		if err != nil {
-			if errors.Is(err, errInviteOnly) {
-				http.Error(w, err.Error(), http.StatusForbidden)
-				return
-			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, errInviteOnly):
+			respondError(w, http.StatusForbidden, "invite_only", err.Error())
+			return
+		case errors.Is(err, errLinkRefused):
+			respondError(w, http.StatusConflict, "account_exists", err.Error())
+			return
+		case errors.Is(err, errNoEmail):
+			respondError(w, http.StatusBadRequest, "oidc_no_email", err.Error())
+			return
+		case err != nil:
+			internalError(w, "oidc provisioning", err)
 			return
 		}
 		org := prov.ResolveActiveOrg(r.Context(), u)
@@ -143,7 +167,7 @@ func (m *Manager) CallbackHandler(sessions *SessionManager, users storage.UserRe
 		}
 		tok, err := sessions.Issue(Identity{UserID: u.ID, OrgID: org, Email: u.Email, Role: role})
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalError(w, "issue session", err)
 			return
 		}
 		sessions.SetCookie(w, tok)
@@ -152,25 +176,48 @@ func (m *Manager) CallbackHandler(sessions *SessionManager, users storage.UserRe
 	}
 }
 
-// errInviteOnly rejects new-account provisioning on invite-only instances.
-var errInviteOnly = errors.New("this instance is invite-only; ask for an invite, then sign up with email and password first")
+var (
+	// errInviteOnly rejects new-account provisioning on invite-only instances.
+	errInviteOnly = errors.New("this instance is invite-only; ask for an invite, then sign up with email and password first")
+	// errLinkRefused rejects attaching a provider login to an existing
+	// account when either side's email address is unproven.
+	errLinkRefused = errors.New("an account with this email address already exists; sign in the way you did before (for example with your email and password)")
+	// errNoEmail rejects provider logins that carry no email address.
+	errNoEmail = errors.New("the sign-in provider did not share an email address; allow the email scope and try again")
+)
 
 // provisionOIDCUser finds the in-app account for an OIDC login: by provider
-// subject, then by matching email (linking an existing email/password profile),
-// otherwise it registers a new account. Provisioning never grants admin; the
-// instance admin comes from BEEHIVE_ADMIN_EMAIL / BEEHIVE_ADMIN_PASSWORD
-// (auth.EnsureAdmin).
+// subject, then by email address, otherwise it registers a new account.
+//
+// Linking by email attaches the provider login to an existing account, which
+// hands that account to whoever controls the provider identity. It therefore
+// happens only when both sides have proven the address: the provider asserts
+// email_verified, and the local account's email is verified. Otherwise the
+// login is refused and the user keeps signing in the way they did before.
+//
+// Provisioning never grants admin; the instance admin comes from
+// BEEHIVE_ADMIN_EMAIL / BEEHIVE_ADMIN_PASSWORD (auth.EnsureAdmin).
 func provisionOIDCUser(ctx context.Context, users storage.UserRepo, prov *Provisioner, cfg *config.Config, provider string, c *Claims) (*storage.User, error) {
 	subject := provider + ":" + c.Subject
 	if u, err := users.GetBySubject(ctx, subject); err == nil {
 		return u, nil
 	}
-	if c.Email != "" {
-		if u, err := users.GetByEmail(ctx, c.Email); err == nil {
-			_ = users.LinkOIDC(ctx, u.ID, subject) // connect existing profile
-			u.OIDCSubject = subject
-			return u, nil
+	email := strings.ToLower(strings.TrimSpace(c.Email))
+	if email == "" {
+		return nil, errNoEmail
+	}
+	switch u, err := users.GetByEmail(ctx, email); {
+	case err == nil:
+		if !bool(c.EmailVerified) || !u.EmailVerified {
+			return nil, errLinkRefused
 		}
+		if err := users.LinkOIDC(ctx, u.ID, subject); err != nil {
+			return nil, err
+		}
+		u.OIDCSubject = subject
+		return u, nil
+	case !errors.Is(err, storage.ErrNotFound):
+		return nil, err
 	}
 	// Invite-only instances provision no new accounts over OIDC (invites are a
 	// password-signup flow); existing accounts linked above sign in normally.
@@ -178,8 +225,8 @@ func provisionOIDCUser(ctx context.Context, users storage.UserRepo, prov *Provis
 		return nil, errInviteOnly
 	}
 	u := &storage.User{
-		ID: uuid.NewString(), Email: c.Email, Name: c.Name, OIDCSubject: subject,
-		Role: "user", EmailVerified: true, CreatedAt: time.Now().UTC(),
+		ID: uuid.NewString(), Email: email, Name: c.Name, OIDCSubject: subject,
+		Role: "user", EmailVerified: bool(c.EmailVerified), CreatedAt: time.Now().UTC(),
 	}
 	if err := users.Create(ctx, u); err != nil {
 		return nil, err

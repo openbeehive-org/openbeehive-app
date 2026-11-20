@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"container/list"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -28,7 +30,8 @@ type WebAuthn struct {
 	prov     *Provisioner
 	sessions *SessionManager
 	cfg      *config.Config
-	pending  sync.Map // challenge id -> *waChallenge
+	throttle *Throttle
+	pending  *challengeStore
 }
 
 type waChallenge struct {
@@ -36,7 +39,73 @@ type waChallenge struct {
 	label string
 }
 
-func NewWebAuthn(cfg *config.Config, db *sqlx.DB, users storage.UserRepo, prov *Provisioner, sessions *SessionManager) (*WebAuthn, error) {
+// Passkey ceremonies finish within seconds; a challenge nobody finished is
+// dropped after waChallengeTTL, and at most waChallengeMax are kept, so the
+// public login/begin endpoint cannot be used to fill the server's memory.
+const (
+	waChallengeTTL = 5 * time.Minute
+	waChallengeMax = 10_000
+)
+
+// challengeStore keeps begun ceremonies in memory until they are finished,
+// expire, or are pushed out by newer ones once the store is full.
+type challengeStore struct {
+	mu    sync.Mutex
+	ttl   time.Duration
+	max   int
+	now   func() time.Time
+	byID  map[string]*list.Element
+	order *list.List // oldest first; one TTL for all, so also expiry order
+}
+
+type challengeEntry struct {
+	id      string
+	c       *waChallenge
+	expires time.Time
+}
+
+func newChallengeStore(ttl time.Duration, limit int) *challengeStore {
+	return &challengeStore{ttl: ttl, max: limit, now: time.Now, byID: map[string]*list.Element{}, order: list.New()}
+}
+
+func (s *challengeStore) put(id string, c *waChallenge) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	for e := s.order.Front(); e != nil; e = s.order.Front() {
+		entry := e.Value.(*challengeEntry)
+		if now.Before(entry.expires) && len(s.byID) < s.max {
+			break
+		}
+		s.order.Remove(e)
+		delete(s.byID, entry.id)
+	}
+	s.byID[id] = s.order.PushBack(&challengeEntry{id: id, c: c, expires: now.Add(s.ttl)})
+}
+
+// take returns a pending challenge exactly once.
+func (s *challengeStore) take(id string) (*waChallenge, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.byID[id]
+	if !ok {
+		return nil, false
+	}
+	entry := s.order.Remove(e).(*challengeEntry)
+	delete(s.byID, id)
+	if !s.now().Before(entry.expires) {
+		return nil, false
+	}
+	return entry.c, true
+}
+
+func (s *challengeStore) len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.byID)
+}
+
+func NewWebAuthn(cfg *config.Config, db *sqlx.DB, users storage.UserRepo, prov *Provisioner, sessions *SessionManager, throttle *Throttle) (*WebAuthn, error) {
 	w, err := webauthn.New(&webauthn.Config{
 		RPDisplayName: cfg.Auth.WebAuthn.DisplayName,
 		RPID:          cfg.Auth.WebAuthn.RPID,
@@ -45,18 +114,23 @@ func NewWebAuthn(cfg *config.Config, db *sqlx.DB, users storage.UserRepo, prov *
 	if err != nil {
 		return nil, err
 	}
-	return &WebAuthn{wa: w, db: db, users: users, prov: prov, sessions: sessions, cfg: cfg}, nil
+	return &WebAuthn{
+		wa: w, db: db, users: users, prov: prov, sessions: sessions, cfg: cfg, throttle: throttle,
+		pending: newChallengeStore(waChallengeTTL, waChallengeMax),
+	}, nil
 }
 
-func (a *WebAuthn) Routes(mux *http.ServeMux) {
-	// Session-gated: manage the signed-in account's passkeys.
-	mux.HandleFunc("/auth/webauthn/enroll/begin", a.enrollBegin)
-	mux.HandleFunc("/auth/webauthn/enroll/finish", a.enrollFinish)
-	mux.HandleFunc("/auth/webauthn/credentials", a.listCredentials)
-	mux.HandleFunc("/auth/webauthn/credentials/delete", a.deleteCredential)
+func (a *WebAuthn) Routes(rt *Router) {
+	// Session-gated: manage the signed-in account's passkeys. The finish
+	// bodies are parsed by the WebAuthn library, and the ceremony itself is
+	// bound to the origin, so they are not held to the JSON content type.
+	rt.Post("/auth/webauthn/enroll/begin", a.enrollBegin)
+	rt.Post("/auth/webauthn/enroll/finish", a.enrollFinish)
+	rt.Get("/auth/webauthn/credentials", a.listCredentials)
+	rt.PostJSON("/auth/webauthn/credentials/delete", a.deleteCredential)
 	// Public: usernameless login with a discoverable credential.
-	mux.HandleFunc("/auth/webauthn/login/begin", a.loginBegin)
-	mux.HandleFunc("/auth/webauthn/login/finish", a.loginFinish)
+	rt.Post("/auth/webauthn/login/begin", a.loginBegin)
+	rt.Post("/auth/webauthn/login/finish", a.loginFinish)
 }
 
 // --- webauthn.User adapter over a registered account ---
@@ -132,10 +206,10 @@ const waChallengeCookie = "obh_wa"
 
 func (a *WebAuthn) storeChallenge(w http.ResponseWriter, c *waChallenge) {
 	id := randToken()
-	a.pending.Store(id, c)
+	a.pending.put(id, c)
 	http.SetCookie(w, &http.Cookie{
 		Name: waChallengeCookie, Value: id, Path: "/", HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Secure: true, MaxAge: 300,
+		SameSite: http.SameSiteLaxMode, Secure: true, MaxAge: int(waChallengeTTL.Seconds()),
 	})
 }
 
@@ -144,11 +218,7 @@ func (a *WebAuthn) loadChallenge(r *http.Request) (*waChallenge, bool) {
 	if err != nil {
 		return nil, false
 	}
-	v, ok := a.pending.LoadAndDelete(ck.Value)
-	if !ok {
-		return nil, false
-	}
-	return v.(*waChallenge), true
+	return a.pending.take(ck.Value)
 }
 
 // --- enrollment (session required) ---
@@ -157,30 +227,25 @@ func (a *WebAuthn) loadChallenge(r *http.Request) (*waChallenge, bool) {
 // the demo account is shared, so letting visitors attach passkeys to it would
 // hand out permanent demo-tenant access tokens.
 func (a *WebAuthn) identity(w http.ResponseWriter, r *http.Request) (Identity, bool) {
-	id, ok := a.sessions.IdentityFromRequest(r)
+	id, ok := a.sessions.Authenticate(w, r)
 	if !ok {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "sign in first"})
 		return Identity{}, false
 	}
 	if id.Role == "demo" {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "not available for the demo account"})
+		respondError(w, http.StatusForbidden, "demo_read_only", "not available for the demo account")
 		return Identity{}, false
 	}
 	return id, true
 }
 
 func (a *WebAuthn) enrollBegin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	id, ok := a.identity(w, r)
 	if !ok {
 		return
 	}
 	u, err := a.users.GetByID(r.Context(), id.UserID)
 	if err != nil {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "unknown account"})
+		notSignedIn(w) // the account behind the session is gone
 		return
 	}
 	user := &waUser{u: u, creds: a.credentials(r, u.ID)}
@@ -199,7 +264,7 @@ func (a *WebAuthn) enrollBegin(w http.ResponseWriter, r *http.Request) {
 		webauthn.WithExclusions(exclude),
 	)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "passkey enrollment", err)
 		return
 	}
 	label := strings.TrimSpace(r.URL.Query().Get("name"))
@@ -208,47 +273,40 @@ func (a *WebAuthn) enrollBegin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *WebAuthn) enrollFinish(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	id, ok := a.identity(w, r)
 	if !ok {
 		return
 	}
 	ch, ok := a.loadChallenge(r)
 	if !ok {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "no enrollment in progress"})
+		respondError(w, http.StatusBadRequest, "passkey_no_ceremony", "no passkey enrollment in progress; start again")
 		return
 	}
 	// The challenge must belong to the session that finishes it.
 	if string(ch.data.UserID) != id.UserID {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "enrollment session mismatch"})
+		respondError(w, http.StatusForbidden, "passkey_session_mismatch", "this enrollment was started by a different account")
 		return
 	}
 	u, err := a.users.GetByID(r.Context(), id.UserID)
 	if err != nil {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "unknown account"})
+		notSignedIn(w) // the account behind the session is gone
 		return
 	}
 	user := &waUser{u: u, creds: a.credentials(r, u.ID)}
 	cred, err := a.wa.FinishRegistration(user, *ch.data, r)
 	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		log.Printf("webauthn: enrollment rejected: %v", err)
+		respondError(w, http.StatusBadRequest, "passkey_failed", "the passkey could not be registered; try again")
 		return
 	}
 	if err := a.addCredential(r, u.ID, ch.label, cred); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "store passkey", err)
 		return
 	}
 	respondJSON(w, http.StatusCreated, map[string]any{"status": "ok", "id": credID(cred), "name": ch.label})
 }
 
 func (a *WebAuthn) listCredentials(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	id, ok := a.identity(w, r)
 	if !ok {
 		return
@@ -256,17 +314,13 @@ func (a *WebAuthn) listCredentials(w http.ResponseWriter, r *http.Request) {
 	rows := []passkeyRow{}
 	if err := a.db.SelectContext(r.Context(), &rows, a.db.Rebind(
 		`SELECT id, name, created_at, last_used_at FROM user_passkey WHERE user_id = ? ORDER BY created_at`), id.UserID); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "list passkeys", err)
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]any{"passkeys": rows})
 }
 
 func (a *WebAuthn) deleteCredential(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	id, ok := a.identity(w, r)
 	if !ok {
 		return
@@ -274,19 +328,22 @@ func (a *WebAuthn) deleteCredential(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ID string `json:"id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == "" {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "credential id required"})
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.ID == "" {
+		respondError(w, http.StatusBadRequest, "id_required", "credential id required")
 		return
 	}
 	// Scoped to the caller: nobody deletes another account's passkeys.
 	res, err := a.db.ExecContext(r.Context(), a.db.Rebind(
 		`DELETE FROM user_passkey WHERE id = ? AND user_id = ?`), req.ID, id.UserID)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "delete passkey", err)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		respondJSON(w, http.StatusNotFound, map[string]any{"error": "unknown passkey"})
+		respondError(w, http.StatusNotFound, "passkey_not_found", "unknown passkey")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -295,14 +352,13 @@ func (a *WebAuthn) deleteCredential(w http.ResponseWriter, r *http.Request) {
 // --- login (public, usernameless) ---
 
 func (a *WebAuthn) loginBegin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !a.throttle.Allow(w, r, "") {
 		return
 	}
 	options, session, err := a.wa.BeginDiscoverableLogin(
 		webauthn.WithUserVerification(protocol.VerificationPreferred))
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "passkey login", err)
 		return
 	}
 	a.storeChallenge(w, &waChallenge{data: session})
@@ -310,13 +366,12 @@ func (a *WebAuthn) loginBegin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *WebAuthn) loginFinish(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !a.throttle.Allow(w, r, "") {
 		return
 	}
 	ch, ok := a.loadChallenge(r)
 	if !ok {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "no login in progress"})
+		respondError(w, http.StatusBadRequest, "passkey_no_ceremony", "no passkey sign-in in progress; start again")
 		return
 	}
 	var account *storage.User
@@ -330,12 +385,14 @@ func (a *WebAuthn) loginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	cred, err := a.wa.FinishDiscoverableLogin(handler, *ch.data, r)
 	if err != nil || account == nil {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "passkey login failed"})
+		a.throttle.Fail(r, "")
+		respondError(w, http.StatusUnauthorized, "passkey_failed", "passkey sign-in failed")
 		return
 	}
 	// Same gates and shape as a password sign-in.
 	if a.cfg.Auth.EmailVerification && !account.EmailVerified {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "please verify your email first", "status": "unverified"})
+		respondJSON(w, http.StatusForbidden, map[string]any{
+			"error": "please verify your email first", "code": "email_unverified", "status": "unverified"})
 		return
 	}
 	role := account.Role
@@ -345,7 +402,7 @@ func (a *WebAuthn) loginFinish(w http.ResponseWriter, r *http.Request) {
 	org := a.prov.ResolveActiveOrg(r.Context(), account)
 	tok, err := a.sessions.Issue(Identity{UserID: account.ID, OrgID: org, Email: account.Email, Role: role})
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		internalError(w, "issue session", err)
 		return
 	}
 	a.sessions.SetCookie(w, tok)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"os/signal"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/rs/cors"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/config"
@@ -31,7 +34,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+	if cfg.EnvFile {
+		log.Printf("config: applied .env from the working directory (existing environment variables win)")
+	}
 	log.Printf("Openbeehive · profile=%s · DB=%s · Blob=%s", cfg.Profile, cfg.DB.Driver, cfg.Blob.Backend)
+	logAuthMode(cfg)
+	for _, w := range cfg.Warnings {
+		log.Printf("WARNING: %s", w)
+	}
 
 	store := openStore(ctx, cfg)
 	defer func() { _ = store.Close() }()
@@ -46,15 +56,80 @@ func main() {
 	registerServices(mux, cfg, store, interceptors)
 	registerWeb(mux, cfg)
 
-	// CORS for browser clients; Connect-Web needs these headers.
-	handler := cors.New(cors.Options{
-		AllowedOrigins:   cfg.CORS.AllowedOrigins,
-		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodOptions},
-		AllowedHeaders:   []string{"*"},
-		ExposedHeaders:   []string{"Connect-Protocol-Version", "Grpc-Status", "Grpc-Message"},
-		AllowCredentials: cfg.CORS.AllowCredentials,
-	}).Handler(mux)
-	serve(ctx, cfg, handler)
+	serve(ctx, cfg, harden(cfg, mux))
+}
+
+// logAuthMode states at boot who can use this server, the one fact an
+// operator must not get wrong.
+func logAuthMode(cfg *config.Config) {
+	if !cfg.LoginEnabled() {
+		hosts := []string{"localhost", "IP addresses"}
+		if h := cfg.PublicHost(); h != "" && h != "localhost" && net.ParseIP(h) == nil {
+			hosts = append(hosts, h)
+		}
+		hosts = append(hosts, cfg.AllowedHosts...)
+		log.Printf("auth: NO LOGIN (single-user mode): every request has full access to all data")
+		log.Printf("auth: accepting requests for hosts: %s (add names with BEEHIVE_ALLOWED_HOSTS)", strings.Join(hosts, ", "))
+		return
+	}
+	var methods []string
+	if cfg.Auth.PasswordEnabled {
+		methods = append(methods, "email+password")
+	}
+	if cfg.Auth.WebAuthn.Enabled {
+		methods = append(methods, "passkeys")
+	}
+	for _, p := range cfg.OIDC.Enabled {
+		methods = append(methods, "OIDC:"+p)
+	}
+	log.Printf("auth: LOGIN REQUIRED (%s)", strings.Join(methods, ", "))
+}
+
+// harden wraps the routes in the cross-cutting HTTP rules: security headers
+// on every response, the Host check of single-user mode, CORS for the
+// configured origins, and no timeouts for streaming RPCs.
+func harden(cfg *config.Config, mux http.Handler) http.Handler {
+	handler := web.NoDeadline(streamingProcedures())(mux)
+
+	// Same-origin unless origins are configured: without the CORS layer no
+	// other site can read responses or send non-simple requests.
+	if len(cfg.CORS.AllowedOrigins) > 0 {
+		handler = cors.New(cors.Options{
+			AllowedOrigins:   cfg.CORS.AllowedOrigins,
+			AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodOptions},
+			AllowedHeaders:   []string{"*"},
+			ExposedHeaders:   []string{"Connect-Protocol-Version", "Grpc-Status", "Grpc-Message"},
+			AllowCredentials: cfg.CORS.AllowCredentials,
+		}).Handler(handler)
+	}
+	if !cfg.LoginEnabled() {
+		handler = web.HostGuard(cfg)(handler)
+	}
+	var index []byte
+	if cfg.Web.Serve {
+		index, _ = web.IndexHTML(cfg) // not built: no inline script to allow
+	}
+	return web.SecurityHeaders(cfg, index)(handler)
+}
+
+// streamingProcedures lists the request paths of every streaming RPC in the
+// API, taken from the proto descriptors.
+func streamingProcedures() map[string]bool {
+	paths := map[string]bool{}
+	protoregistry.GlobalFiles.RangeFilesByPackage("openbeehive.v1", func(fd protoreflect.FileDescriptor) bool {
+		services := fd.Services()
+		for i := range services.Len() {
+			svc := services.Get(i)
+			methods := svc.Methods()
+			for j := range methods.Len() {
+				if m := methods.Get(j); m.IsStreamingServer() || m.IsStreamingClient() {
+					paths["/"+string(svc.FullName())+"/"+string(m.Name())] = true
+				}
+			}
+		}
+		return true
+	})
+	return paths
 }
 
 // openStore opens the database, migrates it and seeds what the profile needs.
@@ -76,6 +151,14 @@ func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 		}
 		log.Printf("auth: instance admin ensured (%s)", cfg.Auth.AdminEmail)
 	}
+	// Login enabled on an instance that ran in single-user mode: hand the
+	// existing records to the instance admin so they do not vanish.
+	if cfg.LoginEnabled() {
+		prov := auth.NewProvisioner(store.Users(), store.Orgs(), store.Members())
+		if err := auth.AdoptLocalData(ctx, store, store.Users(), store.Members(), prov, cfg); err != nil {
+			log.Printf("auth: %v (the records are untouched; the move is retried at the next start)", err)
+		}
+	}
 
 	// Demo tenant (off by default; BEEHIVE_DEMO=true). Seeds 15 hives across 4
 	// apiaries and re-seeds hourly so the showcase stays consistent.
@@ -90,27 +173,36 @@ func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 // setupAuth mounts the auth endpoints (session, password, OIDC, WebAuthn,
 // API keys) and returns the interceptors the RPC handlers run behind.
 func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, blobs blob.Store, mux *http.ServeMux) []connect.ServerInterceptor {
-	sessions := auth.NewSessionManager(cfg.Auth.SessionSecret, cfg.Auth.SessionTTL)
-	authEnabled := len(cfg.OIDC.Enabled) > 0 || cfg.Auth.WebAuthn.Enabled || cfg.Auth.PasswordEnabled
+	// Every plain-HTTP auth and workspace endpoint goes through one router,
+	// which enforces methods, the cross-site check and the body limit.
+	rt := auth.NewRouter(cfg)
+	mux.Handle("/auth/", rt)
+	mux.Handle("/tenants/", rt)
+	rt.Get("/auth/instance", auth.InstanceHandler(cfg))
+
+	if !cfg.LoginEnabled() {
+		// Self-host single-user mode: no auth configured -> inject a fixed
+		// local identity so the offline-first app works without login.
+		return []connect.ServerInterceptor{auth.DevInterceptor()}
+	}
+
+	sessions, err := auth.NewSessionManager(cfg.Auth.SessionSecret, cfg.Auth.SessionTTL, store.Users(), store.Members())
+	if err != nil {
+		log.Fatalf("auth: %v", err)
+	}
+	throttle := auth.NewThrottle(cfg.TrustProxyHeaders)
 
 	// Provisioner: creates/links users and their tenants (organizations).
 	prov := auth.NewProvisioner(store.Users(), store.Orgs(), store.Members())
 
-	if !authEnabled {
-		// Self-host single-user mode: no auth configured -> inject a fixed
-		// local identity so the offline-first app works without login.
-		log.Printf("auth: none configured, single-user mode (user=%s)", auth.LocalUser.UserID)
-		return []connect.ServerInterceptor{auth.DevInterceptor()}
-	}
-
 	// Multi-tenant endpoints (me / switch / create / invite / accept).
-	auth.NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, blobs).Routes(mux)
+	auth.NewTenantAPI(sessions, store.Users(), store.Orgs(), store.Members(), store.Invites(), prov, cfg, blobs).Routes(rt)
 
 	// Email + password sign-up (verification optional). The instance admin is
 	// not created here; auth.EnsureAdmin creates it from BEEHIVE_ADMIN_EMAIL /
 	// BEEHIVE_ADMIN_PASSWORD on boot.
 	if cfg.Auth.PasswordEnabled {
-		auth.NewPasswordAuth(store.Users(), store.Invites(), sessions, cfg, prov).Routes(mux)
+		auth.NewPasswordAuth(store.Users(), store.Invites(), sessions, cfg, prov, throttle).Routes(rt)
 		log.Printf("auth: email/password onboarding enabled (verification=%v, open registration=%v)",
 			cfg.Auth.EmailVerification, cfg.Auth.RegistrationOpen)
 	}
@@ -120,27 +212,36 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 			log.Fatalf("oidc: %v", err)
 		}
 		log.Printf("auth: OIDC providers active: %v", am.Names())
-		mux.HandleFunc("/auth/login", am.LoginHandler())
-		// Callback provisions/links an in-app user record (by subject, then email).
-		mux.HandleFunc("/auth/callback", am.CallbackHandler(sessions, store.Users(), prov, cfg))
+		// The callback provisions an in-app user record, or links one whose
+		// email both sides have verified.
+		am.Routes(rt, sessions, store.Users(), prov, cfg)
 	}
 	if cfg.Auth.WebAuthn.Enabled {
-		wa, err := auth.NewWebAuthn(cfg, store.DB(), store.Users(), prov, sessions)
+		wa, err := auth.NewWebAuthn(cfg, store.DB(), store.Users(), prov, sessions, throttle)
 		if err != nil {
 			log.Fatalf("webauthn: %v", err)
 		}
 		log.Printf("auth: WebAuthn enabled (rp=%s)", cfg.Auth.WebAuthn.RPID)
-		wa.Routes(mux)
+		wa.Routes(rt)
 	}
 
-	mux.HandleFunc("/auth/logout", sessions.LogoutHandler())
+	sessions.Routes(rt)
 	// API keys for scripts and integrations: managed with a session in
 	// Settings, accepted on RPCs alongside session tokens.
 	keys := auth.NewAPIKeys(store.DB(), sessions, store.Users(), store.Members())
-	keys.Routes(mux)
+	keys.Routes(rt)
 	// Demo sessions and read-scoped API keys are read-only: reject mutating
 	// RPCs server-side.
 	return []connect.ServerInterceptor{auth.SessionInterceptor(keys), auth.ReadOnlyGuard()}
+}
+
+// maxRPCMessage caps one RPC message. A Push after a long offline period is
+// the largest legitimate request; clients split bigger batches.
+const maxRPCMessage = 16 << 20
+
+// mountRPC serves the registered Connect services with the message cap.
+func mountRPC(mux *http.ServeMux, server *connect.Server) {
+	connecthttp.Mount(mux, server, connecthttp.WithReadMaxBytes(maxRPCMessage))
 }
 
 // registerServices mounts the Connect-RPC handlers, blob serving and health.
@@ -163,8 +264,7 @@ func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.St
 	openbeehivev1connect.RegisterHarvestServiceHandler(server, service.NewHarvestService(w))
 	openbeehivev1connect.RegisterEventServiceHandler(server, service.NewEventService(w))
 	openbeehivev1connect.RegisterStatsServiceHandler(server, service.NewStatsService(w))
-	// Unbounded like v1: a Push after a long offline period can exceed v2's 4 MiB default.
-	connecthttp.Mount(mux, server, connecthttp.WithReadMaxBytes(0))
+	mountRPC(mux, server)
 
 	// FS blob serving in self-host mode (files only, no directory listings).
 	if cfg.Blob.Backend == config.BlobFS {
@@ -195,6 +295,8 @@ func registerWeb(mux *http.ServeMux, cfg *config.Config) {
 // serve runs the HTTP server until SIGINT/SIGTERM, then shuts down gracefully.
 func serve(ctx context.Context, cfg *config.Config, handler http.Handler) {
 	// Unencrypted HTTP/2 (h2c) allows gRPC without TLS; TLS terminates at the reverse proxy.
+	// The read and write timeouts bound every request; web.NoDeadline lifts
+	// them for streaming RPCs.
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)

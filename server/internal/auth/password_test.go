@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,13 +36,41 @@ func newAuthFixture(t *testing.T, cfg *config.Config) (*httptest.Server, *sqlsto
 			t.Fatalf("ensure admin: %v", err)
 		}
 	}
-	sessions := NewSessionManager("test-secret", time.Hour)
+	sessions, err := NewSessionManager(testSecret, time.Hour, store.Users(), store.Members())
+	if err != nil {
+		t.Fatalf("sessions: %v", err)
+	}
 	prov := NewProvisioner(store.Users(), store.Orgs(), store.Members())
-	mux := http.NewServeMux()
-	NewPasswordAuth(store.Users(), store.Invites(), sessions, cfg, prov).Routes(mux)
-	srv := httptest.NewServer(mux)
+	rt := NewRouter(cfg)
+	NewPasswordAuth(store.Users(), store.Invites(), sessions, cfg, prov, NewThrottle(false)).Routes(rt)
+	srv := httptest.NewServer(rt)
 	t.Cleanup(srv.Close)
 	return srv, store, sessions
+}
+
+// testSecret is a session secret of the minimum accepted length.
+var testSecret = strings.Repeat("s", config.MinSessionSecretBytes)
+
+// seedMember creates an account that belongs to a workspace, the minimum a
+// session needs to verify.
+func seedMember(t *testing.T, store *sqlstore.Store, userID, email, orgID, role string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := store.Users().GetByID(ctx, userID); err != nil {
+		u := &storage.User{ID: userID, Email: email, Name: userID, Role: "user",
+			EmailVerified: true, CreatedAt: time.Now().UTC()}
+		if err := store.Users().Create(ctx, u); err != nil {
+			t.Fatalf("seed user: %v", err)
+		}
+	}
+	if _, err := store.Orgs().Get(ctx, orgID); err != nil {
+		if err := store.Orgs().Create(ctx, &storage.Organization{ID: orgID, Name: orgID, CreatedAt: time.Now().UTC()}); err != nil {
+			t.Fatalf("seed org: %v", err)
+		}
+	}
+	if err := store.Members().Add(ctx, &storage.Membership{OrgID: orgID, UserID: userID, Role: role}); err != nil {
+		t.Fatalf("seed member: %v", err)
+	}
 }
 
 func postJSON(t *testing.T, url string, body any) (int, map[string]any) {

@@ -3,12 +3,12 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,26 +30,22 @@ type PasswordAuth struct {
 	sessions *SessionManager
 	cfg      *config.Config
 	prov     *Provisioner
+	throttle *Throttle
 }
 
-func NewPasswordAuth(users storage.UserRepo, invites storage.InviteRepo, sessions *SessionManager, cfg *config.Config, prov *Provisioner) *PasswordAuth {
-	return &PasswordAuth{users: users, invites: invites, sessions: sessions, cfg: cfg, prov: prov}
+func NewPasswordAuth(users storage.UserRepo, invites storage.InviteRepo, sessions *SessionManager, cfg *config.Config, prov *Provisioner, throttle *Throttle) *PasswordAuth {
+	return &PasswordAuth{users: users, invites: invites, sessions: sessions, cfg: cfg, prov: prov, throttle: throttle}
 }
 
-// Routes registers the onboarding endpoints on the mux.
-func (p *PasswordAuth) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("/auth/signup", p.signup)
-	mux.HandleFunc("/auth/signin", p.signin)
-	mux.HandleFunc("/auth/verify", p.verify)
+// Routes registers the onboarding endpoints.
+func (p *PasswordAuth) Routes(rt *Router) {
+	rt.PostJSON("/auth/signup", p.signup)
+	rt.PostJSON("/auth/signin", p.signin)
+	// Opened from the verification email, so it is a GET from another site.
+	rt.Get("/auth/verify", p.verify)
 	if p.cfg.Demo.Enabled {
-		mux.HandleFunc("/auth/demo-login", p.demoLogin)
+		rt.Post("/auth/demo-login", p.demoLogin)
 	}
-}
-
-func respondJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
 }
 
 // demoLogin signs the visitor in as the demo account (no password needed). Only
@@ -57,11 +53,14 @@ func respondJSON(w http.ResponseWriter, code int, v any) {
 func (p *PasswordAuth) demoLogin(w http.ResponseWriter, r *http.Request) {
 	u, err := p.users.GetByEmail(r.Context(), p.cfg.Demo.Email)
 	if err != nil {
-		respondJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "demo not available"})
+		respondError(w, http.StatusServiceUnavailable, "demo_unavailable", "the demo is not available right now")
 		return
 	}
 	org := p.prov.ResolveActiveOrg(r.Context(), u)
-	tok := p.issue(w, u, org)
+	tok, ok := p.issue(w, u, org)
+	if !ok {
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "name": u.Name, "token": tok, "user_id": u.ID, "active_org": org})
 }
 
@@ -73,56 +72,35 @@ type credsReq struct {
 }
 
 func (p *PasswordAuth) signup(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	var req credsReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body"})
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
-	if !strings.Contains(req.Email, "@") || len(req.Password) < 8 {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "a valid email and an 8+ character password are required"})
+	if !p.throttle.Allow(w, r, req.Email) {
 		return
 	}
-	// The demo account is seeded, never signed up, even if the seeder has not
-	// run yet, its email must not be claimable by a visitor.
-	if p.cfg.Demo.Enabled && strings.EqualFold(req.Email, p.cfg.Demo.Email) {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "this email is reserved"})
-		return
-	}
-	if _, err := p.users.GetByEmail(r.Context(), req.Email); err == nil {
-		respondJSON(w, http.StatusConflict, map[string]any{"error": "an account with this email already exists"})
-		return
-	}
-
-	// Invite-only instance: sign-up requires a valid invite issued to this
-	// email. (The admin account exists from boot, see EnsureAdmin, so there
-	// is no first-run exception.) The invite itself is consumed later by
-	// /auth/accept-invite (once the fresh account is signed in).
-	if !p.cfg.Auth.RegistrationOpen {
-		inv, err := p.invites.GetByToken(r.Context(), strings.TrimSpace(req.Invite))
-		if req.Invite == "" || err != nil {
-			respondJSON(w, http.StatusForbidden, map[string]any{"error": "this instance is invite-only", "status": "invite_only"})
-			return
+	// Every refusal counts as a failed attempt: probing which emails have
+	// accounts, or guessing invite tokens, is throttled like sign-in.
+	if status, code, message := p.signupRefusal(r, &req); status != 0 {
+		p.throttle.Fail(r, req.Email)
+		body := map[string]any{"error": message, "code": code}
+		if code == "invite_only" {
+			body["status"] = code // installed 0.4.x apps read this field
 		}
-		if !strings.EqualFold(inv.Email, req.Email) {
-			respondJSON(w, http.StatusForbidden, map[string]any{"error": "this invite was issued for a different email address"})
-			return
-		}
+		respondJSON(w, status, body)
+		return
 	}
 
 	// Sign-up never grants admin; the instance admin comes from EnsureAdmin.
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), passwordHashCost)
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "hashing failed"})
+		internalError(w, "hash password", err)
 		return
 	}
 
 	u := &storage.User{
-		ID: uuid.NewString(), Email: req.Email, Name: req.Name, Role: "user",
+		ID: uuid.NewString(), Email: req.Email, Name: strings.TrimSpace(req.Name), Role: "user",
 		PasswordHash: string(hash), CreatedAt: time.Now().UTC(),
 		EmailVerified: !p.cfg.Auth.EmailVerification, // verified immediately unless required
 	}
@@ -130,54 +108,135 @@ func (p *PasswordAuth) signup(w http.ResponseWriter, r *http.Request) {
 		u.VerifyToken = randomToken()
 	}
 	if err := p.users.Create(r.Context(), u); err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": "could not create account"})
+		internalError(w, "create account", err)
 		return
 	}
+	p.throttle.Count(r)
 
 	if p.cfg.Auth.EmailVerification {
-		p.sendVerification(u.Email, u.VerifyToken)
+		go p.sendVerification(u.Email, u.VerifyToken)
 		respondJSON(w, http.StatusOK, map[string]any{"status": "verify"})
 		return
 	}
-	org, _ := p.prov.EnsurePersonalTenant(r.Context(), u)
-	tok := p.issue(w, u, org)
+	org, err := p.prov.EnsurePersonalTenant(r.Context(), u)
+	if err != nil {
+		internalError(w, "create personal workspace", err)
+		return
+	}
+	tok, ok := p.issue(w, u, org)
+	if !ok {
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "name": u.Name, "token": tok, "user_id": u.ID, "active_org": org})
 }
 
-func (p *PasswordAuth) signin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
+// signupRefusal checks a sign-up request against the instance's rules and
+// returns the error to answer with; status 0 means the account may be created.
+func (p *PasswordAuth) signupRefusal(r *http.Request, req *credsReq) (status int, code, message string) {
+	if !strings.Contains(req.Email, "@") || strings.ContainsAny(req.Email, " \t\r\n") || len(req.Password) < 8 {
+		return http.StatusBadRequest, "invalid_signup", "a valid email and an 8+ character password are required"
 	}
+	// bcrypt reads at most 72 bytes; refuse longer input instead of silently
+	// ignoring the rest.
+	if len(req.Password) > 72 {
+		return http.StatusBadRequest, "password_too_long", "the password may be at most 72 bytes long"
+	}
+	// The demo account is seeded, never signed up, even if the seeder has not
+	// run yet, its email must not be claimable by a visitor.
+	if p.cfg.Demo.Enabled && strings.EqualFold(req.Email, p.cfg.Demo.Email) {
+		return http.StatusForbidden, "email_reserved", "this email is reserved"
+	}
+	if _, err := p.users.GetByEmail(r.Context(), req.Email); err == nil {
+		return http.StatusConflict, "email_taken", "an account with this email already exists"
+	}
+	if p.cfg.Auth.RegistrationOpen {
+		return 0, "", ""
+	}
+	// Invite-only instance: sign-up requires a valid invite issued to this
+	// email. (The admin account exists from boot, see EnsureAdmin, so there
+	// is no first-run exception.) The invite itself is consumed later by
+	// /auth/accept-invite (once the fresh account is signed in).
+	inv, err := p.invites.GetByToken(r.Context(), strings.TrimSpace(req.Invite))
+	switch {
+	case err != nil:
+		return http.StatusForbidden, "invite_only", "this instance is invite-only"
+	case inv.Expired(time.Now()):
+		return http.StatusForbidden, "invite_expired", "this invite has expired; ask for a new one"
+	case !strings.EqualFold(inv.Email, req.Email):
+		return http.StatusForbidden, "invite_email_mismatch", "this invite was issued for a different email address"
+	}
+	return 0, "", ""
+}
+
+// dummyHash is compared against when the account does not exist or has no
+// password, so that answering takes as long as for a real account and the
+// response time does not reveal which emails are registered.
+var dummyHash = sync.OnceValue(newDummyHash)
+
+func newDummyHash() []byte {
+	h, _ := bcrypt.GenerateFromPassword([]byte(randomToken()), passwordHashCost)
+	return h
+}
+
+// passwordHashCost is the bcrypt work factor for every stored password. A
+// variable only so the tests, which hash hundreds of passwords, can lower it.
+var passwordHashCost = bcrypt.DefaultCost
+
+func (p *PasswordAuth) signin(w http.ResponseWriter, r *http.Request) {
 	var req credsReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid body"})
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
-	u, err := p.users.GetByEmail(r.Context(), req.Email)
-	if err != nil || u.PasswordHash == "" ||
-		bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
-		respondJSON(w, http.StatusUnauthorized, map[string]any{"error": "wrong email or password"})
+	if !p.throttle.Allow(w, r, req.Email) {
 		return
 	}
+	u, err := p.users.GetByEmail(r.Context(), req.Email)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		internalError(w, "look up account", err)
+		return
+	}
+	hash := dummyHash()
+	known := err == nil && u.PasswordHash != ""
+	if known {
+		hash = []byte(u.PasswordHash)
+	}
+	if bcrypt.CompareHashAndPassword(hash, []byte(req.Password)) != nil || !known {
+		p.throttle.Fail(r, req.Email)
+		respondError(w, http.StatusUnauthorized, "invalid_credentials", "wrong email or password")
+		return
+	}
+	p.throttle.Succeed(req.Email)
 	if p.cfg.Auth.EmailVerification && !u.EmailVerified {
-		respondJSON(w, http.StatusForbidden, map[string]any{"error": "please verify your email first", "status": "unverified"})
+		// The password was right, so this is the account's owner: send the
+		// link again in case the first mail never arrived.
+		if u.VerifyToken != "" {
+			go p.sendVerification(u.Email, u.VerifyToken)
+		}
+		respondJSON(w, http.StatusForbidden, map[string]any{
+			"error": "please verify your email first; we have sent the link again", "code": "email_unverified", "status": "unverified"})
 		return
 	}
 	org := p.prov.ResolveActiveOrg(r.Context(), u)
-	tok := p.issue(w, u, org)
+	tok, ok := p.issue(w, u, org)
+	if !ok {
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "admin": u.Role == "admin", "name": u.Name, "token": tok, "user_id": u.ID, "active_org": org})
 }
 
 func (p *PasswordAuth) verify(w http.ResponseWriter, r *http.Request) {
 	u, err := p.users.GetByVerifyToken(r.Context(), r.URL.Query().Get("token"))
+	if errors.Is(err, storage.ErrNotFound) {
+		respondError(w, http.StatusBadRequest, "verification_invalid", "this verification link is not valid or was already used")
+		return
+	}
 	if err != nil {
-		http.Error(w, "invalid or expired verification link", http.StatusBadRequest)
+		internalError(w, "look up verification", err)
 		return
 	}
 	if err := p.users.MarkVerified(r.Context(), u.ID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalError(w, "mark verified", err)
 		return
 	}
 	http.Redirect(w, r, "/login?verified=1", http.StatusFound)
@@ -185,8 +244,9 @@ func (p *PasswordAuth) verify(w http.ResponseWriter, r *http.Request) {
 
 // issue mints a session for the user with the given active tenant, sets the
 // cookie, and returns the token (for clients that use Bearer auth, e.g. the SPA
-// talking to a different origin).
-func (p *PasswordAuth) issue(w http.ResponseWriter, u *storage.User, orgID string) string {
+// talking to a different origin). On failure it writes the error response and
+// returns false.
+func (p *PasswordAuth) issue(w http.ResponseWriter, u *storage.User, orgID string) (string, bool) {
 	role := u.Role
 	// Demo sessions are read-only: the "demo" role is rejected by the RPC
 	// write guard and the tenant endpoints, however the account signs in.
@@ -195,11 +255,11 @@ func (p *PasswordAuth) issue(w http.ResponseWriter, u *storage.User, orgID strin
 	}
 	tok, err := p.sessions.Issue(Identity{UserID: u.ID, OrgID: orgID, Email: u.Email, Role: role})
 	if err != nil {
-		respondJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return ""
+		internalError(w, "issue session", err)
+		return "", false
 	}
 	p.sessions.SetCookie(w, tok)
-	return tok
+	return tok, true
 }
 
 func randomToken() string {
@@ -208,15 +268,13 @@ func randomToken() string {
 	return hex.EncodeToString(b)
 }
 
-// sendVerification emails the verification link, or logs it when SMTP is unset.
+// sendVerification emails the verification link. The link is a credential
+// and is never logged; configuration requires a mail server whenever
+// verification is on.
 func (p *PasswordAuth) sendVerification(email, token string) {
 	link := fmt.Sprintf("%s/auth/verify?token=%s", strings.TrimRight(p.cfg.PublicBaseURL, "/"), token)
 	body := fmt.Sprintf("Welcome to Openbeehive!\r\n\r\nConfirm your email to finish signing up:\r\n%s\r\n", link)
-	err := sendMail(p.cfg, email, "Verify your Openbeehive email", body)
-	switch {
-	case errors.Is(err, errSMTPUnset):
-		log.Printf("auth: email verification link for %s: %s", email, link)
-	case err != nil:
-		log.Printf("auth: failed to send verification email to %s (%v); link: %s", email, err, link)
+	if err := sendMail(p.cfg, email, "Verify your Openbeehive email", body); err != nil {
+		log.Printf("auth: verification email not sent: %v", err)
 	}
 }

@@ -35,9 +35,9 @@ func newAPIKeyFixture(t *testing.T) (*httptest.Server, *APIKeys, string, Identit
 		t.Fatal(err)
 	}
 	keys := NewAPIKeys(store.DB(), sessions, store.Users(), store.Members())
-	mux := http.NewServeMux()
-	keys.Routes(mux)
-	srv := httptest.NewServer(mux)
+	rt := NewRouter(&config.Config{})
+	keys.Routes(rt)
+	srv := httptest.NewServer(rt)
 	t.Cleanup(srv.Close)
 	id := Identity{UserID: "u1", OrgID: "org-1", Email: u.Email, Role: "user"}
 	tok, err := sessions.Issue(id)
