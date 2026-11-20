@@ -34,8 +34,15 @@ BUF_VERSION         ?= v1.75.0
 # Tools are built with this module's toolchain: golangci-lint refuses code that targets a newer Go than it was built with.
 TOOLCHAIN := $(shell cd $(SERVER) && $(GO) env GOVERSION)
 
+# Live databases for test-db / test-postgres / test-mariadb (see CONTRIBUTING.md, "Database backends").
+# Exported so recipes read them from the environment: DSNs contain characters a shell would interpret.
+PG_DSN      ?=
+MARIADB_DSN ?=
+export PG_DSN MARIADB_DSN
+
 .PHONY: help tools proto proto-lint proto-breaking gen fmt lint test cover audit build dist check-fast check release \
-	tidy clean run-server dev-app app-deps app-lint app-test app-cover app-audit app-build
+	tidy clean run-server dev-app app-deps app-lint app-test app-cover app-audit app-build \
+	test-db test-sqlite test-postgres test-mariadb
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*##' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -64,6 +71,28 @@ lint: gen proto-lint app-lint ## format check + linters + vet (Go), prettier + e
 
 test: gen app-test ## unit tests: Go with the race detector (shuffled) + app vitest
 	cd $(SERVER) && $(GO) test -race -shuffle=on -count=1 ./...
+
+# The Go suite against one database backend. Every test creates and drops a schema (Postgres) or a
+# database (MariaDB) of its own next to the one the DSN names, so a run leaves the server as it found it.
+GO_TEST_DB = cd $(SERVER) && $(GO) test -race -shuffle=on -count=1 ./...
+
+test-db: test-sqlite ## Go tests on SQLite, plus Postgres and MariaDB when PG_DSN / MARIADB_DSN are set
+	if [ -n "$$PG_DSN" ]; then $(MAKE) test-postgres; else echo "PG_DSN not set: Postgres skipped"; fi
+	if [ -n "$$MARIADB_DSN" ]; then $(MAKE) test-mariadb; else echo "MARIADB_DSN not set: MariaDB skipped"; fi
+
+test-sqlite: gen ## Go tests on SQLite (what `make test` runs for the server)
+	export BEEHIVE_TEST_DATABASE_DRIVER=sqlite
+	$(GO_TEST_DB)
+
+test-postgres: gen ## Go tests on Postgres: make test-postgres PG_DSN='postgres://user:pass@host:5432/db?sslmode=disable'
+	test -n "$$PG_DSN" || { echo "usage: make test-postgres PG_DSN='postgres://user:pass@host:5432/db?sslmode=disable'"; exit 1; }
+	export BEEHIVE_TEST_DATABASE_DRIVER=postgres BEEHIVE_TEST_DATABASE_DSN="$$PG_DSN"
+	$(GO_TEST_DB)
+
+test-mariadb: gen ## Go tests on MariaDB: make test-mariadb MARIADB_DSN='user:pass@tcp(host:3306)/db'
+	test -n "$$MARIADB_DSN" || { echo "usage: make test-mariadb MARIADB_DSN='user:pass@tcp(host:3306)/db'"; exit 1; }
+	export BEEHIVE_TEST_DATABASE_DRIVER=mysql BEEHIVE_TEST_DATABASE_DSN="$$MARIADB_DSN"
+	$(GO_TEST_DB)
 
 cover: gen app-cover ## coverage gates: Go total (internal/gen excluded) >= COVER_MIN, app thresholds in vitest.config.ts
 	cd $(SERVER)

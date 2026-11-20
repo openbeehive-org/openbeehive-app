@@ -35,6 +35,50 @@ lint (golangci-lint, go vet, prettier, eslint, svelte-check), tests, coverage ga
 licenses, `go mod tidy`, npm audit, gitleaks), build and fleetlint. `make check-fast` is the quick
 pre-commit subset. `make help` lists every target.
 
+### Database backends
+
+The server runs on SQLite, PostgreSQL and the MySQL family; the tested MySQL-family target is MariaDB
+(the release pinned in `.github/workflows/check.yml`). `make check` tests on SQLite. CI runs the Go suite
+a second time on Postgres and on MariaDB, and so can you:
+
+```bash
+podman run -d --rm --name beehive-pg -p 5433:5432 --tmpfs /var/lib/postgresql \
+  -e POSTGRES_USER=beehive -e POSTGRES_PASSWORD=beehive -e POSTGRES_DB=beehive postgres:18-alpine
+podman run -d --rm --name beehive-mariadb -p 3307:3306 --tmpfs /var/lib/mysql \
+  -e MARIADB_ROOT_PASSWORD=beehive -e MARIADB_DATABASE=beehive mariadb:13.0.2
+
+export PG_DSN='postgres://beehive:beehive@127.0.0.1:5433/beehive?sslmode=disable'
+export MARIADB_DSN='root:beehive@tcp(127.0.0.1:3307)/beehive'
+make test-db          # SQLite, then every backend whose DSN is set
+make test-postgres    # one backend only
+make test-mariadb
+```
+
+The targets set `BEEHIVE_TEST_DATABASE_DRIVER` (`sqlite`, `postgres` or `mysql`) and
+`BEEHIVE_TEST_DATABASE_DSN`; every Go test that opens a database reads this one pair through
+`server/internal/storage/sql/sqltest`, so `go test` on a single package works the same way. Each test
+gets a database of its own and drops it afterwards: a schema inside the given database on Postgres, a
+database named `<yours>_t…` on MariaDB. The MariaDB test user therefore needs the right to create and
+drop databases (the root user of a throwaway container has it); the database named in the DSN itself
+stays untouched. Keep the containers' data in memory (`--tmpfs`, as above): each test runs the whole
+migration chain, and on a disk that syncs every DDL statement the MariaDB run takes minutes instead of
+seconds.
+
+Anything that touches SQL, a migration or the sync write path should be green on all three before
+you open a pull request. Rules for portable SQL:
+
+- Migrations are plain `.sql` files in `server/internal/storage/sql/migrations/`, written once for
+  all dialects: `TEXT`, `INTEGER`, `REAL`, `BOOLEAN` (literals `TRUE`/`FALSE`), `TIMESTAMP`, and
+  `VARCHAR(n)` for every column that is indexed or unique. `Store.translate` adapts the few tokens
+  that differ. A statement only one dialect needs goes into a file named `NNNN_name.<driver>.sql`
+  (for example `0018_column_types.mysql.sql`); the other dialects record it as applied without running it.
+- Text compares byte for byte on every backend (case, accents and trailing spaces matter); MariaDB
+  tables are created with a binary collation for that. Compare case-insensitively on purpose, with
+  `LOWER()`, where that is wanted.
+- Timestamps of synced rows are strings on SQLite and points in time elsewhere. Pass them through
+  the helpers in `server/internal/service` (`coerceFields`, `tsArg`, `tsCmp`) instead of comparing
+  strings in SQL.
+
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the ADRs in `docs/adr/` for how the pieces fit
 together, and the [documentation](https://docs.openbeehive.org) for the user-facing explanation.
 
@@ -52,8 +96,8 @@ These keep the offline-first design coherent — please follow them:
   one must be reflected in the other.
 - **The `.proto` contract is the source of truth** for the API. Change it first,
   then regenerate with `make proto`.
-- **SQL must stay portable** across PostgreSQL, MySQL and SQLite (`?`
-  placeholders + `db.Rebind`, portable column types).
+- **SQL must stay portable** across PostgreSQL, MariaDB/MySQL and SQLite (`?`
+  placeholders + `db.Rebind`, portable column types); see "Database backends" above.
 - **Translations:** user-facing strings must be added to every locale file
   (`en`, `de`, `fr`, `es`, `it`).
 
