@@ -35,10 +35,9 @@ import (
 
 // syncedTables must all exist after the chain has run.
 var syncedTables = []string{
-	"organization", "users", "member", "apiary", "hive", "queen", "inspection",
+	"organization", "users", "member", "apiary", "hive", "queen", "inspection", "sync_state",
 	"task", "treatment", "harvest", "placement", "event", "change_log",
 	"seq_counter", "user_passkey", "invite", "api_key", "password_reset",
-	"sync_state",
 }
 
 type backend struct {
