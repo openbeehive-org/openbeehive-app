@@ -39,6 +39,8 @@ Details are in the
 - **Compose files.** `docker-compose.yml` is the development stack and needs
   `BEEHIVE_SESSION_SECRET` and `MINIO_ROOT_PASSWORD`. Run Openbeehive with the
   new `docker-compose.selfhost.yml` or `docker-compose.prod.yml`.
+  `docker-compose.demo.yml` publishes on `127.0.0.1` unless `BEEHIVE_BIND`
+  is set.
 - **Photos move to blob storage.** The first start converts photos stored
   inline in the database before it serves requests; with many photos this
   takes a few minutes. `/files/` is gone and `BEEHIVE_BLOB_PUBLIC_URL` is
@@ -55,9 +57,22 @@ Details are in the
   device first.
 - **Accounts whose email addresses differ only in case** keep working, but
   email sign-in reaches only one of them; the log names each pair at start.
+- **Invites** expire after 7 days and work only for the invited email
+  address; issue older open invites again.
+- **Limits.** One RPC message may be at most 16 MiB and a request may take
+  at most 2 minutes (`BEEHIVE_HTTP_READ_TIMEOUT`,
+  `BEEHIVE_HTTP_WRITE_TIMEOUT`); keep the proxy's body limit at 16 MiB or
+  above.
+- **Device clocks.** Changes stamped more than 10 minutes ahead of the
+  server's time are refused. Updated apps correct their clock and send them
+  again; a 0.4.x app with a clock that runs ahead loses such changes, so
+  update the app on every device.
 - **Scripts** that call `SyncService` must send `Openbeehive-Sync-Protocol: 1`.
   Update calls change only the fields sent, and `DeleteApiary` fails while
-  the apiary has hives.
+  the apiary has hives. The endpoints under `/auth/` and `/tenants/` accept
+  only their documented method (otherwise 405) and need
+  `Content-Type: application/json` when they take a body (otherwise 415);
+  `/tenants/delete` needs `org_id`.
 - **Run exactly one server instance** per database. `BEEHIVE_NODE_ID` now
   defaults to a random id; remove it unless you set it on purpose.
 
