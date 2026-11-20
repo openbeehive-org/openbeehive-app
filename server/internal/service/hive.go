@@ -100,29 +100,40 @@ func (s *HiveService) ListHives(ctx context.Context, req *wv1.ListHivesRequest) 
 	return &wv1.ListHivesResponse{Hives: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
-// UpdateHive sets name, type, status, boxes, colony_origin, note and qr_code.
-// It does not move the hive (use RelocateHive, which keeps the location
-// history) and does not touch the photo the app stores.
+// hiveUpdatable lists the fields UpdateHive may change.
+var hiveUpdatable = []string{"name", "type", "status", "boxes", "colony_origin", "note", "qr_code"}
+
+// UpdateHive changes only the fields sent (see UpdateHiveRequest). It does
+// not move the hive (use RelocateHive, which keeps the location history) and
+// does not touch the photo the app stores.
 func (s *HiveService) UpdateHive(ctx context.Context, req *wv1.UpdateHiveRequest) (*wv1.UpdateHiveResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	p := req.Hive
 	if p == nil || p.Id == "" {
 		return nil, invalid("hive.id is required")
 	}
-	m, err := s.repo.Get(ctx, id.OrgID, p.Id)
+	fields, err := updatePayload(p.ProtoReflect(), req.UpdateMask, hiveUpdatable)
 	if err != nil {
-		return nil, writeErr(err)
+		return nil, err
 	}
+	if err := requireValue(fields, "name", "status"); err != nil {
+		return nil, err
+	}
+	if p.Boxes < 0 {
+		return nil, invalid("boxes must not be negative")
+	}
+	fields["updated_at"] = jsTimeNow()
 	err = s.w.Run(ctx, id, func(t *txWriter) error {
-		return t.upsert("hive", p.Id, m.ApiaryID, map[string]any{
-			"name": p.Name, "type": int32(p.Type), "status": int32(p.Status), "boxes": p.Boxes,
-			"colony_origin": p.ColonyOrigin, "note": p.Note, "qr_code": p.QrCode, "updated_at": jsTimeNow(),
-		})
+		h, err := t.hive(p.Id)
+		if err != nil {
+			return err
+		}
+		return t.upsert("hive", p.Id, rs(h["apiary_id"]), fields)
 	})
 	if err != nil {
 		return nil, writeErr(err)
 	}
-	m, err = s.repo.Get(ctx, id.OrgID, p.Id)
+	m, err := s.repo.Get(ctx, id.OrgID, p.Id)
 	if err != nil {
 		return nil, writeErr(err)
 	}

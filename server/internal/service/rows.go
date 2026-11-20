@@ -251,7 +251,7 @@ func treatmentFromRow(r map[string]any) *wv1.Treatment {
 		HiveId: rs(r["hive_id"]), QueenId: rs(r["queen_id"]), Date: rt(r["date"]),
 		Product: rs(r["product"]), ActiveIngredient: rs(r["active_ingredient"]), Dose: rs(r["dose"]),
 		Method: rs(r["method"]), BatchNumber: rs(r["batch_number"]), WithdrawalUntil: rt(r["withdrawal_until"]),
-		Reason: rs(r["reason"]), Note: rs(r["note"]),
+		Reason: rs(r["reason"]), Note: rs(r["note"]), AmendedAt: rt(r["amended_at"]),
 	}
 }
 
@@ -271,5 +271,6 @@ func harvestFromRow(r map[string]any) *wv1.Harvest {
 		HiveId: rs(r["hive_id"]), QueenId: rs(r["queen_id"]), Date: rt(r["date"]),
 		Variety: rs(r["variety"]), AmountKg: rf(r["amount_kg"]), WaterContent: rf(r["water_content"]),
 		BatchNumber: rs(r["batch_number"]), BestBefore: rt(r["best_before"]), Note: rs(r["note"]),
+		AmendedAt: rt(r["amended_at"]),
 	}
 }

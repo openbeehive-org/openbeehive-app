@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 
@@ -45,11 +46,24 @@ message ListQueensResponse {
   PageResponse page = 2;
 }
 
-// Updates year, marking, origin, breeder_number, introduced_at, replaced_at,
-// active and note. hive_id and organization_id cannot be changed.
-message UpdateQueenRequest { Queen queen = 1; }
+// Partial update of the queen named by queen.id: only the fields sent are
+// changed. hive_id and organization_id cannot be changed.
+//
+// With update_mask, exactly the listed fields are written (paths: year,
+// marking, origin, breeder_number, introduced_at, replaced_at, active, note),
+// including to their zero value. Without update_mask, every field left at
+// its zero value counts as not sent; sending replaced_at alone ends the reign
+// (active becomes false) and sending active = true clears replaced_at.
+//
+// A request that would change nothing is rejected (invalid_argument).
+message UpdateQueenRequest {
+  Queen queen = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
 message UpdateQueenResponse { Queen queen = 1; }
 
+// Deleting a queen also removes her QUEEN_INTRODUCED / QUEEN_REPLACED
+// timeline events.
 message DeleteQueenRequest { string id = 1; }
 message DeleteQueenResponse {}
 

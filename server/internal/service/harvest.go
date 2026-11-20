@@ -80,6 +80,39 @@ func (s *HarvestService) ListHarvests(ctx context.Context, req *wv1.ListHarvests
 	return &wv1.ListHarvestsResponse{Harvests: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
+// harvestUpdatable lists the fields UpdateHarvest may change.
+var harvestUpdatable = []string{"date", "amount_kg", "variety", "water_content", "batch_number", "best_before", "note"}
+
+// UpdateHarvest corrects a saved harvest; only the fields sent are changed
+// (see UpdateHarvestRequest). The HARVEST fact event follows, so the honey
+// statistics show the corrected amount.
+func (s *HarvestService) UpdateHarvest(ctx context.Context, req *wv1.UpdateHarvestRequest) (*wv1.UpdateHarvestResponse, error) {
+	id, _ := auth.FromContext(ctx)
+	p := req.Harvest
+	if p == nil || p.Id == "" {
+		return nil, invalid("harvest.id is required")
+	}
+	fields, err := updatePayload(p.ProtoReflect(), req.UpdateMask, harvestUpdatable)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireValue(fields, "date"); err != nil {
+		return nil, err
+	}
+	if kg, ok := fields["amount_kg"]; ok && rf(kg) <= 0 {
+		return nil, invalid("amount_kg must be positive")
+	}
+	var out map[string]any
+	err = s.w.Run(ctx, id, func(t *txWriter) error {
+		out, err = t.amendRecord("harvest", p.Id, fields)
+		return err
+	})
+	if err != nil {
+		return nil, writeErr(err)
+	}
+	return &wv1.UpdateHarvestResponse{Harvest: harvestFromRow(out)}, nil
+}
+
 // DeleteHarvest soft-deletes the harvest and its HARVEST fact event, so the
 // honey statistics stop counting it.
 func (s *HarvestService) DeleteHarvest(ctx context.Context, req *wv1.DeleteHarvestRequest) (*wv1.DeleteHarvestResponse, error) {

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 import "openbeehive/v1/inspection.proto"; // Treatment message
@@ -33,11 +34,31 @@ message ListTreatmentsResponse {
   PageResponse page = 2;
 }
 
+// Corrects the treatment named by treatment.id: only the fields sent are
+// changed, and amended_at is set to the time of the edit.
+//
+// With update_mask, exactly the listed fields are written (paths: date,
+// product, active_ingredient, dose, method, batch_number, withdrawal_until,
+// reason, note), including to their zero value. Without update_mask, every
+// field left at its zero value counts as not sent.
+//
+// product must not be empty and date must be set when they are updated; a
+// request that would change nothing is rejected (invalid_argument). hive_id
+// cannot be changed. The TREATMENT timeline event follows the edit; when the
+// date moves, the frozen apiary and queen are resolved again for the new date.
+message UpdateTreatmentRequest {
+  Treatment treatment = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+message UpdateTreatmentResponse { Treatment treatment = 1; }
+
+// Deleting a treatment also removes its TREATMENT timeline event.
 message DeleteTreatmentRequest { string id = 1; }
 message DeleteTreatmentResponse {}
 
 service TreatmentService {
   rpc CreateTreatment(CreateTreatmentRequest) returns (CreateTreatmentResponse);
   rpc ListTreatments(ListTreatmentsRequest) returns (ListTreatmentsResponse);
+  rpc UpdateTreatment(UpdateTreatmentRequest) returns (UpdateTreatmentResponse);
   rpc DeleteTreatment(DeleteTreatmentRequest) returns (DeleteTreatmentResponse);
 }

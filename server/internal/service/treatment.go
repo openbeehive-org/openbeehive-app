@@ -81,6 +81,35 @@ func (s *TreatmentService) ListTreatments(ctx context.Context, req *wv1.ListTrea
 	return &wv1.ListTreatmentsResponse{Treatments: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
+// treatmentUpdatable lists the fields UpdateTreatment may change.
+var treatmentUpdatable = []string{"date", "product", "active_ingredient", "dose", "method", "batch_number", "withdrawal_until", "reason", "note"}
+
+// UpdateTreatment corrects a saved treatment; only the fields sent are
+// changed (see UpdateTreatmentRequest).
+func (s *TreatmentService) UpdateTreatment(ctx context.Context, req *wv1.UpdateTreatmentRequest) (*wv1.UpdateTreatmentResponse, error) {
+	id, _ := auth.FromContext(ctx)
+	p := req.Treatment
+	if p == nil || p.Id == "" {
+		return nil, invalid("treatment.id is required")
+	}
+	fields, err := updatePayload(p.ProtoReflect(), req.UpdateMask, treatmentUpdatable)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireValue(fields, "date", "product"); err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	err = s.w.Run(ctx, id, func(t *txWriter) error {
+		out, err = t.amendRecord("treatment", p.Id, fields)
+		return err
+	})
+	if err != nil {
+		return nil, writeErr(err)
+	}
+	return &wv1.UpdateTreatmentResponse{Treatment: treatmentFromRow(out)}, nil
+}
+
 // DeleteTreatment soft-deletes the treatment and its timeline event.
 func (s *TreatmentService) DeleteTreatment(ctx context.Context, req *wv1.DeleteTreatmentRequest) (*wv1.DeleteTreatmentResponse, error) {
 	id, _ := auth.FromContext(ctx)

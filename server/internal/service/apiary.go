@@ -93,18 +93,27 @@ func (s *ApiaryService) ListApiaries(
 	}, nil
 }
 
+// apiaryUpdatable lists the fields UpdateApiary may change.
+var apiaryUpdatable = []string{"name", "address", "lat", "lng", "note"}
+
+// UpdateApiary changes only the fields sent (see UpdateApiaryRequest).
 func (s *ApiaryService) UpdateApiary(
 	ctx context.Context, req *wv1.UpdateApiaryRequest,
 ) (*wv1.UpdateApiaryResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	if _, err := s.repo.Get(ctx, id.OrgID, req.Id); err != nil {
-		return nil, writeErr(err)
+	fields, err := updatePayload(req.ProtoReflect(), req.UpdateMask, apiaryUpdatable)
+	if err != nil {
+		return nil, err
 	}
-	err := s.w.Run(ctx, id, func(t *txWriter) error {
-		return t.upsert("apiary", req.Id, req.Id, map[string]any{
-			"name": req.Name, "address": req.Address, "lat": req.Lat, "lng": req.Lng,
-			"note": req.Note, "updated_at": jsTimeNow(),
-		})
+	if err := requireValue(fields, "name"); err != nil {
+		return nil, err
+	}
+	fields["updated_at"] = jsTimeNow()
+	err = s.w.Run(ctx, id, func(t *txWriter) error {
+		if _, err := t.row("apiary", req.Id); err != nil {
+			return err
+		}
+		return t.upsert("apiary", req.Id, req.Id, fields)
 	})
 	if err != nil {
 		return nil, writeErr(err)

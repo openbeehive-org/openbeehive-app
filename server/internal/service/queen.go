@@ -79,14 +79,22 @@ func (s *QueenService) ListQueens(ctx context.Context, req *wv1.ListQueensReques
 	return &wv1.ListQueensResponse{Queens: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
+// queenUpdatable lists the fields UpdateQueen may change.
+var queenUpdatable = []string{"year", "marking", "origin", "breeder_number", "introduced_at", "replaced_at", "active", "note"}
+
+// UpdateQueen changes only the fields sent (see UpdateQueenRequest).
 func (s *QueenService) UpdateQueen(ctx context.Context, req *wv1.UpdateQueenRequest) (*wv1.UpdateQueenResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	q := req.Queen
 	if q == nil || q.Id == "" {
 		return nil, invalid("queen.id is required")
 	}
+	fields, err := queenUpdate(req)
+	if err != nil {
+		return nil, err
+	}
 	var out map[string]any
-	err := s.w.Run(ctx, id, func(t *txWriter) error {
+	err = s.w.Run(ctx, id, func(t *txWriter) error {
 		cur, err := t.row("queen", q.Id)
 		if err != nil {
 			return err
@@ -95,21 +103,13 @@ func (s *QueenService) UpdateQueen(ctx context.Context, req *wv1.UpdateQueenRequ
 		if err != nil {
 			return err
 		}
-		marking := int32(q.Marking)
-		if marking == 0 {
-			marking = markingForYear(q.Year)
-		}
-		fields := map[string]any{
-			"year": q.Year, "marking": marking, "origin": q.Origin, "breeder_number": q.BreederNumber,
-			"note": q.Note, "active": b2i(q.Active), "updated_at": jsTimeNow(),
-		}
-		if q.IntroducedAt != nil {
-			fields["introduced_at"] = tsOrEmpty(q.IntroducedAt)
-		}
-		if q.ReplacedAt != nil {
-			fields["replaced_at"] = tsOrEmpty(q.ReplacedAt)
-		} else if q.Active {
-			fields["replaced_at"] = nil
+		if m, ok := fields["marking"]; ok && m == int32(0) {
+			// An unspecified colour follows the (new or stored) year.
+			year := i32(ri(cur["year"]))
+			if y, ok := fields["year"].(int32); ok {
+				year = y
+			}
+			fields["marking"] = markingForYear(year)
 		}
 		if err := t.upsert("queen", q.Id, rs(h["apiary_id"]), fields); err != nil {
 			return err
@@ -121,6 +121,30 @@ func (s *QueenService) UpdateQueen(ctx context.Context, req *wv1.UpdateQueenRequ
 		return nil, writeErr(err)
 	}
 	return &wv1.UpdateQueenResponse{Queen: queenFromRow(out)}, nil
+}
+
+// queenUpdate returns the payload of an UpdateQueen request.
+func queenUpdate(req *wv1.UpdateQueenRequest) (map[string]any, error) {
+	q := req.Queen
+	fields, err := updatePayload(q.ProtoReflect(), req.UpdateMask, queenUpdatable)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireValue(fields, "year"); err != nil {
+		return nil, err
+	}
+	if len(req.UpdateMask.GetPaths()) == 0 {
+		// Without a mask a false `active` cannot be told from "not sent", so
+		// the end of the reign is the signal: sending replaced_at retires the
+		// queen, sending active = true clears it.
+		if q.Active && q.ReplacedAt == nil {
+			fields["replaced_at"] = nil
+		} else if !q.Active && q.ReplacedAt != nil {
+			fields["active"] = 0
+		}
+	}
+	fields["updated_at"] = jsTimeNow()
+	return fields, nil
 }
 
 // DeleteQueen soft-deletes the queen and the timeline events of her reign

@@ -102,6 +102,30 @@ func (s *TaskService) ListTasks(ctx context.Context, req *wv1.ListTasksRequest) 
 	return &wv1.ListTasksResponse{Tasks: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
 }
 
+// taskUpdatable lists the fields UpdateTask may change.
+var taskUpdatable = []string{"title", "due_at", "done", "priority", "note", "recurrence", "assigned_to"}
+
+// UpdateTask changes only the fields sent (see UpdateTaskRequest).
+func (s *TaskService) UpdateTask(ctx context.Context, req *wv1.UpdateTaskRequest) (*wv1.UpdateTaskResponse, error) {
+	id, _ := auth.FromContext(ctx)
+	p := req.Task
+	if p == nil || p.Id == "" {
+		return nil, invalid("task.id is required")
+	}
+	fields, err := updatePayload(p.ProtoReflect(), req.UpdateMask, taskUpdatable)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireValue(fields, "title"); err != nil {
+		return nil, err
+	}
+	out, err := s.write(ctx, id, p.Id, fields)
+	if err != nil {
+		return nil, err
+	}
+	return &wv1.UpdateTaskResponse{Task: out}, nil
+}
+
 func (s *TaskService) SetTaskDone(ctx context.Context, req *wv1.SetTaskDoneRequest) (*wv1.SetTaskDoneResponse, error) {
 	id, _ := auth.FromContext(ctx)
 	out, err := s.write(ctx, id, req.Id, map[string]any{"done": b2i(req.Done)})

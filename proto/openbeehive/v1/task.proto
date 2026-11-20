@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 
@@ -27,8 +28,9 @@ message Task {
   google.protobuf.Timestamp created_at = 12;
 }
 
-// Tasks without apiary_id live in the creator's personal scope and reach only
-// that user's devices; tasks with apiary_id are shared with the apiary.
+// Tasks without apiary_id live in the creator's personal scope: they reach
+// only that user's devices and only that user can list or change them. Tasks
+// with apiary_id are shared with every member of the workspace.
 message CreateTaskRequest {
   string title = 1;
   string hive_id = 2;
@@ -45,10 +47,28 @@ message ListTasksRequest {
   bool only_open = 2;
   string hive_id = 3;
 }
+// Open tasks first, then by due date; tasks without a due date come last.
 message ListTasksResponse {
   repeated Task tasks = 1;
   PageResponse page = 2;
 }
+
+// Partial update of the task named by task.id: only the fields sent are
+// changed.
+//
+// With update_mask, exactly the listed fields are written (paths: title,
+// due_at, done, priority, note, recurrence, assigned_to), including to their
+// zero value; that is how a due date is removed or a task reopened. Without
+// update_mask, every field left at its zero value counts as not sent.
+//
+// title must not be empty when it is updated; a request that would change
+// nothing is rejected (invalid_argument). hive_id and apiary_id cannot be
+// changed.
+message UpdateTaskRequest {
+  Task task = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+message UpdateTaskResponse { Task task = 1; }
 
 message SetTaskDoneRequest {
   string id = 1;
@@ -62,6 +82,7 @@ message DeleteTaskResponse {}
 service TaskService {
   rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
   rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc UpdateTask(UpdateTaskRequest) returns (UpdateTaskResponse);
   rpc SetTaskDone(SetTaskDoneRequest) returns (SetTaskDoneResponse);
   rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse);
 }

@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 
@@ -36,6 +37,15 @@ message ListApiariesResponse {
   PageResponse page = 2;
 }
 
+// Partial update: only the fields sent are changed.
+//
+// With update_mask, exactly the listed fields are written (paths: name,
+// address, lat, lng, note), including to their zero value; that is how a
+// field is cleared. Without update_mask, every field left at its zero value
+// ("" or 0) counts as not sent and keeps its stored value.
+//
+// name must not be empty when it is updated, and a request that would change
+// nothing is rejected (both invalid_argument).
 message UpdateApiaryRequest {
   string id = 1;
   string name = 2;
@@ -43,9 +53,12 @@ message UpdateApiaryRequest {
   double lat = 4;
   double lng = 5;
   string note = 6;
+  google.protobuf.FieldMask update_mask = 7;
 }
 message UpdateApiaryResponse { Apiary apiary = 1; }
 
+// Deleting an apiary that still has hives fails with failed_precondition:
+// move (RelocateHive) or delete its hives first.
 message DeleteApiaryRequest { string id = 1; }
 message DeleteApiaryResponse {}
 

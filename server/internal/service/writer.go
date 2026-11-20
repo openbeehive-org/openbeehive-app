@@ -476,6 +476,91 @@ func (t *txWriter) recordTreatment(id, hiveID, date string, fields map[string]an
 	return id, err
 }
 
+// amendRecord applies a correction to a dated record (inspection, treatment
+// or harvest) and keeps its timeline event in step: the event follows the
+// date, the harvest amount and the title. When the date moves, the frozen
+// context (apiary and reigning queen) is resolved again for the new date.
+// Treatments and harvests are stamped with amended_at.
+func (t *txWriter) amendRecord(entity, id string, fields map[string]any) (map[string]any, error) {
+	cur, err := t.row(entity, id)
+	if err != nil {
+		return nil, err
+	}
+	scope, err := t.recordScope(entity, cur)
+	if err != nil {
+		return nil, err
+	}
+	frozen := entity != "inspection" // inspection rows carry no context columns
+	ev := map[string]any{}
+	if date, ok := fields["date"].(string); ok {
+		if sameInstant(cur["date"], date) {
+			delete(fields, "date")
+		} else if scope, err = t.refreeze(rs(cur["hive_id"]), date, frozen, fields, ev); err != nil {
+			return nil, err
+		}
+	}
+	if len(fields) == 0 {
+		return cur, nil
+	}
+	if frozen {
+		fields["amended_at"] = jsTime(time.Now())
+	}
+	if err := t.upsert(entity, id, scope, fields); err != nil {
+		return nil, err
+	}
+	row, err := t.row(entity, id)
+	if err != nil {
+		return nil, err
+	}
+	switch entity {
+	case "harvest":
+		ev["amount_kg"] = rf(row["amount_kg"])
+		ev["title"] = harvestTitle(rf(row["amount_kg"]), rs(row["variety"]))
+	case "treatment":
+		ev["title"] = rs(row["product"])
+	}
+	return row, t.updateRefEvents(entity, id, scope, ev)
+}
+
+// refreeze resolves the context of a record for its corrected date and adds
+// it to the record's fields (when the record carries context columns) and to
+// its event's fields. It returns the scope the record now lives in.
+func (t *txWriter) refreeze(hiveID, date string, frozen bool, fields, ev map[string]any) (string, error) {
+	apiaryID, queenID, err := t.resolveContext(hiveID, date)
+	if err != nil {
+		return "", err
+	}
+	ev["date"], ev["apiary_id"], ev["queen_id"], ev["scope_id"] = date, apiaryID, queenID, apiaryID
+	if frozen {
+		fields["apiary_id"], fields["queen_id"] = apiaryID, queenID
+	}
+	return apiaryID, nil
+}
+
+// updateRefEvents writes fields to the timeline events that point at a record.
+func (t *txWriter) updateRefEvents(entity, id, scope string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	evs, err := t.refEvents(entity, id)
+	if err != nil {
+		return err
+	}
+	for _, e := range evs {
+		if err := t.upsert("event", rs(e["id"]), scope, fields); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sameInstant reports whether a stored timestamp equals an ISO timestamp.
+func sameInstant(stored any, iso string) bool {
+	a, okA := rtime(stored)
+	b, okB := parseTime(iso)
+	return okA && okB && a.Equal(b)
+}
+
 // delRecord tombstones a record together with the timeline events that
 // point at it, so it also leaves the history and the honey statistics.
 func (t *txWriter) delRecord(entity, id, scope string) error {

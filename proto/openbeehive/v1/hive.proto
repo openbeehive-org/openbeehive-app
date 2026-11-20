@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 
@@ -63,9 +64,25 @@ message ListHivesResponse {
   PageResponse page = 2;
 }
 
-message UpdateHiveRequest { Hive hive = 1; }
+// Partial update of the hive named by hive.id: only the fields sent are
+// changed.
+//
+// With update_mask, exactly the listed fields are written (paths: name, type,
+// status, boxes, colony_origin, note, qr_code), including to their zero
+// value. Without update_mask, every field left at its zero value counts as
+// not sent and keeps its stored value.
+//
+// name must not be empty and status must not be UNSPECIFIED when they are
+// updated; a request that would change nothing is rejected (invalid_argument).
+// apiary_id is ignored: use RelocateHive, which keeps the location history.
+message UpdateHiveRequest {
+  Hive hive = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
 message UpdateHiveResponse { Hive hive = 1; }
 
+// Deleting a hive also deletes its open tasks. Its records stay stored but no
+// longer count in the honey statistics.
 message DeleteHiveRequest { string id = 1; }
 message DeleteHiveResponse {}
 

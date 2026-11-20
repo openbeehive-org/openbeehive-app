@@ -1,7 +1,12 @@
 package service
 
 import (
+	"slices"
+	"strconv"
+	"strings"
+
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -25,6 +30,40 @@ func createPayload(m protoreflect.Message, cols []string) (map[string]any, error
 			return nil, err
 		}
 		fields[c] = v
+	}
+	return fields, nil
+}
+
+// updatePayload returns the payload of a partial update: the subset of the
+// updatable fields that the request asks to change.
+//
+// With a field mask exactly the masked fields are written, including to
+// their zero value (an unset optional number or timestamp is cleared).
+// Without one, the fields that carry a value are written: a field left at
+// its zero value counts as not sent. An update that would change nothing is
+// rejected.
+func updatePayload(m protoreflect.Message, mask *fieldmaskpb.FieldMask, updatable []string) (map[string]any, error) {
+	masked := len(mask.GetPaths()) > 0
+	for _, p := range mask.GetPaths() {
+		if !slices.Contains(updatable, p) {
+			return nil, invalid("update_mask: " + strconv.Quote(p) + " cannot be updated (updatable: " +
+				strings.Join(updatable, ", ") + ")")
+		}
+	}
+	fields := map[string]any{}
+	for _, c := range updatable {
+		fd := m.Descriptor().Fields().ByName(protoreflect.Name(c))
+		if (masked && !slices.Contains(mask.GetPaths(), c)) || (!masked && !m.Has(fd)) {
+			continue
+		}
+		v, err := payloadValue(fd, m)
+		if err != nil {
+			return nil, err
+		}
+		fields[c] = v
+	}
+	if len(fields) == 0 {
+		return nil, invalid("no fields to update")
 	}
 	return fields, nil
 }
@@ -53,4 +92,22 @@ func payloadValue(fd protoreflect.FieldDescriptor, m protoreflect.Message) (any,
 		return nil, nil
 	}
 	return v.Interface(), nil
+}
+
+// requireValue rejects a payload that would blank one of the given columns:
+// "" for text and dates, 0 for numbers.
+func requireValue(fields map[string]any, cols ...string) error {
+	for _, c := range cols {
+		switch v := fields[c].(type) {
+		case string:
+			if v == "" {
+				return invalid(c + " must not be empty")
+			}
+		case int32:
+			if v == 0 {
+				return invalid(c + " must be set")
+			}
+		}
+	}
+	return nil
 }

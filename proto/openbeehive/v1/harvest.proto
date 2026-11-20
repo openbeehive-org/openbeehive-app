@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 import "openbeehive/v1/inspection.proto"; // Harvest message
@@ -33,11 +34,33 @@ message ListHarvestsResponse {
   PageResponse page = 2;
 }
 
+// Corrects the harvest named by harvest.id: only the fields sent are changed,
+// and amended_at is set to the time of the edit.
+//
+// With update_mask, exactly the listed fields are written (paths: date,
+// amount_kg, variety, water_content, batch_number, best_before, note),
+// including to their zero value. Without update_mask, every field left at
+// its zero value counts as not sent.
+//
+// amount_kg must be positive and date must be set when they are updated; a
+// request that would change nothing is rejected (invalid_argument). hive_id
+// cannot be changed. The HARVEST fact event (and with it the honey
+// statistics) follows the edit; when the date moves, the frozen apiary and
+// queen are resolved again for the new date.
+message UpdateHarvestRequest {
+  Harvest harvest = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+message UpdateHarvestResponse { Harvest harvest = 1; }
+
+// Deleting a harvest also removes its HARVEST fact event, so the honey
+// statistics no longer count it.
 message DeleteHarvestRequest { string id = 1; }
 message DeleteHarvestResponse {}
 
 service HarvestService {
   rpc CreateHarvest(CreateHarvestRequest) returns (CreateHarvestResponse);
   rpc ListHarvests(ListHarvestsRequest) returns (ListHarvestsResponse);
+  rpc UpdateHarvest(UpdateHarvestRequest) returns (UpdateHarvestResponse);
   rpc DeleteHarvest(DeleteHarvestRequest) returns (DeleteHarvestResponse);
 }

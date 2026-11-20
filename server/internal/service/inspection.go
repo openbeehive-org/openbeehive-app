@@ -33,6 +33,9 @@ var inspectionCols = []string{
 	"covered_larva", "temp_hive", "temp_outside", "humidity_hive", "humidity_outside", "source",
 }
 
+// inspectionUpdatable lists the fields UpdateInspection may change.
+var inspectionUpdatable = append([]string{"date"}, inspectionCols...)
+
 // sourceSensor marks an automated reading (InspectionSource); such rows are
 // measurements, not visits.
 const sourceSensor = int32(wv1.InspectionSource_INSPECTION_SOURCE_SENSOR)
@@ -99,6 +102,32 @@ func (s *InspectionService) ListInspections(ctx context.Context, req *wv1.ListIn
 		out = append(out, inspectionFromRow(r))
 	}
 	return &wv1.ListInspectionsResponse{Inspections: out, Page: pageResponse(total, offset, len(rows), limit)}, nil
+}
+
+// UpdateInspection corrects a saved inspection; only the fields sent are
+// changed (see UpdateInspectionRequest).
+func (s *InspectionService) UpdateInspection(ctx context.Context, req *wv1.UpdateInspectionRequest) (*wv1.UpdateInspectionResponse, error) {
+	id, _ := auth.FromContext(ctx)
+	p := req.Inspection
+	if p == nil || p.Id == "" {
+		return nil, invalid("inspection.id is required")
+	}
+	fields, err := updatePayload(p.ProtoReflect(), req.UpdateMask, inspectionUpdatable)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireValue(fields, "date"); err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	err = s.w.Run(ctx, id, func(t *txWriter) error {
+		out, err = t.amendRecord("inspection", p.Id, fields)
+		return err
+	})
+	if err != nil {
+		return nil, writeErr(err)
+	}
+	return &wv1.UpdateInspectionResponse{Inspection: inspectionFromRow(out)}, nil
 }
 
 // DeleteInspection soft-deletes the inspection and its timeline event.

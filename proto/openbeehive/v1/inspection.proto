@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package openbeehive.v1;
 
+import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "openbeehive/v1/common.proto";
 
@@ -107,6 +108,25 @@ message ListInspectionsResponse {
   PageResponse page = 2;
 }
 
+// Corrects the inspection named by inspection.id: only the fields sent are
+// changed.
+//
+// With update_mask, exactly the listed fields are written (paths: every
+// Inspection field except id, organization_id, hive_id, photo_keys and
+// created_at), including to their zero value; an optional field that is in
+// the mask but unset is cleared to "not recorded". Without update_mask, the
+// optional fields that are set and every other field that is not at its
+// zero value are written.
+//
+// date must be set when it is updated; a request that would change nothing
+// is rejected (invalid_argument). The INSPECTION timeline event follows a
+// changed date. Photos are changed with Add/RemoveInspectionPhoto.
+message UpdateInspectionRequest {
+  Inspection inspection = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+message UpdateInspectionResponse { Inspection inspection = 1; }
+
 // Deleting an inspection also removes its INSPECTION timeline event.
 message DeleteInspectionRequest { string id = 1; }
 message DeleteInspectionResponse {}
@@ -128,6 +148,7 @@ message RemoveInspectionPhotoResponse { Inspection inspection = 1; }
 service InspectionService {
   rpc CreateInspection(CreateInspectionRequest) returns (CreateInspectionResponse);
   rpc ListInspections(ListInspectionsRequest) returns (ListInspectionsResponse);
+  rpc UpdateInspection(UpdateInspectionRequest) returns (UpdateInspectionResponse);
   rpc DeleteInspection(DeleteInspectionRequest) returns (DeleteInspectionResponse);
   rpc AddInspectionPhoto(AddInspectionPhotoRequest) returns (AddInspectionPhotoResponse);
   rpc RemoveInspectionPhoto(RemoveInspectionPhotoRequest) returns (RemoveInspectionPhotoResponse);
@@ -151,6 +172,7 @@ message Treatment {
   string reason = 13;              // e.g. "varroa"
   string note = 14;
   google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp amended_at = 16; // time of the last correction; unset if never edited
 }
 
 // --- Harvest / honey batches ---
@@ -167,4 +189,5 @@ message Harvest {
   string note = 10;
   string hive_id = 11;   // frozen context at harvest time
   string queen_id = 12;  // frozen context (reigning queen)
+  google.protobuf.Timestamp amended_at = 13; // time of the last correction; unset if never edited
 }
