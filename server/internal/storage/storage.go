@@ -177,8 +177,9 @@ type MemberRepo interface {
 	ListByUser(ctx context.Context, userID string) ([]TenantMembership, error)
 	// ListByOrg returns the tenant's members, owners first.
 	ListByOrg(ctx context.Context, orgID string) ([]Member, error)
-	// Remove ends a membership and deletes the member's API keys for the
-	// tenant. ErrLastOwner when the member is the tenant's only owner.
+	// Remove ends a membership and deletes the member's API keys and
+	// personal tasks in the tenant. ErrLastOwner when the member is the
+	// tenant's only owner.
 	Remove(ctx context.Context, orgID, userID string) error
 	// SetRole changes a member's role (owner | member). ErrLastOwner when it
 	// would demote the tenant's only owner.

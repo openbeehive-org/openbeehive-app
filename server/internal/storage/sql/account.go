@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
@@ -34,15 +35,13 @@ func (s *Store) DeleteAccount(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	personal := "user:" + userID // the sync scope only this account's devices pull
+	if err := deletePersonalData(ctx, tx, userID, ""); err != nil {
+		return err
+	}
 	for _, q := range []struct {
 		sql string
 		arg string
 	}{
-		{`DELETE FROM task WHERE COALESCE(apiary_id, '') = '' AND id IN
-			(SELECT entity_id FROM change_log WHERE scope_id = ? AND entity = 'task')`, personal},
-		{`DELETE FROM event WHERE scope_id = ?`, personal},
-		{`DELETE FROM change_log WHERE scope_id = ?`, personal},
 		{`DELETE FROM user_passkey WHERE user_id = ?`, userID},
 		{`DELETE FROM api_key WHERE user_id = ?`, userID},
 		{`DELETE FROM password_reset WHERE user_id = ?`, userID},
@@ -55,6 +54,52 @@ func (s *Store) DeleteAccount(ctx context.Context, userID string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// personalScope is the sync scope only one account's devices pull.
+func personalScope(userID string) string { return "user:" + userID }
+
+// personalTasksOf returns the condition that selects the personal tasks of
+// one account in a WHERE clause on task, with its argument. A personal task
+// has no owner column: it is the task without an apiary whose changes were
+// logged in the account's personal scope (the rule of visibleTasks in the
+// service package). This is the one place the storage layer spells that
+// rule out.
+func personalTasksOf(userID string) (cond string, arg any) {
+	return `COALESCE(apiary_id, '') = '' AND id IN
+		(SELECT entity_id FROM change_log WHERE scope_id = ? AND entity = 'task')`, personalScope(userID)
+}
+
+// deletePersonalData removes what only one account can see: its personal
+// tasks, their timeline entries and their change-log entries, in one
+// workspace or, with orgID "", in all of them.
+//
+// The rows are deleted outright instead of being tombstoned through the
+// change log. It runs when a membership or the account itself ends, and
+// from then on the account's devices are refused by that workspace: a
+// tombstone in a scope nobody may pull would never be delivered, and would
+// keep the task's title on the server for good.
+func deletePersonalData(ctx context.Context, tx *sqlx.Tx, userID, orgID string) error {
+	tasks, taskArg := personalTasksOf(userID)
+	for _, q := range []struct {
+		sql, orgCol string
+		arg         any
+	}{
+		// Tasks first: finding them needs the change log.
+		{`DELETE FROM task WHERE ` + tasks, "organization_id", taskArg},
+		{`DELETE FROM event WHERE scope_id = ?`, "organization_id", personalScope(userID)},
+		{`DELETE FROM change_log WHERE scope_id = ?`, "org_id", personalScope(userID)},
+	} {
+		args := []any{q.arg}
+		if orgID != "" {
+			q.sql += ` AND ` + q.orgCol + ` = ?`
+			args = append(args, orgID)
+		}
+		if _, err := tx.ExecContext(ctx, tx.Rebind(q.sql), args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // PasskeyCount returns how many passkeys the account has enrolled.

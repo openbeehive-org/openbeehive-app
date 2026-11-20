@@ -322,3 +322,74 @@ func TestJoinAndDeleteIfOnlyMemberDoNotCross(t *testing.T) {
 		}
 	})
 }
+
+// The personal tasks of an account are found by one rule, in one workspace
+// or in all of them.
+func TestDeletePersonalData(t *testing.T) {
+	onEachBackend(t, func(t *testing.T, b backend) {
+		ctx := context.Background()
+		s := b.blank(t)
+		if err := s.Migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		seq := 0
+		task := func(org, id, apiary, scope string) {
+			t.Helper()
+			seq++
+			var apiaryID any
+			if apiary != "" {
+				apiaryID = apiary
+			}
+			if _, err := s.db.Exec(s.db.Rebind(`INSERT INTO task (id, organization_id, title, apiary_id, created_at) VALUES (?, ?, ?, ?, ?)`),
+				id, org, id, apiaryID, now); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.Exec(s.db.Rebind(`INSERT INTO change_log (id, seq, scope_id, entity, entity_id, op, payload, hlc, author_id, org_id) VALUES (?, ?, ?, 'task', ?, 1, '{}', 'h', 'u1', ?)`),
+				"cl-"+id, seq, scope, id, org); err != nil {
+				t.Fatal(err)
+			}
+		}
+		task("o1", "mine-o1", "", "user:u1")
+		task("o2", "mine-o2", "", "user:u1")
+		task("o1", "theirs-o1", "", "user:u2")
+		task("o1", "shared-o1", "ap-1", "ap-1")
+		left := func() []string {
+			t.Helper()
+			var ids []string
+			if err := s.db.Select(&ids, `SELECT id FROM task ORDER BY id`); err != nil {
+				t.Fatal(err)
+			}
+			return ids
+		}
+		run := func(userID, orgID string) {
+			t.Helper()
+			tx, err := s.db.BeginTxx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := deletePersonalData(ctx, tx, userID, orgID); err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		run("u1", "o1") // a membership ended
+		if got := strings.Join(left(), ","); got != "mine-o2,shared-o1,theirs-o1" {
+			t.Fatalf("after leaving o1: %s", got)
+		}
+		var logged []string
+		if err := s.db.Select(&logged, `SELECT id FROM change_log ORDER BY id`); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(logged, ","); got != "cl-mine-o2,cl-shared-o1,cl-theirs-o1" {
+			t.Fatalf("change log after leaving o1: %s", got)
+		}
+		run("u1", "") // the account is deleted
+		if got := strings.Join(left(), ","); got != "shared-o1,theirs-o1" {
+			t.Fatalf("after deleting the account: %s", got)
+		}
+	})
+}

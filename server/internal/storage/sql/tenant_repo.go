@@ -248,7 +248,7 @@ func (r *memberRepo) Remove(ctx context.Context, orgID, userID string) error {
 				return err
 			}
 		}
-		return nil
+		return deletePersonalData(ctx, tx, userID, orgID)
 	})
 }
 
