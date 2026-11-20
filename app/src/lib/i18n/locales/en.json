@@ -159,7 +159,14 @@
     "move": "Move",
     "move_to": "Move to apiary",
     "locations": "Location history",
-    "present": "now"
+    "present": "now",
+    "act_edit": "Edit",
+    "undo": "Undo",
+    "more": "More",
+    "qr": "QR code",
+    "delete": "Delete hive",
+    "confirm_delete": "Delete hive “{name}” with all its records? This cannot be undone.",
+    "move_none": "There is no other apiary to move this hive to."
   },
   "queens": {
     "title": "Queen",
@@ -172,7 +179,23 @@
     "origin_ph": "e.g. own breeding, Buckfast…",
     "marking": "Marking",
     "comment_ph": "Comment — breeding line, behaviour, notes…",
-    "history": "Queen history"
+    "history": "Queen history",
+    "edit": "Edit queen",
+    "edit_hint": "Correct her details here. For a new queen, use “Replace queen” instead.",
+    "introduced": "Introduced on",
+    "origin": "Origin",
+    "comment": "Comment",
+    "marking_auto": "Colour of the year",
+    "marking_color": "Marking colour",
+    "color": {
+      "1": "White",
+      "2": "Yellow",
+      "3": "Red",
+      "4": "Green",
+      "5": "Blue"
+    },
+    "confirm_delete": "Delete queen {year}? Do this only for a queen recorded by mistake: if she is the current queen, her predecessor becomes current again.",
+    "deleted": "Queen {year} deleted"
   },
   "tasks": {
     "title": "Tasks",
@@ -203,7 +226,7 @@
   "insp": {
     "record": "Record visit",
     "log": "Visit log",
-    "stockkarte": "Stock card",
+    "stockkarte": "Hive record card",
     "no_visits": "No visits recorded yet.",
     "colony": "Colony & behaviour",
     "activities": "Activities on this visit",
@@ -221,7 +244,7 @@
     "temperament": "Gentleness",
     "calmness": "Calmness on comb",
     "varroa": "Varroa",
-    "varroa_ph": "e.g. 3 mites/day",
+    "varroa_ph": "e.g. 3",
     "fed_kg": "Fed",
     "frames_added": "Frames added",
     "frames_removed": "Frames removed",
@@ -237,7 +260,22 @@
     "note": "Note",
     "note_ph": "Anything notable…",
     "add_photo": "Add photo",
-    "see_all": "See all {n} visits"
+    "see_all": "See all {n} visits",
+    "varroa_hint": "Mites per day. Plain numbers appear in the charts.",
+    "edit": "Edit visit",
+    "visit": "Visit",
+    "from_last": "Start from last visit",
+    "unit_days": "days",
+    "unit_d": "d",
+    "decrease": "Decrease: {label}",
+    "increase": "Increase: {label}",
+    "remove_photo": "Remove photo {n}",
+    "photo_n": "Photo {n}",
+    "confirm_delete": "Delete the visit of {date}?",
+    "deleted": "Visit of {date} deleted",
+    "sensor": "Sensor reading",
+    "show_sensors": "Show sensor readings ({n})",
+    "yes": "yes"
   },
   "stats": {
     "title": "Development",
@@ -245,7 +283,13 @@
     "no_data": "No recorded data yet — log a few visits to see trends.",
     "points": "readings",
     "harvests": "harvests",
-    "observations": "Observations"
+    "observations": "Observations",
+    "sensor_readings": "sensor readings",
+    "min": "min",
+    "max": "max",
+    "trend_up": "rising",
+    "trend_down": "falling",
+    "varroa_skipped": "{n, plural, one {# entry is not a plain number and is not charted.} other {# entries are not plain numbers and are not charted.}}"
   },
   "harvest": {
     "title": "Honey",
@@ -256,7 +300,10 @@
     "variety_ph": "e.g. spring blossom, forest",
     "water": "Water content",
     "batch": "Batch no.",
-    "best_before": "Best before"
+    "best_before": "Best before",
+    "confirm_delete": "Delete the harvest of {amount} kg from {date}?",
+    "deleted": "Harvest of {amount} kg deleted",
+    "amended": "Amended on {date}"
   },
   "treat": {
     "title": "Treatments",
@@ -273,7 +320,15 @@
     "batch": "Batch no.",
     "reason": "Reason",
     "reason_ph": "e.g. varroa",
-    "withdrawal": "Withdrawal until"
+    "withdrawal": "Withdrawal until",
+    "confirm_delete": "Delete the treatment with {product} from {date}?",
+    "deleted": "Treatment with {product} deleted",
+    "amended": "Amended on {date}",
+    "amended_col": "Amended",
+    "register": "Treatment register",
+    "print_register": "Print register",
+    "register_printed": "Printed on {date}",
+    "print_blocked": "The print window was blocked. Allow pop-ups for this site and try again."
   },
   "temperament": {
     "0": "—",

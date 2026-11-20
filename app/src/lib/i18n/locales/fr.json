@@ -159,7 +159,14 @@
     "move": "Déplacer",
     "move_to": "Déplacer vers le rucher",
     "locations": "Historique des emplacements",
-    "present": "maintenant"
+    "present": "maintenant",
+    "act_edit": "Modifier",
+    "undo": "Annuler",
+    "more": "Plus",
+    "qr": "Code QR",
+    "delete": "Supprimer la ruche",
+    "confirm_delete": "Supprimer la ruche « {name} » avec toutes ses données ? Cette action est irréversible.",
+    "move_none": "Il n'y a aucun autre rucher vers lequel déplacer cette ruche."
   },
   "queens": {
     "title": "Reine",
@@ -172,7 +179,23 @@
     "origin_ph": "ex. élevage personnel, Buckfast…",
     "marking": "Marquage",
     "comment_ph": "Commentaire — lignée d'élevage, comportement, notes…",
-    "history": "Historique des reines"
+    "history": "Historique des reines",
+    "edit": "Modifier la reine",
+    "edit_hint": "Corrigez ici ses informations. Pour une nouvelle reine, utilisez « Remplacer la reine ».",
+    "introduced": "Introduite le",
+    "origin": "Origine",
+    "comment": "Commentaire",
+    "marking_auto": "Couleur de l'année",
+    "marking_color": "Couleur de marquage",
+    "color": {
+      "1": "Blanc",
+      "2": "Jaune",
+      "3": "Rouge",
+      "4": "Vert",
+      "5": "Bleu"
+    },
+    "confirm_delete": "Supprimer la reine {year} ? À réserver à une reine enregistrée par erreur : si c'est la reine actuelle, la précédente redevient la reine actuelle.",
+    "deleted": "Reine {year} supprimée"
   },
   "tasks": {
     "title": "Tâches",
@@ -217,11 +240,11 @@
     "frames": "Cadres occupés",
     "brood_frames": "Cadres de couvain",
     "stores": "Réserves de nourriture",
-    "queen_cells": "Cellules royales",
+    "queen_cells": "Cellules d'essaimage",
     "temperament": "Douceur",
     "calmness": "Tenue au cadre",
     "varroa": "Varroa",
-    "varroa_ph": "ex. 3 varroas/jour",
+    "varroa_ph": "ex. 3",
     "fed_kg": "Nourri",
     "frames_added": "Cadres ajoutés",
     "frames_removed": "Cadres retirés",
@@ -237,7 +260,22 @@
     "note": "Note",
     "note_ph": "Quelque chose de notable…",
     "add_photo": "Ajouter une photo",
-    "see_all": "Voir les {n} visites"
+    "see_all": "Voir les {n} visites",
+    "varroa_hint": "Varroas par jour. Les nombres seuls apparaissent dans les graphiques.",
+    "edit": "Modifier la visite",
+    "visit": "Visite",
+    "from_last": "Partir de la dernière visite",
+    "unit_days": "jours",
+    "unit_d": "j",
+    "decrease": "Diminuer : {label}",
+    "increase": "Augmenter : {label}",
+    "remove_photo": "Retirer la photo {n}",
+    "photo_n": "Photo {n}",
+    "confirm_delete": "Supprimer la visite du {date} ?",
+    "deleted": "Visite du {date} supprimée",
+    "sensor": "Relevé de capteur",
+    "show_sensors": "Afficher les relevés de capteur ({n})",
+    "yes": "oui"
   },
   "stats": {
     "title": "Évolution",
@@ -245,7 +283,13 @@
     "no_data": "Aucune donnée enregistrée pour l'instant — enregistrez quelques visites pour voir les tendances.",
     "points": "relevés",
     "harvests": "récoltes",
-    "observations": "Observations"
+    "observations": "Observations",
+    "sensor_readings": "relevés de capteur",
+    "min": "min",
+    "max": "max",
+    "trend_up": "en hausse",
+    "trend_down": "en baisse",
+    "varroa_skipped": "{n, plural, one {# saisie n'est pas un nombre seul et n'est pas représentée.} other {# saisies ne sont pas des nombres seuls et ne sont pas représentées.}}"
   },
   "harvest": {
     "title": "Miel",
@@ -256,7 +300,10 @@
     "variety_ph": "ex. fleurs de printemps, forêt",
     "water": "Teneur en eau",
     "batch": "N° de lot",
-    "best_before": "À consommer de préférence avant"
+    "best_before": "À consommer de préférence avant",
+    "confirm_delete": "Supprimer la récolte de {amount} kg du {date} ?",
+    "deleted": "Récolte de {amount} kg supprimée",
+    "amended": "Modifiée le {date}"
   },
   "treat": {
     "title": "Traitements",
@@ -273,7 +320,15 @@
     "batch": "N° de lot",
     "reason": "Motif",
     "reason_ph": "p. ex. varroa",
-    "withdrawal": "Délai d'attente jusqu'au"
+    "withdrawal": "Délai d'attente jusqu'au",
+    "confirm_delete": "Supprimer le traitement {product} du {date} ?",
+    "deleted": "Traitement {product} supprimé",
+    "amended": "Modifié le {date}",
+    "amended_col": "Modifié",
+    "register": "Registre des traitements",
+    "print_register": "Imprimer le registre",
+    "register_printed": "Imprimé le {date}",
+    "print_blocked": "La fenêtre d'impression a été bloquée. Autorisez les fenêtres pop-up pour ce site, puis réessayez."
   },
   "temperament": {
     "0": "—",

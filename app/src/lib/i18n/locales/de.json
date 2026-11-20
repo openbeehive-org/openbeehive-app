@@ -159,7 +159,14 @@
     "move": "Wandern",
     "move_to": "An Standort wandern",
     "locations": "Standort-Historie",
-    "present": "jetzt"
+    "present": "jetzt",
+    "act_edit": "Bearbeiten",
+    "undo": "Rückgängig",
+    "more": "Mehr",
+    "qr": "QR-Code",
+    "delete": "Beute löschen",
+    "confirm_delete": "Beute „{name}“ mit allen Einträgen löschen? Das kann nicht rückgängig gemacht werden.",
+    "move_none": "Es gibt keinen anderen Standort, an den diese Beute wandern könnte."
   },
   "queens": {
     "title": "Königin",
@@ -172,7 +179,23 @@
     "origin_ph": "z. B. Eigenzucht, Buckfast…",
     "marking": "Markierung",
     "comment_ph": "Kommentar — Zuchtlinie, Verhalten, Notizen…",
-    "history": "Königinnen-Historie"
+    "history": "Königinnen-Historie",
+    "edit": "Königin bearbeiten",
+    "edit_hint": "Hier korrigierst du ihre Angaben. Für eine neue Königin nimm „Königin ersetzen“.",
+    "introduced": "Eingesetzt am",
+    "origin": "Herkunft",
+    "comment": "Kommentar",
+    "marking_auto": "Jahresfarbe",
+    "marking_color": "Zeichenfarbe",
+    "color": {
+      "1": "Weiß",
+      "2": "Gelb",
+      "3": "Rot",
+      "4": "Grün",
+      "5": "Blau"
+    },
+    "confirm_delete": "Königin {year} löschen? Nur für eine versehentlich erfasste Königin: Ist sie die aktuelle, gilt wieder ihre Vorgängerin.",
+    "deleted": "Königin {year} gelöscht"
   },
   "tasks": {
     "title": "Aufgaben",
@@ -221,7 +244,7 @@
     "temperament": "Sanftmut",
     "calmness": "Wabensitz",
     "varroa": "Varroa",
-    "varroa_ph": "z. B. 3 Milben/Tag",
+    "varroa_ph": "z. B. 3",
     "fed_kg": "Gefüttert",
     "frames_added": "Waben gegeben",
     "frames_removed": "Waben entnommen",
@@ -237,7 +260,22 @@
     "note": "Notiz",
     "note_ph": "Auffälligkeiten…",
     "add_photo": "Foto hinzufügen",
-    "see_all": "Alle {n} Durchsichten ansehen"
+    "see_all": "Alle {n} Durchsichten ansehen",
+    "varroa_hint": "Milben pro Tag. Reine Zahlen erscheinen in den Diagrammen.",
+    "edit": "Durchsicht bearbeiten",
+    "visit": "Durchsicht",
+    "from_last": "Von letzter Durchsicht ausgehen",
+    "unit_days": "Tage",
+    "unit_d": "T",
+    "decrease": "Verringern: {label}",
+    "increase": "Erhöhen: {label}",
+    "remove_photo": "Foto {n} entfernen",
+    "photo_n": "Foto {n}",
+    "confirm_delete": "Durchsicht vom {date} löschen?",
+    "deleted": "Durchsicht vom {date} gelöscht",
+    "sensor": "Sensormessung",
+    "show_sensors": "Sensormessungen anzeigen ({n})",
+    "yes": "ja"
   },
   "stats": {
     "title": "Entwicklung",
@@ -245,7 +283,13 @@
     "no_data": "Noch keine Daten — erfasse ein paar Durchsichten, um Trends zu sehen.",
     "points": "Werte",
     "harvests": "Ernten",
-    "observations": "Beobachtungen"
+    "observations": "Beobachtungen",
+    "sensor_readings": "Sensormessungen",
+    "min": "Min.",
+    "max": "Max.",
+    "trend_up": "steigend",
+    "trend_down": "fallend",
+    "varroa_skipped": "{n, plural, one {# Eintrag ist keine reine Zahl und fehlt im Diagramm.} other {# Einträge sind keine reinen Zahlen und fehlen im Diagramm.}}"
   },
   "harvest": {
     "title": "Honig",
@@ -256,7 +300,10 @@
     "variety_ph": "z. B. Frühtracht, Wald",
     "water": "Wassergehalt",
     "batch": "Charge",
-    "best_before": "MHD"
+    "best_before": "MHD",
+    "confirm_delete": "Ernte von {amount} kg vom {date} löschen?",
+    "deleted": "Ernte von {amount} kg gelöscht",
+    "amended": "Geändert am {date}"
   },
   "treat": {
     "title": "Behandlungen",
@@ -273,7 +320,15 @@
     "batch": "Charge",
     "reason": "Grund",
     "reason_ph": "z. B. Varroa",
-    "withdrawal": "Wartezeit bis"
+    "withdrawal": "Wartezeit bis",
+    "confirm_delete": "Behandlung mit {product} vom {date} löschen?",
+    "deleted": "Behandlung mit {product} gelöscht",
+    "amended": "Geändert am {date}",
+    "amended_col": "Geändert",
+    "register": "Bestandsbuch",
+    "print_register": "Bestandsbuch drucken",
+    "register_printed": "Gedruckt am {date}",
+    "print_blocked": "Das Druckfenster wurde blockiert. Erlaube Pop-ups für diese Seite und versuche es erneut."
   },
   "temperament": {
     "0": "—",

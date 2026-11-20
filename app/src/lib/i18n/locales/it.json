@@ -159,7 +159,14 @@
     "move": "Sposta",
     "move_to": "Sposta nell'apiario",
     "locations": "Cronologia posizioni",
-    "present": "ora"
+    "present": "ora",
+    "act_edit": "Modifica",
+    "undo": "Annulla",
+    "more": "Altro",
+    "qr": "Codice QR",
+    "delete": "Elimina arnia",
+    "confirm_delete": "Eliminare l'arnia «{name}» con tutti i suoi dati? L'operazione non può essere annullata.",
+    "move_none": "Non c'è nessun altro apiario in cui spostare questa arnia."
   },
   "queens": {
     "title": "Regina",
@@ -172,7 +179,23 @@
     "origin_ph": "es. allevamento proprio, Buckfast…",
     "marking": "Marcatura",
     "comment_ph": "Commento: linea di selezione, comportamento, note…",
-    "history": "Cronologia regine"
+    "history": "Cronologia regine",
+    "edit": "Modifica regina",
+    "edit_hint": "Correggi qui i suoi dati. Per una nuova regina usa «Sostituisci regina».",
+    "introduced": "Introdotta il",
+    "origin": "Origine",
+    "comment": "Commento",
+    "marking_auto": "Colore dell'anno",
+    "marking_color": "Colore di marcatura",
+    "color": {
+      "1": "Bianco",
+      "2": "Giallo",
+      "3": "Rosso",
+      "4": "Verde",
+      "5": "Blu"
+    },
+    "confirm_delete": "Eliminare la regina {year}? Fallo solo se è stata registrata per errore: se è la regina attuale, torna attuale la precedente.",
+    "deleted": "Regina {year} eliminata"
   },
   "tasks": {
     "title": "Attività",
@@ -217,11 +240,11 @@
     "frames": "Telaini occupati",
     "brood_frames": "Telaini di covata",
     "stores": "Scorte di cibo",
-    "queen_cells": "Celle reali di sciamatura",
+    "queen_cells": "Celle di sciamatura",
     "temperament": "Docilità",
     "calmness": "Calma sul favo",
     "varroa": "Varroa",
-    "varroa_ph": "es. 3 acari/giorno",
+    "varroa_ph": "es. 3",
     "fed_kg": "Nutrita",
     "frames_added": "Telaini aggiunti",
     "frames_removed": "Telaini rimossi",
@@ -237,7 +260,22 @@
     "note": "Nota",
     "note_ph": "Qualcosa di rilevante…",
     "add_photo": "Aggiungi foto",
-    "see_all": "Vedi tutte le {n} visite"
+    "see_all": "Vedi tutte le {n} visite",
+    "varroa_hint": "Acari al giorno. I numeri semplici compaiono nei grafici.",
+    "edit": "Modifica visita",
+    "visit": "Visita",
+    "from_last": "Parti dall'ultima visita",
+    "unit_days": "giorni",
+    "unit_d": "g",
+    "decrease": "Diminuisci: {label}",
+    "increase": "Aumenta: {label}",
+    "remove_photo": "Rimuovi la foto {n}",
+    "photo_n": "Foto {n}",
+    "confirm_delete": "Eliminare la visita del {date}?",
+    "deleted": "Visita del {date} eliminata",
+    "sensor": "Lettura del sensore",
+    "show_sensors": "Mostra le letture dei sensori ({n})",
+    "yes": "sì"
   },
   "stats": {
     "title": "Andamento",
@@ -245,7 +283,13 @@
     "no_data": "Ancora nessun dato registrato: registra qualche visita per vedere le tendenze.",
     "points": "rilevazioni",
     "harvests": "raccolti",
-    "observations": "Osservazioni"
+    "observations": "Osservazioni",
+    "sensor_readings": "letture dei sensori",
+    "min": "min",
+    "max": "max",
+    "trend_up": "in aumento",
+    "trend_down": "in calo",
+    "varroa_skipped": "{n, plural, one {# voce non è un numero semplice e non compare nel grafico.} other {# voci non sono numeri semplici e non compaiono nel grafico.}}"
   },
   "harvest": {
     "title": "Miele",
@@ -256,7 +300,10 @@
     "variety_ph": "es. millefiori primaverile, bosco",
     "water": "Contenuto d'acqua",
     "batch": "N. lotto",
-    "best_before": "Da consumarsi preferibilmente entro"
+    "best_before": "Da consumarsi preferibilmente entro",
+    "confirm_delete": "Eliminare il raccolto di {amount} kg del {date}?",
+    "deleted": "Raccolto di {amount} kg eliminato",
+    "amended": "Modificato il {date}"
   },
   "treat": {
     "title": "Trattamenti",
@@ -273,7 +320,15 @@
     "batch": "N. lotto",
     "reason": "Motivo",
     "reason_ph": "es. varroa",
-    "withdrawal": "Tempo di attesa fino al"
+    "withdrawal": "Tempo di attesa fino al",
+    "confirm_delete": "Eliminare il trattamento con {product} del {date}?",
+    "deleted": "Trattamento con {product} eliminato",
+    "amended": "Modificato il {date}",
+    "amended_col": "Modificato",
+    "register": "Registro dei trattamenti",
+    "print_register": "Stampa registro",
+    "register_printed": "Stampato il {date}",
+    "print_blocked": "La finestra di stampa è stata bloccata. Consenti i pop-up per questo sito e riprova."
   },
   "temperament": {
     "0": "—",

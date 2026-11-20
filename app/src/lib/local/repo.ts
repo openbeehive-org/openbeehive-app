@@ -281,6 +281,7 @@ export function markingForYear(year: number): number {
   return (((year % 10) + 4) % 5) + 1;
 }
 export const MARKING_COLORS = ['', '#f4f1ea', '#e9c33b', '#c8402f', '#3f8c4f', '#3566b5'];
+// English only: screens should show the translated `queens.color.<n>` instead.
 export const MARKING_NAMES = ['', 'White', 'Yellow', 'Red', 'Green', 'Blue'];
 
 // Queens. Reads are local; set/replace go through history.setQueen (which keeps

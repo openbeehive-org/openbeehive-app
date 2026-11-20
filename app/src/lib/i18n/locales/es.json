@@ -159,7 +159,14 @@
     "move": "Mover",
     "move_to": "Mover al colmenar",
     "locations": "Historial de ubicaciones",
-    "present": "ahora"
+    "present": "ahora",
+    "act_edit": "Editar",
+    "undo": "Deshacer",
+    "more": "Más",
+    "qr": "Código QR",
+    "delete": "Eliminar colmena",
+    "confirm_delete": "¿Eliminar la colmena «{name}» con todos sus registros? Esta acción no se puede deshacer.",
+    "move_none": "No hay otro colmenar al que mover esta colmena."
   },
   "queens": {
     "title": "Reina",
@@ -172,7 +179,23 @@
     "origin_ph": "p. ej. cría propia, Buckfast…",
     "marking": "Marcado",
     "comment_ph": "Comentario — línea de cría, comportamiento, notas…",
-    "history": "Historial de reinas"
+    "history": "Historial de reinas",
+    "edit": "Editar reina",
+    "edit_hint": "Corrige aquí sus datos. Para una reina nueva, usa «Reemplazar reina».",
+    "introduced": "Introducida el",
+    "origin": "Origen",
+    "comment": "Comentario",
+    "marking_auto": "Color del año",
+    "marking_color": "Color de marcado",
+    "color": {
+      "1": "Blanco",
+      "2": "Amarillo",
+      "3": "Rojo",
+      "4": "Verde",
+      "5": "Azul"
+    },
+    "confirm_delete": "¿Eliminar la reina {year}? Hazlo solo si se registró por error: si es la reina actual, la anterior vuelve a ser la actual.",
+    "deleted": "Reina {year} eliminada"
   },
   "tasks": {
     "title": "Tareas",
@@ -217,11 +240,11 @@
     "frames": "Cuadros ocupados",
     "brood_frames": "Cuadros de cría",
     "stores": "Reservas de alimento",
-    "queen_cells": "Celdas reales",
+    "queen_cells": "Celdas de enjambrazón",
     "temperament": "Mansedumbre",
     "calmness": "Comportamiento en el cuadro",
     "varroa": "Varroa",
-    "varroa_ph": "p. ej. 3 varroas/día",
+    "varroa_ph": "p. ej. 3",
     "fed_kg": "Alimentada",
     "frames_added": "Cuadros añadidos",
     "frames_removed": "Cuadros retirados",
@@ -237,7 +260,22 @@
     "note": "Nota",
     "note_ph": "Algo destacable…",
     "add_photo": "Añadir foto",
-    "see_all": "Ver las {n} visitas"
+    "see_all": "Ver las {n} visitas",
+    "varroa_hint": "Varroas por día. Los números solos aparecen en los gráficos.",
+    "edit": "Editar visita",
+    "visit": "Visita",
+    "from_last": "Partir de la última visita",
+    "unit_days": "días",
+    "unit_d": "d",
+    "decrease": "Reducir: {label}",
+    "increase": "Aumentar: {label}",
+    "remove_photo": "Quitar la foto {n}",
+    "photo_n": "Foto {n}",
+    "confirm_delete": "¿Eliminar la visita del {date}?",
+    "deleted": "Visita del {date} eliminada",
+    "sensor": "Lectura de sensor",
+    "show_sensors": "Mostrar lecturas de sensor ({n})",
+    "yes": "sí"
   },
   "stats": {
     "title": "Evolución",
@@ -245,7 +283,13 @@
     "no_data": "Aún no hay datos registrados — registra algunas visitas para ver tendencias.",
     "points": "lecturas",
     "harvests": "cosechas",
-    "observations": "Observaciones"
+    "observations": "Observaciones",
+    "sensor_readings": "lecturas de sensor",
+    "min": "mín.",
+    "max": "máx.",
+    "trend_up": "en aumento",
+    "trend_down": "en descenso",
+    "varroa_skipped": "{n, plural, one {# entrada no es un número solo y no se representa.} other {# entradas no son números solos y no se representan.}}"
   },
   "harvest": {
     "title": "Miel",
@@ -256,7 +300,10 @@
     "variety_ph": "p. ej. flores de primavera, bosque",
     "water": "Contenido de agua",
     "batch": "N.º de lote",
-    "best_before": "Consumir preferentemente antes de"
+    "best_before": "Consumir preferentemente antes de",
+    "confirm_delete": "¿Eliminar la cosecha de {amount} kg del {date}?",
+    "deleted": "Cosecha de {amount} kg eliminada",
+    "amended": "Modificada el {date}"
   },
   "treat": {
     "title": "Tratamientos",
@@ -273,7 +320,15 @@
     "batch": "N.º de lote",
     "reason": "Motivo",
     "reason_ph": "p. ej. varroa",
-    "withdrawal": "Tiempo de espera hasta"
+    "withdrawal": "Tiempo de espera hasta",
+    "confirm_delete": "¿Eliminar el tratamiento con {product} del {date}?",
+    "deleted": "Tratamiento con {product} eliminado",
+    "amended": "Modificado el {date}",
+    "amended_col": "Modificado",
+    "register": "Registro de tratamientos",
+    "print_register": "Imprimir registro",
+    "register_printed": "Impreso el {date}",
+    "print_blocked": "Se bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio e inténtalo de nuevo."
   },
   "temperament": {
     "0": "—",

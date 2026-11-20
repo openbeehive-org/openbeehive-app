@@ -1,0 +1,284 @@
+/* Shared look of the hive screens (hive page, visits, charts, record card).
+   Global on purpose so the split components do not each repeat it; every
+   class is prefixed hv- to stay out of the way of other pages.
+
+   Built for the apiary: text inputs are at least 16px (iOS zooms into
+   anything smaller) and every control is at least 44px tall. */
+
+.hv-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 22px 18px 96px;
+}
+.hv-back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--text-soft);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.hv-page h1 {
+  font-size: 1.9rem;
+  overflow-wrap: anywhere;
+}
+.hv-page h2 {
+  font-size: 1.3rem;
+}
+.hv-muted {
+  color: var(--text-soft);
+}
+.hv-sm {
+  font-size: 0.82rem;
+}
+.hv-empty {
+  color: var(--text-soft);
+  text-align: center;
+  padding: 30px 0;
+}
+.hv-sub {
+  color: var(--text-soft);
+  margin-bottom: 18px;
+}
+.hv-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.hv-section {
+  margin-top: 26px;
+}
+.hv-sec-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.hv-sec-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+/* ---- Forms ---- */
+.hv-form {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.hv-grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.hv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.86rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  min-width: 0;
+}
+.hv-field input,
+.hv-field select,
+.hv-field textarea {
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 400;
+  min-height: 46px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.hv-hint {
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+.hv-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 6px 14px 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.hv-check input {
+  width: 24px;
+  height: 24px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+.hv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.hv-err {
+  color: var(--danger);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* ---- Buttons ---- */
+.hv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hv-btn.ghost {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text);
+  font-weight: 600;
+}
+.hv-btn.danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.hv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.hv-btn:focus-visible,
+.hv-link:focus-visible,
+.hv-check:focus-within {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.hv-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  padding: 0 6px;
+  background: none;
+  border: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hv-link.danger {
+  color: var(--danger);
+}
+.hv-link.soft {
+  color: var(--text-soft);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* ---- Record cards ---- */
+.hv-timeline {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.hv-record {
+  padding: 14px 16px 6px;
+}
+.hv-rhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.hv-rhead strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.hv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hv-chip {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.hv-chip.warn {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+.hv-chip.plain {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+}
+.hv-note {
+  margin-top: 8px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.hv-racts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 2px;
+}
+.hv-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  display: inline-block;
+  flex-shrink: 0;
+}
+.hv-dot.lg {
+  width: 20px;
+  height: 20px;
+}
