@@ -256,7 +256,7 @@ func mountRPC(mux *http.ServeMux, server *connect.Server) {
 	connecthttp.Mount(mux, server, connecthttp.WithReadMaxBytes(maxRPCMessage))
 }
 
-// registerServices mounts the Connect-RPC handlers, blob serving and health.
+// registerServices mounts the Connect-RPC handlers and health.
 func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.Store, interceptors []connect.ServerInterceptor) {
 	server := connect.NewServer(interceptors...)
 
@@ -281,12 +281,6 @@ func registerServices(mux *http.ServeMux, cfg *config.Config, store *sqlstore.St
 	openbeehivev1connect.RegisterEventServiceHandler(server, service.NewEventService(w))
 	openbeehivev1connect.RegisterStatsServiceHandler(server, service.NewStatsService(w))
 	mountRPC(mux, server)
-
-	// FS blob serving in self-host mode (files only, no directory listings).
-	if cfg.Blob.Backend == config.BlobFS {
-		mux.Handle("/files/", http.StripPrefix("/files/",
-			noDirListing(http.FileServer(http.Dir(cfg.Blob.BaseDir)))))
-	}
 
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -342,15 +336,4 @@ func serve(ctx context.Context, cfg *config.Config, handler http.Handler) {
 	if err := srv.Shutdown(shutCtx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
-}
-
-// noDirListing hides directory indexes from the blob file server.
-func noDirListing(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "" || strings.HasSuffix(r.URL.Path, "/") {
-			http.NotFound(w, r)
-			return
-		}
-		h.ServeHTTP(w, r)
-	})
 }

@@ -73,8 +73,7 @@ type Config struct {
 		Bucket    string
 		UseSSL    bool
 		// filesystem
-		BaseDir   string
-		PublicURL string // base URL under which FS blobs are served
+		BaseDir string
 	}
 
 	Auth AuthConfig
@@ -492,7 +491,9 @@ func loadStorage(c *Config) error {
 	c.Blob.Bucket = env("MINIO_BUCKET", "openbeehive")
 	c.Blob.UseSSL = envBool("MINIO_USE_SSL", false)
 	c.Blob.BaseDir = env("BLOB_DIR", "./data/blobs")
-	c.Blob.PublicURL = env("BLOB_PUBLIC_URL", c.PublicBaseURL+"/files")
+	if os.Getenv(envPrefix+"BLOB_PUBLIC_URL") != "" {
+		c.Warnings = append(c.Warnings, "BEEHIVE_BLOB_PUBLIC_URL is no longer used: photos are served only to signed-in members under /photos/; remove the setting")
+	}
 	return nil
 }
 

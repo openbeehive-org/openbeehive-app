@@ -16,7 +16,7 @@ func clearBeehiveEnv(t *testing.T) {
 		"OIDC_GOOGLE_CLIENT_ID", "EMAIL_VERIFICATION", "SMTP_HOST", "PUBLIC_BASE_URL",
 		"CORS_ALLOWED_ORIGINS", "CORS_ALLOW_CREDENTIALS", "NODE_ID", "MAPS", "MAP_TILE_URL",
 		"GEOCODER_URL", "ALLOWED_HOSTS", "TRUST_PROXY_HEADERS", "HTTP_READ_TIMEOUT",
-		"HTTP_WRITE_TIMEOUT", "SYNC_MIN_PROTOCOL", "CHANGELOG_RETENTION_DAYS"} {
+		"HTTP_WRITE_TIMEOUT", "SYNC_MIN_PROTOCOL", "CHANGELOG_RETENTION_DAYS", "BLOB_PUBLIC_URL"} {
 		t.Setenv(envPrefix+v, "")
 	}
 	// Load reads .env from the working directory; tests must not pick one up.
@@ -346,5 +346,19 @@ func TestLoadWithoutDotEnv(t *testing.T) {
 	cfg, err := Load()
 	if err != nil || cfg.EnvFile {
 		t.Fatalf("no .env: err=%v applied=%v", err, cfg.EnvFile)
+	}
+}
+
+// The setting that pointed browsers at the blob directory is gone; an
+// install that still carries it is told so by name.
+func TestLoadReportsTheRemovedBlobPublicURL(t *testing.T) {
+	clearBeehiveEnv(t)
+	t.Setenv(envPrefix+"BLOB_PUBLIC_URL", "https://files.example.org")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "BEEHIVE_BLOB_PUBLIC_URL") {
+		t.Fatalf("warnings: %v", cfg.Warnings)
 	}
 }
