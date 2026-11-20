@@ -16,8 +16,9 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/blob"
 )
 
-// TenantAPI exposes multi-tenant onboarding: who am I, which tenants can I use,
-// switch the active tenant, create a tenant, invite users, accept an invite.
+// TenantAPI exposes the workspaces (tenants) of an account: who am I, which
+// tenants can I use, switch the active one, create and delete a tenant,
+// invite users, accept an invite, and manage members (members.go).
 type TenantAPI struct {
 	sessions *SessionManager
 	users    storage.UserRepo
@@ -356,7 +357,7 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 		demoReadOnly(w)
 		return
 	}
-	if err := t.removeWorkspace(r.Context(), orgID, id.UserID); err != nil {
+	if err := t.removeWorkspace(r.Context(), orgID, id.UserID, false); err != nil {
 		internalError(w, "delete workspace", err)
 		return
 	}
@@ -365,15 +366,21 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 
 // removeWorkspace deletes a workspace with everything in it and purges its
 // photos. Used when an owner deletes it and when an account that was its
-// only member is deleted.
-func (t *TenantAPI) removeWorkspace(ctx context.Context, orgID, byUser string) error {
+// only member is deleted. In the second case (onlyMember) the delete itself
+// makes sure byUser still is the only member and answers
+// storage.ErrNotOnlyMember otherwise.
+func (t *TenantAPI) removeWorkspace(ctx context.Context, orgID, byUser string, onlyMember bool) error {
 	// Collect blob keys BEFORE the rows go away; purge after the delete
 	// commits so a failed delete never loses photos.
 	photoKeys, err := t.orgs.PhotoKeysByOrg(ctx, orgID)
 	if err != nil {
 		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err)
 	}
-	if err := t.orgs.Delete(ctx, orgID); err != nil {
+	remove := t.orgs.Delete
+	if onlyMember {
+		remove = func(ctx context.Context, id string) error { return t.orgs.DeleteIfOnlyMember(ctx, id, byUser) }
+	}
+	if err := remove(ctx, orgID); err != nil {
 		return err
 	}
 	t.sessions.Invalidate() // members of the deleted workspace lose access now
@@ -455,7 +462,13 @@ func (t *TenantAPI) accept(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := t.members.Get(r.Context(), inv.OrgID, id.UserID); err != nil {
 		// not yet a member -> add
-		if err := t.members.Add(r.Context(), &storage.Membership{OrgID: inv.OrgID, UserID: id.UserID, Role: inv.Role}); err != nil {
+		err := t.members.Add(r.Context(), &storage.Membership{OrgID: inv.OrgID, UserID: id.UserID, Role: inv.Role})
+		if errors.Is(err, storage.ErrNotFound) {
+			// The workspace was deleted while the invite was being accepted.
+			respondError(w, http.StatusBadRequest, "invite_invalid", "this invite is not valid; ask for a new one")
+			return
+		}
+		if err != nil {
 			internalError(w, "accept invite", err)
 			return
 		}

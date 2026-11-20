@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -230,22 +231,16 @@ func TestDeleteAccountRefusesProtectedAccounts(t *testing.T) {
 }
 
 // An account without a password confirms with a fresh passkey assertion.
-func TestDeleteAccountWithoutPassword(t *testing.T) {
+func TestDeleteAccountWithPasskey(t *testing.T) {
 	f := newAPIFixture(t, loginConfig())
 	ctx := context.Background()
 	seedMember(t, f.store, "sso", "sso@test.dev", "sso-org", "owner")
-	tok, _ := f.sessions.Issue(Identity{UserID: "sso", OrgID: "sso-org", Email: "sso@test.dev", Role: "user"})
-
-	// Neither password nor passkey: nothing to confirm with.
-	info := f.call(t, http.MethodGet, "/auth/account", tok, nil)
-	if plan, _ := info.body["deletion"].(map[string]any); plan["confirm"] != "unavailable" || info.str("password") != "none" {
-		t.Fatalf("account info: %s", info.raw)
-	}
-	wantError(t, deleteAccount(f, t, tok, map[string]string{"password": ""}), http.StatusConflict, "reauth_unavailable")
-
 	f.exec(t, `INSERT INTO user_passkey (id, user_id, name, cred, created_at) VALUES (?, ?, ?, ?, ?)`, "pk-1", "sso", "Phone", `{}`, time.Now().UTC())
-	info = f.call(t, http.MethodGet, "/auth/account", tok, nil)
-	if plan, _ := info.body["deletion"].(map[string]any); plan["confirm"] != "passkey" {
+	// Even a session fresh from a sign-in does not replace the passkey.
+	tok, _ := f.sessions.IssueLogin(Identity{UserID: "sso", OrgID: "sso-org", Email: "sso@test.dev", Role: "user"})
+
+	info := f.call(t, http.MethodGet, "/auth/account", tok, nil)
+	if plan, _ := info.body["deletion"].(map[string]any); plan["confirm"] != "passkey" || info.str("password") != "none" {
 		t.Fatalf("account info with a passkey: %s", info.raw)
 	}
 	wantError(t, deleteAccount(f, t, tok, map[string]string{}), http.StatusForbidden, "reauth_required")
@@ -262,6 +257,177 @@ func TestDeleteAccountWithoutPassword(t *testing.T) {
 	}
 	if _, err := f.store.Users().GetByID(ctx, "sso"); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("the account still exists: %v", err)
+	}
+}
+
+// An account with neither password nor passkey (it signs in with a provider)
+// confirms by having just signed in: the session must come straight out of
+// a sign-in that is at most five minutes old.
+func TestDeleteAccountWithRecentSignIn(t *testing.T) {
+	f := newAPIFixture(t, loginConfig())
+	ctx := context.Background()
+	seedMember(t, f.store, "sso", "sso@test.dev", "sso-org", "owner")
+	seedMember(t, f.store, "sso", "sso@test.dev", "second-org", "owner")
+	id := Identity{UserID: "sso", OrgID: "sso-org", Email: "sso@test.dev", Role: "user"}
+	stillThere := func(when string) {
+		t.Helper()
+		if _, err := f.store.Users().GetByID(ctx, "sso"); err != nil {
+			t.Fatalf("%s: the account must still exist: %v", when, err)
+		}
+	}
+
+	fresh, err := f.sessions.IssueLogin(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := f.call(t, http.MethodGet, "/auth/account", fresh, nil)
+	if plan, _ := info.body["deletion"].(map[string]any); plan["confirm"] != "login" || info.str("password") != "none" {
+		t.Fatalf("account info: %s", info.raw)
+	}
+
+	// Too old: signed in six minutes ago.
+	old, _ := f.sessions.issueAt(id, time.Now().Add(-RecentLoginWindow-time.Minute), true)
+	wantError(t, deleteAccount(f, t, old, map[string]string{}), http.StatusForbidden, "login_required")
+	stillThere("old sign-in")
+
+	// Not from a sign-in at all: a plain session, and the sessions that
+	// switching the workspace, recovering and "log out everywhere" hand out
+	// in exchange for a fresh one.
+	plain, _ := f.sessions.Issue(id)
+	wantError(t, deleteAccount(f, t, plain, map[string]string{}), http.StatusForbidden, "login_required")
+	for path, body := range map[string]any{
+		"/auth/switch":     map[string]string{"org_id": "second-org"},
+		"/auth/logout-all": nil,
+	} {
+		login, _ := f.sessions.IssueLogin(id)
+		res := f.call(t, http.MethodPost, path, login, body)
+		if res.status != http.StatusOK || res.str("token") == "" {
+			t.Fatalf("%s: %d %s", path, res.status, res.raw)
+		}
+		wantError(t, deleteAccount(f, t, res.str("token"), map[string]string{}), http.StatusForbidden, "login_required")
+		stillThere(path)
+	}
+	// Recovery: the session's workspace disappears, the replacement is not a sign-in.
+	lost, _ := f.sessions.IssueLogin(Identity{UserID: "sso", OrgID: "second-org", Email: "sso@test.dev", Role: "user"})
+	if err := f.store.Orgs().Delete(ctx, "second-org"); err != nil {
+		t.Fatal(err)
+	}
+	f.sessions.Invalidate()
+	res := f.call(t, http.MethodPost, "/auth/session/recover", lost, nil)
+	if res.status != http.StatusOK || res.body["switched"] != true {
+		t.Fatalf("recover: %d %s", res.status, res.raw)
+	}
+	wantError(t, deleteAccount(f, t, res.str("token"), map[string]string{}), http.StatusForbidden, "login_required")
+	// A password in the body changes nothing: the account has none.
+	wantError(t, deleteAccount(f, t, res.str("token"), map[string]string{"password": "guess"}), http.StatusForbidden, "login_required")
+	stillThere("recovered session")
+
+	// Accepted: the session of a sign-in that has just happened.
+	fresh, _ = f.sessions.IssueLogin(id)
+	if res := deleteAccount(f, t, fresh, map[string]string{}); res.status != http.StatusOK {
+		t.Fatalf("delete right after signing in: %d %s", res.status, res.raw)
+	}
+	if _, err := f.store.Users().GetByID(ctx, "sso"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("the account still exists: %v", err)
+	}
+}
+
+// Only the token a sign-in hands out carries the time of that sign-in.
+func TestSignInMarksItsSession(t *testing.T) {
+	f := newAPIFixture(t, loginConfig())
+	ctx := context.Background()
+	a := f.signup(t, "a@test.dev")
+	for name, tok := range map[string]string{"sign-up": a.token, "sign-in": f.signIn(t, "a@test.dev", "password123").str("token")} {
+		id, err := f.sessions.Verify(ctx, tok)
+		if err != nil || !RecentLogin(id, time.Now()) {
+			t.Errorf("%s: want a session marked as a fresh sign-in, got %+v %v", name, id, err)
+		}
+		if RecentLogin(id, time.Now().Add(RecentLoginWindow+time.Second)) {
+			t.Errorf("%s: the mark must lapse after five minutes", name)
+		}
+	}
+	switched := f.switchTo(t, a, a.orgID)
+	if id, err := f.sessions.Verify(ctx, switched); err != nil || !id.LoginAt.IsZero() {
+		t.Fatalf("a reissued session must not carry the sign-in time: %+v %v", id, err)
+	}
+	// A session from a 0.4.x server has no such claim either.
+	if RecentLogin(Identity{UserID: "u"}, time.Now()) {
+		t.Fatal("a session without a sign-in time is not a recent sign-in")
+	}
+}
+
+// joinDuringPlan makes another account join a workspace right after the
+// deletion plan has looked at its members: the moment a race would hit.
+type joinDuringPlan struct {
+	storage.MemberRepo
+	join func()
+}
+
+func (m *joinDuringPlan) ListByOrg(ctx context.Context, orgID string) ([]storage.Member, error) {
+	members, err := m.MemberRepo.ListByOrg(ctx, orgID)
+	if join := m.join; join != nil {
+		m.join = nil
+		join()
+	}
+	return members, err
+}
+
+// Someone accepts an invite between the moment the plan finds the account
+// alone in its workspace and the delete. The workspace, with whatever the
+// newcomer wrote, must not go down with the account.
+func TestDeleteAccountDoesNotTakeAWorkspaceSomeoneJustJoined(t *testing.T) {
+	f := newAPIFixture(t, loginConfig())
+	ctx := context.Background()
+	owner := f.signup(t, "owner@test.dev")
+	late := f.signup(t, "late@test.dev")
+
+	racing := &joinDuringPlan{MemberRepo: f.store.Members()}
+	prov := NewProvisioner(f.store.Users(), f.store.Orgs(), f.store.Members())
+	tenants := NewTenantAPI(f.sessions, f.store.Users(), f.store.Orgs(), racing, f.store.Invites(), prov, f.cfg, nil)
+	rt := NewRouter(f.cfg)
+	NewAccountAPI(tenants, f.store, NewThrottle(false), f.reauth).Routes(rt)
+	srv := httptest.NewServer(rt)
+	t.Cleanup(srv.Close)
+	f.srv = srv
+
+	racing.join = func() {
+		f.join(t, owner.orgID, late, "member")
+		f.writeRecords(t, owner.orgID, late.userID, "late")
+	}
+	res := deleteAccount(f, t, owner.token, map[string]string{"password": "password123"})
+	wantError(t, res, http.StatusConflict, "sole_owner")
+	if list, _ := res.body["workspaces"].([]any); len(list) != 1 || list[0].(map[string]any)["id"] != owner.orgID {
+		t.Fatalf("the refusal must name the workspace that now has another member: %s", res.raw)
+	}
+	if _, err := f.store.Users().GetByID(ctx, owner.userID); err != nil {
+		t.Fatalf("the account must still exist: %v", err)
+	}
+	if _, err := f.store.Orgs().Get(ctx, owner.orgID); err != nil {
+		t.Fatalf("the workspace must still exist: %v", err)
+	}
+	if n := f.count(t, `SELECT COUNT(*) FROM event WHERE id = 'late-ev'`); n != 1 {
+		t.Fatal("the newcomer's record was deleted")
+	}
+	if members, _ := f.store.Members().ListByOrg(ctx, owner.orgID); len(members) != 2 {
+		t.Fatalf("members after the refused deletion: %+v", members)
+	}
+}
+
+// A workspace that is gone cannot be joined: the invite is answered as invalid.
+func TestAcceptInviteForADeletedWorkspace(t *testing.T) {
+	f := newAPIFixture(t, loginConfig())
+	owner := f.signup(t, "owner@test.dev")
+	guest := f.signup(t, "guest@test.dev")
+	inv := f.call(t, http.MethodPost, "/tenants/invite", owner.token, map[string]string{"email": "guest@test.dev"})
+	if inv.status != http.StatusOK {
+		t.Fatalf("invite: %d %s", inv.status, inv.raw)
+	}
+	// The workspace disappears, but the invite row is still there (as it is
+	// for a moment while a delete is running).
+	f.exec(t, `DELETE FROM organization WHERE id = ?`, owner.orgID)
+	wantError(t, f.call(t, http.MethodPost, "/auth/accept-invite", guest.token, map[string]string{"token": inv.str("token")}), http.StatusBadRequest, "invite_invalid")
+	if n := f.count(t, `SELECT COUNT(*) FROM member WHERE organization_id = ? AND benutzer_id = ?`, owner.orgID, guest.userID); n != 0 {
+		t.Fatal("a membership in a deleted workspace was created")
 	}
 }
 

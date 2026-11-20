@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -56,7 +58,8 @@ type deletionPlan struct {
 	// Left behind: the account's records there stay, without its name.
 	Leaves []workspaceRef `json:"leaves"`
 	// Confirm is how the deletion must be confirmed: "password", "passkey",
-	// or "unavailable" for an account that has neither.
+	// or, for an account that has neither (it signs in with a provider),
+	// "login": a sign-in within the last five minutes.
 	Confirm string `json:"confirm"`
 }
 
@@ -99,7 +102,7 @@ func (a *AccountAPI) plan(ctx context.Context, u *storage.User) (deletionPlan, e
 		if err != nil {
 			return p, err
 		}
-		p.Confirm = "unavailable"
+		p.Confirm = "login"
 		if n > 0 {
 			p.Confirm = "passkey"
 		}
@@ -172,7 +175,8 @@ type deleteAccountReq struct {
 //     cannot be deleted here.
 //
 // The caller confirms with the account's password, or with a fresh passkey
-// assertion when the account has none.
+// assertion when the account has none, or, when it has neither, by having
+// signed in within the last five minutes.
 func (a *AccountAPI) remove(w http.ResponseWriter, r *http.Request) {
 	id, u, ok := a.account(w, r)
 	if !ok {
@@ -195,19 +199,26 @@ func (a *AccountAPI) remove(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusForbidden, "account_protected", "the instance admin account is defined by the server configuration and cannot be deleted here")
 		return
 	}
-	if !a.confirmed(w, r, u, plan.Confirm, req) {
+	if !a.confirmed(w, r, id, u, plan.Confirm, req) {
 		return
 	}
 	if len(plan.Blocked) > 0 {
-		respondJSON(w, http.StatusConflict, map[string]any{
-			"error":      "you are the only admin of a workspace that has other members; make someone else an admin or delete the workspace first",
-			"code":       "sole_owner",
-			"workspaces": plan.Blocked,
-		})
+		soleOwner(w, plan)
 		return
 	}
 	for _, ws := range plan.Deletes {
-		if err := a.t.removeWorkspace(r.Context(), ws.ID, u.ID); err != nil {
+		err := a.t.removeWorkspace(r.Context(), ws.ID, u.ID, true)
+		if errors.Is(err, storage.ErrNotOnlyMember) {
+			// Somebody joined after the plan was made. The workspace and
+			// their records stay; the account now has to hand it over.
+			if plan, err = a.plan(r.Context(), u); err != nil {
+				internalError(w, "plan account deletion", err)
+				return
+			}
+			soleOwner(w, plan)
+			return
+		}
+		if err != nil {
 			internalError(w, "delete workspace with account", err)
 			return
 		}
@@ -222,9 +233,19 @@ func (a *AccountAPI) remove(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
+// soleOwner refuses the deletion and names the workspaces that have to be
+// handed over or deleted first.
+func soleOwner(w http.ResponseWriter, plan deletionPlan) {
+	respondJSON(w, http.StatusConflict, map[string]any{
+		"error":      "you are the only admin of a workspace that has other members; make someone else an admin or delete the workspace first",
+		"code":       "sole_owner",
+		"workspaces": plan.Blocked,
+	})
+}
+
 // confirmed checks the proof that the account's owner is the one asking. On
 // failure it writes the error response and returns false.
-func (a *AccountAPI) confirmed(w http.ResponseWriter, r *http.Request, u *storage.User, method string, req deleteAccountReq) bool {
+func (a *AccountAPI) confirmed(w http.ResponseWriter, r *http.Request, id Identity, u *storage.User, method string, req deleteAccountReq) bool {
 	switch method {
 	case "password":
 		account := storage.NormalizeEmail(u.Email)
@@ -244,7 +265,14 @@ func (a *AccountAPI) confirmed(w http.ResponseWriter, r *http.Request, u *storag
 		respondError(w, http.StatusForbidden, "reauth_required", "confirm with one of your passkeys first")
 		return false
 	}
-	respondError(w, http.StatusConflict, "reauth_unavailable", "this account has neither a password nor a passkey to confirm with; add a passkey or set a password first")
+	// Neither password nor passkey: the account signs in with a provider.
+	// The session of a sign-in that has just happened is the confirmation;
+	// one that was reissued since (another workspace, a recovery) is not,
+	// because nobody proved their identity for it.
+	if RecentLogin(id, time.Now()) {
+		return true
+	}
+	respondError(w, http.StatusForbidden, "login_required", "sign in again to confirm: deleting this account needs a sign-in from the last five minutes")
 	return false
 }
 
