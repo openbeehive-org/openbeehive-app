@@ -1,34 +1,56 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { _ } from 'svelte-i18n';
+  import { _, locale } from 'svelte-i18n';
+  import { TrendingDown, TrendingUp } from '@lucide/svelte';
   import { hives, inspections, harvests } from '#lib/local/repo.js';
   import type { HarvestRow, HiveRow, InspectionRow } from '../../../rows.js';
   import { dataVersion } from '#lib/local/live.js';
+  import { formatDate } from '#lib/dates.js';
+  import {
+    ORDINALS,
+    isSensor,
+    levelSeries,
+    numericSeries,
+    varroaSeries,
+    type NumericKey,
+    type OrdinalKey,
+    type Point
+  } from '#lib/components/hive/readings.js';
   import Sparkline from '#lib/components/Sparkline.svelte';
+  import LevelChart from '#lib/components/hive/LevelChart.svelte';
+  import { dotted } from '#lib/components/hive/forms.js';
+  import { timeOf } from '#lib/components/hive/chartScale.js';
+  import '#lib/components/hive/hive.css';
 
   const id = page.params.id ?? '';
   let hive = $state<HiveRow | null>(null);
-  let visits = $state<InspectionRow[]>([]); // oldest to newest
+  // Visits and sensor readings together, oldest to newest.
+  let readings = $state<InspectionRow[]>([]);
   let harvestRows = $state<HarvestRow[]>([]);
   let loaded = $state(false);
 
-  // Numeric metrics charted over the inspection history. A value of 0 means
-  // "not recorded" for these fields, so we plot only recorded points.
-  const METRICS: { key: keyof InspectionRow; label: string; unit?: string; parse?: boolean }[] = [
-    { key: 'frames', label: 'insp.frames' },
-    { key: 'brood_frames', label: 'insp.brood_frames' },
-    { key: 'stores', label: 'insp.stores' },
-    { key: 'queen_cells', label: 'insp.queen_cells' },
-    { key: 'temperament', label: 'insp.temperament' },
-    { key: 'calmness', label: 'insp.calmness' },
-    { key: 'varroa', label: 'insp.varroa', parse: true },
-    { key: 'weight_kg', label: 'insp.weight_kg', unit: 'kg' },
-    { key: 'fed_kg', label: 'insp.fed_kg', unit: 'kg' },
-    { key: 'youngest_larva', label: 'insp.youngest_larva', unit: 'd' },
-    { key: 'temp_hive', label: 'insp.temp_hive', unit: '°C' },
-    { key: 'temp_outside', label: 'insp.temp_outside', unit: '°C' },
-    { key: 'humidity_hive', label: 'insp.humidity_hive', unit: '%' },
-    { key: 'humidity_outside', label: 'insp.humidity_outside', unit: '%' }
+  // What is charted over the inspection history, in card order. Numbers are
+  // plotted as recorded (empty = no point, 0 and frost are real points);
+  // ratings as named levels; varroa only where a plain number was entered.
+  type Metric =
+    | { kind: 'number'; key: NumericKey; unit?: 'kg' | 'd' | '°C' | '%' }
+    | { kind: 'level'; key: OrdinalKey }
+    | { kind: 'varroa'; key: 'varroa' };
+  const METRICS: Metric[] = [
+    { kind: 'number', key: 'frames' },
+    { kind: 'number', key: 'brood_frames' },
+    { kind: 'level', key: 'stores' },
+    { kind: 'number', key: 'queen_cells' },
+    { kind: 'level', key: 'temperament' },
+    { kind: 'level', key: 'calmness' },
+    { kind: 'varroa', key: 'varroa' },
+    { kind: 'number', key: 'weight_kg', unit: 'kg' },
+    { kind: 'number', key: 'fed_kg', unit: 'kg' },
+    { kind: 'number', key: 'youngest_larva', unit: 'd' },
+    { kind: 'number', key: 'temp_hive', unit: '°C' },
+    { kind: 'number', key: 'temp_outside', unit: '°C' },
+    { kind: 'number', key: 'humidity_hive', unit: '%' },
+    { kind: 'number', key: 'humidity_outside', unit: '%' }
   ];
 
   const BOOLEANS: (keyof InspectionRow)[] = [
@@ -39,36 +61,94 @@
     'super_added'
   ];
 
-  function seriesFor(m: { key: keyof InspectionRow; parse?: boolean }) {
-    return visits
-      .map((v) => ({
-        date: v.date,
-        value: m.parse ? parseFloat(String(v[m.key] ?? '')) : Number(v[m.key])
-      }))
-      .filter((s) => !isNaN(s.value) && s.value > 0);
-  }
+  const day = (iso: string) => formatDate(iso, $locale);
+  const unitText = (unit?: string) =>
+    unit === 'kg' ? $_('common.kg') : unit === 'd' ? $_('insp.unit_d') : (unit ?? '');
+  const withUnit = (v: number | string, unit?: string) =>
+    unit ? `${v} ${unitText(unit)}` : `${v}`;
+  const levelName = (key: OrdinalKey, code: number) => $_(`${ORDINALS[key].ns}.${code}`);
 
   function trend(vals: number[]): '' | 'up' | 'down' {
     if (vals.length < 2) return '';
     const d = (vals[vals.length - 1] ?? 0) - (vals[0] ?? 0);
     return d > 0 ? 'up' : d < 0 ? 'down' : '';
   }
+  const span = (pts: Point[]) => {
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    if (!first || !last) return '';
+    return first.date === last.date ? day(first.date) : `${day(first.date)} – ${day(last.date)}`;
+  };
 
-  const metricViews = $derived(
-    METRICS.map((m) => {
-      const s = seriesFor(m);
-      const vals = s.map((p) => p.value);
-      return { ...m, series: s, vals, latest: vals[vals.length - 1], trend: trend(vals) };
-    }).filter((m) => m.vals.length > 0)
-  );
-
-  const honeyView = $derived.by(() => {
-    const s = harvestRows
-      .map((h) => ({ date: h.date, value: h.amount_kg }))
-      .filter((p) => p.value > 0);
-    return { series: s, vals: s.map((p) => p.value), total: s.reduce((a, b) => a + b.value, 0) };
+  // One view per metric that has at least one recorded point.
+  const metricViews = $derived.by(() => {
+    const out = [];
+    for (const m of METRICS) {
+      const label = $_('insp.' + m.key);
+      if (m.kind === 'level') {
+        const pts = levelSeries(readings, m.key);
+        const last = pts[pts.length - 1];
+        if (!last) continue;
+        out.push({
+          kind: m.kind,
+          key: m.key,
+          label,
+          count: pts.length,
+          span: span(pts),
+          times: pts.map((p) => timeOf(p.date)),
+          latest: levelName(m.key, last.value),
+          levels: ORDINALS[m.key].bestFirst.map((code) => ({
+            code,
+            label: levelName(m.key, code)
+          })),
+          points: pts.map((p) => ({
+            value: p.value,
+            title: `${day(p.date)}: ${levelName(m.key, p.value)}`
+          }))
+        });
+        continue;
+      }
+      const varroa = m.kind === 'varroa' ? varroaSeries(readings) : null;
+      const pts = varroa ? varroa.points : numericSeries(readings, m.key as NumericKey);
+      const last = pts[pts.length - 1];
+      if (!last) continue;
+      const unit = m.kind === 'number' ? m.unit : undefined;
+      const vals = pts.map((p) => p.value);
+      // Varroa is shown the way it was typed in.
+      const shown = (i: number) => varroa?.points[i]?.entered ?? withUnit(vals[i] ?? 0, unit);
+      out.push({
+        kind: 'number' as const,
+        key: m.key,
+        label,
+        count: pts.length,
+        span: span(pts),
+        times: pts.map((p) => timeOf(p.date)),
+        latest: shown(pts.length - 1),
+        vals,
+        titles: pts.map((p, i) => `${day(p.date)}: ${shown(i)}`),
+        min: withUnit(Math.min(...vals), unit),
+        max: withUnit(Math.max(...vals), unit),
+        trend: trend(vals),
+        skipped: varroa?.skipped ?? 0
+      });
+    }
+    return out;
   });
 
+  const honeyView = $derived.by(() => {
+    const s = harvestRows.filter((h) => h.amount_kg > 0);
+    const total = Math.round(s.reduce((a, h) => a + h.amount_kg, 0) * 100) / 100;
+    return {
+      vals: s.map((h) => h.amount_kg),
+      times: s.map((h) => timeOf(h.date)),
+      titles: s.map((h) => `${day(h.date)}: ${withUnit(h.amount_kg, 'kg')}`),
+      total
+    };
+  });
+
+  // Observations exist only on visits; a sensor never sees the queen.
+  const visits = $derived(readings.filter((r) => !isSensor(r)));
+  const sensorCount = $derived(readings.length - visits.length);
   const boolViews = $derived(
     BOOLEANS.map((key) => ({
       key,
@@ -81,8 +161,8 @@
   async function load() {
     hive = await hives.get(id);
     if (hive) {
-      const insp = await inspections.listByHive(id); // newest first
-      visits = [...insp].reverse(); // oldest to newest for charts
+      const insp = await inspections.listByHive(id, { sensors: true }); // newest first
+      readings = [...insp].reverse();
       harvestRows = [...(await harvests.listByHive(id))].reverse();
     }
     loaded = true;
@@ -94,59 +174,97 @@
   });
 </script>
 
-<div class="page">
-  <a class="back" href={`/hives/${id}`}>‹ {hive?.name ?? $_('hives.title')}</a>
+<div class="hv-page">
+  <a class="hv-back" href={`/hives/${id}`}>‹ {hive?.name ?? $_('hives.title')}</a>
 
   {#if !loaded}
-    <p class="muted">...</p>
+    <p class="hv-muted">…</p>
   {:else if !hive}
-    <p class="muted">{$_('hives.not_found')}</p>
+    <p class="hv-muted">{$_('hives.not_found')}</p>
   {:else}
     <h1>{$_('stats.title')}</h1>
-    <p class="muted sub">{hive.name} · {visits.length} {$_('stats.visits')}</p>
+    <p class="hv-sub">
+      {dotted(
+        hive.name,
+        `${visits.length} ${$_('stats.visits')}`,
+        sensorCount ? `${sensorCount} ${$_('stats.sensor_readings')}` : ''
+      )}
+    </p>
 
-    {#if metricViews.length === 0 && honeyView.series.length === 0 && boolViews.length === 0}
-      <p class="muted empty">{$_('stats.no_data')}</p>
+    {#if metricViews.length === 0 && honeyView.vals.length === 0 && boolViews.length === 0}
+      <p class="hv-empty">{$_('stats.no_data')}</p>
     {/if}
 
-    {#each metricViews as m}
-      <section id={m.key} class="card metric">
+    {#each metricViews as m (m.key)}
+      <section id={m.key} class="hv-card metric">
         <div class="m-head">
-          <h2>{$_(m.label)}</h2>
+          <h2>{m.label}</h2>
           <div class="latest">
-            <strong>{m.latest}{m.unit ? ' ' + m.unit : ''}</strong>
-            {#if m.trend === 'up'}<span class="tr up">▲</span>{:else if m.trend === 'down'}<span
-                class="tr down">▼</span
-              >{/if}
+            <strong>{m.latest}</strong>
+            {#if m.kind === 'number' && m.trend}
+              <span class="tr">
+                {#if m.trend === 'up'}
+                  <TrendingUp size={18} aria-hidden="true" />
+                {:else}
+                  <TrendingDown size={18} aria-hidden="true" />
+                {/if}
+                <span class="hv-sr">{$_('stats.trend_' + m.trend)}</span>
+              </span>
+            {/if}
           </div>
         </div>
-        <Sparkline values={m.vals} />
+        {#if m.kind === 'level'}
+          <LevelChart
+            levels={m.levels}
+            points={m.points}
+            times={m.times}
+            label={`${m.label}: ${m.latest}`}
+          />
+        {:else}
+          <Sparkline
+            values={m.vals}
+            times={m.times}
+            titles={m.titles}
+            label={`${m.label}: ${m.latest}`}
+          />
+        {/if}
         <div class="mm">
-          <span>min {Math.min(...m.vals)}</span>
-          <span>max {Math.max(...m.vals)}</span>
-          <span>{m.vals.length} {$_('stats.points')}</span>
+          {#if m.kind === 'number'}
+            <span>{$_('stats.min')} {m.min}</span>
+            <span>{$_('stats.max')} {m.max}</span>
+          {/if}
+          <span>{m.count} {$_('stats.points')}</span>
+          <span>{m.span}</span>
         </div>
+        {#if m.kind === 'number' && m.skipped}
+          <p class="mm">{$_('stats.varroa_skipped', { values: { n: m.skipped } })}</p>
+        {/if}
       </section>
     {/each}
 
-    {#if honeyView.series.length}
-      <section id="honey" class="card metric">
+    {#if honeyView.vals.length}
+      <section id="honey" class="hv-card metric">
         <div class="m-head">
           <h2>{$_('harvest.title')}</h2>
-          <div class="latest"><strong>{honeyView.total} kg</strong></div>
+          <div class="latest"><strong>{withUnit(honeyView.total, 'kg')}</strong></div>
         </div>
-        <Sparkline values={honeyView.vals} color="#a4641a" />
-        <div class="mm"><span>{honeyView.series.length} {$_('stats.harvests')}</span></div>
+        <Sparkline
+          values={honeyView.vals}
+          times={honeyView.times}
+          titles={honeyView.titles}
+          label={`${$_('harvest.title')}: ${withUnit(honeyView.total, 'kg')}`}
+        />
+        <div class="mm"><span>{honeyView.vals.length} {$_('stats.harvests')}</span></div>
       </section>
     {/if}
 
     {#if boolViews.length}
-      <section class="card">
+      <section class="hv-card metric">
         <h2>{$_('stats.observations')}</h2>
         {#each boolViews as b}
           <div class="obs">
             <span class="obs-label">{$_('insp.' + b.key)}</span>
-            <span class="dots">
+            <span class="dots" aria-hidden="true">
               {#each b.dots as on}<span class="d" class:on></span>{/each}
             </span>
             <span class="count">{b.seen}/{b.total}</span>
@@ -158,51 +276,23 @@
 </div>
 
 <style>
-  .page {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 22px 18px 96px;
-  }
-  .back {
-    color: var(--ink-soft);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
-  .muted {
-    color: var(--ink-soft);
-  }
-  .sub {
-    margin-bottom: 18px;
-  }
-  .empty {
-    text-align: center;
-    padding: 40px 0;
-  }
   h1 {
-    font-family: 'Fraunces', serif;
-    font-size: 1.9rem;
-    margin: 12px 0 2px;
-  }
-  h2 {
-    font-family: 'Fraunces', serif;
-    font-size: 1.15rem;
-  }
-
-  .card {
-    background: var(--cream2);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    padding: 16px 18px;
-    margin-bottom: 14px;
+    margin: 4px 0 2px;
   }
   .metric {
+    padding: 16px 18px;
+    margin-bottom: 14px;
     scroll-margin-top: 80px;
+  }
+  .metric h2 {
+    font-size: 1.15rem;
   }
   .m-head {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: baseline;
+    gap: 4px 12px;
     margin-bottom: 8px;
   }
   .latest {
@@ -213,21 +303,18 @@
   .latest strong {
     font-family: 'Fraunces', serif;
     font-size: 1.4rem;
-  }
-  .tr.up {
-    color: #b5402f;
-  }
-  .tr.down {
-    color: #41502f;
+    overflow-wrap: anywhere;
   }
   .tr {
-    font-size: 0.8rem;
+    display: inline-flex;
+    color: var(--text-soft);
   }
   .mm {
     display: flex;
-    gap: 14px;
-    color: var(--ink-soft);
-    font-size: 0.76rem;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    color: var(--text-soft);
+    font-size: 0.8rem;
     margin-top: 8px;
   }
 
@@ -236,7 +323,7 @@
     align-items: center;
     gap: 12px;
     padding: 9px 0;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--border);
   }
   .obs:first-of-type {
     border-top: none;
@@ -256,15 +343,15 @@
     width: 9px;
     height: 9px;
     border-radius: 50%;
-    border: 1px solid var(--line);
-    background: #fff;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
   }
   .dots .d.on {
-    background: var(--honey);
-    border-color: var(--honey);
+    background: var(--accent);
+    border-color: var(--accent);
   }
   .count {
-    color: var(--ink-soft);
+    color: var(--text-soft);
     font-size: 0.8rem;
     font-weight: 600;
     min-width: 38px;
