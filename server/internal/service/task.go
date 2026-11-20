@@ -32,11 +32,10 @@ func personalScope(userID string) string { return "user:" + userID }
 
 // visibleTasks restricts a task query to what one member may see: the tasks
 // shared with the workspace (tied to an apiary) and the member's own personal
-// ones. A personal task has no owner column; it is the task whose changes
-// were written to that member's personal scope, which the change log records.
-// The query takes the member's personal scope as its argument.
-const visibleTasks = ` AND (COALESCE(apiary_id, '') <> '' OR id IN
-	(SELECT entity_id FROM change_log WHERE scope_id = ? AND entity = 'task'))`
+// ones. The owner of a personal task is recorded in task.owner_id when the
+// task is first written in a personal scope (claimOwner). The query takes the
+// member's user id as its argument.
+const visibleTasks = ` AND (COALESCE(apiary_id, '') <> '' OR owner_id = ?)`
 
 // tasksInOrder: open tasks first, then by due date with undated tasks last.
 // The dialects disagree on where NULL sorts, so the order spells it out.
@@ -80,7 +79,7 @@ func (s *TaskService) ListTasks(ctx context.Context, req *wv1.ListTasksRequest) 
 	id, _ := auth.FromContext(ctx)
 	limit, offset := pageParams(req.Page)
 	where := ` FROM task WHERE organization_id = ? AND deleted = FALSE` + visibleTasks
-	args := []any{id.OrgID, personalScope(id.UserID)}
+	args := []any{id.OrgID, id.UserID}
 	if req.HiveId != "" {
 		where += ` AND hive_id = ?`
 		args = append(args, req.HiveId)
@@ -177,7 +176,7 @@ func (s *TaskService) DeleteTask(ctx context.Context, req *wv1.DeleteTaskRequest
 func (t *txWriter) taskScope(id string) (string, error) {
 	rows, err := queryMaps(t.ctx, t.tx, `SELECT apiary_id FROM task
 		WHERE id = ? AND organization_id = ? AND deleted = FALSE`+visibleTasks,
-		id, t.id.OrgID, personalScope(t.id.UserID))
+		id, t.id.OrgID, t.id.UserID)
 	if err != nil {
 		return "", err
 	}
@@ -188,42 +187,29 @@ func (t *txWriter) taskScope(id string) (string, error) {
 }
 
 // delOpenTasks tombstones the open tasks of a hive, each in the scope it
-// lives in: the apiary's for shared tasks, its owner's personal scope (as
-// the change log recorded it) otherwise.
+// lives in: the apiary's for shared tasks, its owner's personal scope
+// otherwise.
 func (t *txWriter) delOpenTasks(hiveID string) error {
-	tasks, err := queryMaps(t.ctx, t.tx, `SELECT id, apiary_id FROM task
+	tasks, err := queryMaps(t.ctx, t.tx, `SELECT id, apiary_id, owner_id FROM task
 		WHERE organization_id = ? AND hive_id = ? AND deleted = FALSE AND done = FALSE`,
 		t.id.OrgID, hiveID)
 	if err != nil {
 		return err
 	}
 	for _, r := range tasks {
-		id, scope := rs(r["id"]), rs(r["apiary_id"])
+		scope := rs(r["apiary_id"])
 		if scope == "" {
-			if scope, err = t.loggedScope("task", id); err != nil {
-				return err
+			owner := rs(r["owner_id"])
+			if owner == "" {
+				owner = t.id.UserID
 			}
+			scope = personalScope(owner)
 		}
-		if err := t.del("task", id, scope); err != nil {
+		if err := t.del("task", rs(r["id"]), scope); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-// loggedScope returns the scope of a row's latest change-log entry, or the
-// caller's personal scope when the log holds none.
-func (t *txWriter) loggedScope(entity, id string) (string, error) {
-	rows, err := queryMaps(t.ctx, t.tx, `SELECT scope_id FROM change_log
-		WHERE org_id = ? AND entity = ? AND entity_id = ? ORDER BY seq DESC LIMIT 1`,
-		t.id.OrgID, entity, id)
-	if err != nil {
-		return "", err
-	}
-	if len(rows) == 0 {
-		return personalScope(t.id.UserID), nil
-	}
-	return rs(rows[0]["scope_id"]), nil
 }
 
 // resolveApiary returns the apiary a task belongs to: the hive's when a hive

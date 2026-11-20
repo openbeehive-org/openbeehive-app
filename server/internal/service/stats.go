@@ -71,7 +71,7 @@ func dashboardCounts(ctx context.Context, q dashboardQuery, res *wv1.DashboardRe
 func dashboardTasks(ctx context.Context, q dashboardQuery, res *wv1.DashboardResponse) error {
 	tasks, err := queryMaps(ctx, q.db, `SELECT * FROM task
 		WHERE organization_id = ? AND deleted = FALSE AND done = FALSE`+visibleTasks+tasksInOrder(q.db.DriverName()),
-		q.org, personalScope(q.user))
+		q.org, q.user)
 	if err != nil {
 		return err
 	}

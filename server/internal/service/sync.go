@@ -510,12 +510,28 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	if !exists {
 		// A new row stores every set column, also the ones the change does
 		// not mention: their column default is not valid OR-Set JSON.
-		return insertRow(ctx, tx, spec, ch.EntityId, union(changed, spec.setCols), values)
+		err = insertRow(ctx, tx, spec, ch.EntityId, union(changed, spec.setCols), values)
+	} else if len(changed) > 0 { // nothing to store when every field was stale
+		err = updateRow(ctx, tx, spec, ch.EntityId, changed, values)
 	}
-	if len(changed) == 0 {
-		return nil // everything stale -> nothing to do
+	if err != nil {
+		return err
 	}
-	return updateRow(ctx, tx, spec, ch.EntityId, changed, values)
+	return claimOwner(ctx, tx, ch)
+}
+
+// claimOwner records who owns a personal task: the user in whose personal
+// scope it is first written. Personal tasks are shown to their owner only
+// (visibleTasks). owner_id lives on the server alone; it is not a synced
+// column, so no payload can set or change it.
+func claimOwner(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change) error {
+	owner, personal := strings.CutPrefix(ch.ScopeId, "user:")
+	if ch.Entity != "task" || !personal || owner == "" {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, tx.Rebind(
+		`UPDATE task SET owner_id = ? WHERE id = ? AND owner_id = ''`), owner, ch.EntityId)
+	return err
 }
 
 // loadMergeState reads what the merge needs from the stored row: its
