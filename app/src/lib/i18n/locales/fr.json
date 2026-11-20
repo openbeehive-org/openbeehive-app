@@ -416,6 +416,7 @@
     "record": "Enregistrer une visite",
     "log": "Journal des visites",
     "stockkarte": "Fiche de ruche",
+    "card_table": "Tableau des visites, défile horizontalement",
     "no_visits": "Aucune visite enregistrée pour l'instant.",
     "colony": "Colonie & comportement",
     "activities": "Activités lors de cette visite",

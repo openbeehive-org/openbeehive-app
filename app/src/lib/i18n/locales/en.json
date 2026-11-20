@@ -416,6 +416,7 @@
     "record": "Record visit",
     "log": "Visit log",
     "stockkarte": "Hive record card",
+    "card_table": "Visits table, scrolls sideways",
     "no_visits": "No visits recorded yet.",
     "colony": "Colony & behaviour",
     "activities": "Activities on this visit",

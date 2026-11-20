@@ -66,7 +66,10 @@
     {#if visits.length === 0}
       <p class="muted empty">{$_('insp.no_visits')}</p>
     {:else}
-      <div class="scroll">
+      <!-- Focusable, so the table can be scrolled sideways with the keyboard
+           (a scrolling region is the documented exception to the rule below). -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div class="scroll" role="region" aria-label={$_('insp.card_table')} tabindex="0">
         <table class="card-table">
           <thead>
             <tr>
@@ -177,6 +180,10 @@
     border: 1px solid var(--border);
     border-radius: 14px;
     background: var(--surface);
+  }
+  .scroll:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   .card-table {
     border-collapse: collapse;

@@ -416,6 +416,7 @@
     "record": "Registrar visita",
     "log": "Registro de visitas",
     "stockkarte": "Ficha de colmena",
+    "card_table": "Tabla de visitas, se desplaza horizontalmente",
     "no_visits": "Aún no hay visitas registradas.",
     "colony": "Colonia y comportamiento",
     "activities": "Actividades en esta visita",

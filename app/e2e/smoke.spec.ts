@@ -145,10 +145,10 @@ test('settings: no console error', async ({ api, device }) => {
   expect(problems.errors).toEqual([]);
 });
 
-// BUG (app, routes/(app)/hives/[id]/stockkarte): the record card's table sits
-// in a container that scrolls sideways but cannot be focused, so it cannot
-// be scrolled with the keyboard (axe rule scrollable-region-focusable, serious).
-test.fail('hive record card: no serious accessibility problem', async ({ api, device }) => {
+// The record card's table sits in a container that scrolls sideways; it must
+// be focusable to be scrolled with the keyboard (axe rule
+// scrollable-region-focusable).
+test('hive record card: no serious accessibility problem', async ({ api, device }) => {
   const { account, hive } = await seed(api);
   const { page } = await device({ session: account, context: { viewport: PHONE } });
   await page.goto(`/hives/${hive}/stockkarte`);
