@@ -125,7 +125,12 @@ sync feed.
   and removes the blob (`server/internal/service/photo_sync.go`, `photo_sweep.go`).
 - Apps up to 0.4.x store photos inline (data URLs in `inspection.photo_keys` and `hive.photo`). The
   server keeps accepting and serving that format for them and converts it to photo records
-  (`photo_legacy.go`; existing data once at start-up, `photo_boot.go`).
+  (`photo_legacy.go`; existing data once at start-up, `photo_boot.go`). Clients that announce a
+  protocol version get the photo records and never the inline copies (`photo_feed.go`); 0.4.x apps
+  get the inline copies and never the `photo` entity. Removes of inline photos stay in the log for
+  90 days with their data URL, so 0.4.x devices that were offline learn of the delete.
+- A snapshot carries the photo records with their thumbnails, never the images. After
+  `RESET_REQUIRED` a device queues every image it still keeps for upload again, after the records.
 
 A backup is the database plus the blob directory or bucket.
 
