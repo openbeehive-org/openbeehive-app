@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -123,5 +124,16 @@ func TestAheadBy(t *testing.T) {
 	}
 	if _, ok := AheadBy("nope", now); ok {
 		t.Fatal("malformed stamp has no distance")
+	}
+}
+
+func TestNewHLCCleansNodeIDs(t *testing.T) {
+	for _, id := range []string{"", "pod:1/eu west", "ünïcode", strings.Repeat("n", 200), "plain-1.a_b"} {
+		if stamp := NewHLC(id).Now(); !Valid(stamp) {
+			t.Errorf("node id %q yields the malformed stamp %q", id, stamp)
+		}
+	}
+	if got := NewHLC("plain-1.a_b").Now(); !strings.HasSuffix(got, ":plain-1.a_b") {
+		t.Errorf("a valid node id must be kept as is: %s", got)
 	}
 }

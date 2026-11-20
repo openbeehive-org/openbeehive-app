@@ -35,7 +35,27 @@ type HLC struct {
 	nodeID  string
 }
 
-func NewHLC(nodeID string) *HLC { return &HLC{nodeID: nodeID} }
+// NewHLC returns a clock that stamps with the given node id. Characters a
+// stamp cannot carry are replaced and an over-long id is cut, so a freely
+// configured id can never make the server issue stamps it would itself
+// refuse.
+func NewHLC(nodeID string) *HLC { return &HLC{nodeID: cleanNode(nodeID)} }
+
+func cleanNode(id string) string {
+	if len(id) > maxNodeLen {
+		id = id[:maxNodeLen]
+	}
+	b := []byte(id)
+	for i := range b {
+		if !validNode(string(b[i])) {
+			b[i] = '-'
+		}
+	}
+	if len(b) == 0 {
+		return "node"
+	}
+	return string(b)
+}
 
 func nowMS() int64 { return time.Now().UnixMilli() }
 
