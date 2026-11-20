@@ -1,10 +1,17 @@
 <script lang="ts">
-  import { _ } from 'svelte-i18n';
+  import { onMount } from 'svelte';
+  import { _, locale } from 'svelte-i18n';
+  import { goto } from '$app/navigation';
+  import { Check } from '@lucide/svelte';
   import { apiaries, hives, tasks as taskRepo } from '#lib/local/repo.js';
   import { getDB } from '#lib/local/db.js';
   import { honeyByYear } from '#lib/local/history.js';
-  import type { ApiaryRow, HiveRow, TaskRow } from './rows.js';
+  import type { ApiaryRow, TaskRow } from './rows.js';
   import { dataVersion, initialSyncPending } from '#lib/local/live.js';
+  import { formatDate, todayLocal } from '#lib/dates.js';
+  import { dueHives, firstRunSteps, type DueHive, type FirstRunStep } from '#lib/hivelist.js';
+  import { dueDay, isOverdue, splitTasks } from '#lib/tasklist.js';
+  import { takeScanTarget } from '#lib/qr.js';
   import Skeleton from '#lib/components/Skeleton.svelte';
   import Syncing from '#lib/components/Syncing.svelte';
 
@@ -16,20 +23,26 @@
     open_tasks: 0,
     honey_kg_season: 0
   });
-  let due = $state<{ id: string; name: string; apiary: string; days: number }[]>([]);
-  let tasks = $state<{ title: string; due: string; overdue: boolean }[]>([]);
+  let due = $state<DueHive[]>([]);
+  let tasks = $state<{ id: string; title: string; day: string; overdue: boolean }[]>([]);
+  let checklist = $state<{ steps: FirstRunStep[]; complete: boolean }>({
+    steps: [],
+    complete: true
+  });
   let loaded = $state(false);
+  let menuOpen = $state(false);
+  let menu = $state<HTMLElement>();
 
-  function daysSince(iso?: string): number {
-    if (!iso) return -1;
-    return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  }
+  // While the first download is still running, "nothing here" is not known
+  // yet, so the newcomer greeting and checklist wait for it.
+  const firstRun = $derived(loaded && !$initialSyncPending && !checklist.complete);
 
   async function load() {
     const db = await getDB();
     // The repo returns untyped rows; the shapes are those of rows.ts.
     const apiaryRows = (await apiaries.list()) as ApiaryRow[];
-    const hiveRows = (await hives.list()) as HiveRow[];
+    // One query: every hive with its apiary name and last recorded visit.
+    const hiveRows = await hives.overview();
     const queenRow = await db.get<{ n: number }>(
       `SELECT COUNT(*) AS n FROM queen WHERE deleted = 0 AND active = 1`
     );
@@ -44,36 +57,41 @@
       honey_kg_season: Math.round(Number(honey?.kg ?? 0))
     };
 
-    const apiaryName: Record<string, string> = Object.fromEntries(
-      apiaryRows.map((a) => [a.id, a.name])
-    );
-    // Hives sorted by how long since their last inspection (oldest first).
-    const withLast = await Promise.all(
-      hiveRows.map(async (h) => {
-        const last = await db.get<{ date: string }>(
-          `SELECT MAX(date) AS date FROM inspection WHERE deleted = 0 AND hive_id = ?`,
-          [h.id]
-        );
-        return {
-          id: h.id,
-          name: h.name,
-          apiary: apiaryName[h.apiary_id] ?? '',
-          days: daysSince(last?.date)
-        };
-      })
-    );
-    due = withLast.sort((a, b) => (b.days < 0 ? 1 : a.days < 0 ? -1 : b.days - a.days)).slice(0, 5);
+    // Hives sorted by how long since a person last inspected them (sensor
+    // readings do not count as a visit).
+    due = dueHives(hiveRows);
+    const visited = hiveRows.filter((h) => h.last_inspection);
+    const firstHiveId = hiveRows[0]?.id;
+    checklist = firstRunSteps({
+      apiaries: apiaryRows.length,
+      hives: hiveRows.length,
+      visits: visited.length,
+      ...(firstHiveId ? { firstHiveId } : {})
+    });
 
-    const today = new Date().toISOString().slice(0, 10);
-    tasks = ((await taskRepo.list()) as TaskRow[])
-      .filter((t) => !t.done)
-      .slice(0, 5)
+    const today = todayLocal();
+    tasks = splitTasks((await taskRepo.list()) as TaskRow[])
+      .open.slice(0, 5)
       .map((t) => ({
+        id: t.id,
         title: t.title,
-        due: t.due_at || '',
-        overdue: !!t.due_at && t.due_at.slice(0, 10) < today
+        day: dueDay(t.due_at),
+        overdue: isOverdue(t.due_at, today)
       }));
     loaded = true;
+  }
+
+  onMount(() => {
+    // A scanned label led through the sign-in page: open that hive now.
+    const scanned = takeScanTarget();
+    if (scanned) void goto(`/h/${scanned}`);
+  });
+
+  function closeMenuOutside(e: MouseEvent) {
+    if (menuOpen && menu && !menu.contains(e.target as Node)) menuOpen = false;
+  }
+  function closeMenuOnEscape(e: KeyboardEvent) {
+    if (e.key === 'Escape') menuOpen = false;
   }
 
   $effect(() => {
@@ -82,14 +100,61 @@
   });
 </script>
 
+<svelte:window onclick={closeMenuOutside} onkeydown={closeMenuOnEscape} />
+
 <div class="page">
   <header>
     <div>
-      <h1>{$_('dashboard.welcome')}</h1>
-      <p>{$_('dashboard.subtitle')}</p>
+      <h1>{firstRun ? $_('dashboard.welcome_first') : $_('dashboard.welcome')}</h1>
+      <p>{firstRun ? $_('dashboard.subtitle_first') : $_('dashboard.subtitle')}</p>
     </div>
-    <a class="primary" href="/apiaries">+ {$_('common.new')}</a>
+    <div class="new" bind:this={menu}>
+      <button
+        class="primary"
+        aria-haspopup="true"
+        aria-expanded={menuOpen}
+        aria-controls="new-menu"
+        onclick={() => (menuOpen = !menuOpen)}>+ {$_('common.new')}</button
+      >
+      {#if menuOpen}
+        <ul id="new-menu" class="menu">
+          <li><a href="/apiaries?new=1">{$_('dashboard.new_apiary')}</a></li>
+          <li><a href="/hives?new=1">{$_('dashboard.new_hive')}</a></li>
+          <li><a href="/tasks?new=1">{$_('dashboard.new_task')}</a></li>
+        </ul>
+      {/if}
+    </div>
   </header>
+
+  {#if firstRun}
+    <section class="panel start" aria-labelledby="start-title">
+      <h2 id="start-title">{$_('dashboard.start_title')}</h2>
+      <ol class="steps">
+        {#each checklist.steps as step, i (step.key)}
+          <li class:done={step.done} class:current={step.current}>
+            <span class="mark" aria-hidden="true">
+              {#if step.done}<Check size={16} />{:else}{i + 1}{/if}
+            </span>
+            {#if step.current}
+              <a class="what" href={step.href}>
+                <strong>{$_('dashboard.step_' + step.key)}</strong>
+                <small>{$_('dashboard.step_' + step.key + '_hint')}</small>
+              </a>
+            {:else}
+              <div class="what">
+                <strong>{$_('dashboard.step_' + step.key)}</strong>
+                {#if step.done}
+                  <span class="sr">({$_('dashboard.step_done')})</span>
+                {:else}
+                  <small>{$_('dashboard.step_' + step.key + '_hint')}</small>
+                {/if}
+              </div>
+            {/if}
+          </li>
+        {/each}
+      </ol>
+    </section>
+  {/if}
 
   <div class="stats">
     {#each [['stat_apiaries', stats.apiaries], ['stat_hives', stats.hives], ['stat_queens', stats.active_queens], ['stat_open', stats.open_tasks]] as [key, val]}
@@ -118,16 +183,18 @@
         <Skeleton n={3} height={44} />
       {:else if due.length === 0}
         {#if $initialSyncPending}<Syncing />{:else}<p class="muted">
-            {$_('dashboard.all_current')}
+            {stats.hives === 0 ? $_('dashboard.due_none') : $_('dashboard.all_current')}
           </p>{/if}
       {/if}
-      {#each due as f}
+      {#each due as f (f.id)}
         <a class="row" href={`/hives/${f.id}`}>
-          <div><strong>{f.name}</strong><small>{f.apiary}</small></div>
-          <span class="badge" class:warn={f.days < 0 || f.days >= 21}>
-            {f.days < 0
+          <div><strong>{f.name}</strong><small>{f.apiary ?? ''}</small></div>
+          <span class="badge" class:warn={f.days === null || f.days >= 21}>
+            {f.days === null
               ? $_('dashboard.never')
-              : $_('dashboard.days_ago', { values: { days: f.days } })}
+              : f.days === 0
+                ? $_('dashboard.today')
+                : $_('dashboard.days_ago', { values: { days: f.days } })}
           </span>
         </a>
       {/each}
@@ -140,13 +207,14 @@
       {:else if tasks.length === 0}
         {#if $initialSyncPending}<Syncing />{:else}<p class="muted">{$_('tasks.empty')}</p>{/if}
       {/if}
-      {#each tasks as a}
-        <div class="row">
+      {#each tasks as a (a.id)}
+        <a class="row" href={`/tasks#task-${a.id}`}>
           <div>
-            <strong>{a.title}</strong>{#if a.due}<small>{a.due}</small>{/if}
+            <strong>{a.title}</strong>
+            {#if a.day}<small>{$_('tasks.due')}: {formatDate(a.day, $locale)}</small>{/if}
           </div>
-          {#if a.overdue}<span class="badge warn">!</span>{/if}
-        </div>
+          {#if a.overdue}<span class="badge warn">{$_('tasks.overdue')}</span>{/if}
+        </a>
       {/each}
     </section>
   </div>
@@ -169,25 +237,120 @@
     font-size: 2rem;
   }
   header p {
-    color: var(--ink-soft);
+    color: var(--text-soft);
+  }
+  .new {
+    position: relative;
+    flex-shrink: 0;
   }
   .primary {
-    background: var(--honey);
-    color: #fff;
+    min-height: 44px;
+    background: var(--accent);
+    color: var(--on-accent);
     border: none;
     border-radius: 11px;
     padding: 11px 18px;
+    font: inherit;
     font-weight: 700;
-    font-family: inherit;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(199, 127, 34, 0.3);
+    white-space: nowrap;
+  }
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    list-style: none;
+    min-width: 200px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 6px;
+  }
+  .menu a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 8px;
+    color: var(--text);
+    font-weight: 600;
     text-decoration: none;
-    display: inline-block;
+    white-space: nowrap;
+  }
+  .menu a:hover,
+  .menu a:focus-visible {
+    background: var(--warn-bg);
+    color: var(--warn-text);
   }
   .muted {
-    color: var(--ink-soft);
+    color: var(--text-soft);
     font-size: 0.9rem;
     padding: 6px 0;
+  }
+
+  .start {
+    margin-bottom: 22px;
+  }
+  .steps {
+    list-style: none;
+    display: grid;
+    gap: 4px;
+  }
+  .steps li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    color: var(--text-soft);
+  }
+  .steps .mark {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 2px solid var(--border-strong);
+    font-weight: 700;
+    font-size: 0.85rem;
+  }
+  .steps .done .mark {
+    background: var(--ok);
+    border-color: var(--ok);
+    color: var(--on-accent);
+  }
+  .steps .current .mark {
+    border-color: var(--accent);
+    color: var(--accent-text);
+  }
+  .steps .done strong {
+    text-decoration: line-through;
+    font-weight: 600;
+  }
+  .steps .what {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 44px;
+    color: inherit;
+    text-decoration: none;
+  }
+  .steps a.what strong {
+    color: var(--accent-text);
+    text-decoration: underline;
+  }
+  .steps small {
+    font-size: 0.82rem;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .stats {
@@ -197,14 +360,18 @@
     margin-bottom: 22px;
   }
   .stat {
-    background: var(--cream2);
-    border: 1px solid var(--line);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 16px;
     padding: 18px;
   }
   .stat.honey {
-    background: linear-gradient(150deg, #fff5e3, #ffe9c6);
-    border-color: #eecf9a;
+    background: var(--warn-bg);
+    color: var(--warn-text);
+    border-color: transparent;
+  }
+  .stat.honey .l {
+    color: inherit;
   }
   .stat .n {
     font-family: 'Fraunces', serif;
@@ -214,7 +381,7 @@
     line-height: 1;
   }
   .stat .l {
-    color: var(--ink-soft);
+    color: var(--text-soft);
     font-weight: 600;
     font-size: 0.85rem;
   }
@@ -226,9 +393,9 @@
     border-radius: 8px;
     background: linear-gradient(
       100deg,
-      rgba(199, 127, 34, 0.1) 40%,
-      rgba(199, 127, 34, 0.22) 50%,
-      rgba(199, 127, 34, 0.1) 60%
+      color-mix(in srgb, var(--accent) 10%, transparent) 40%,
+      color-mix(in srgb, var(--accent) 22%, transparent) 50%,
+      color-mix(in srgb, var(--accent) 10%, transparent) 60%
     );
     background-size: 200% 100%;
     animation: shimmer 1.4s ease-in-out infinite;
@@ -248,8 +415,8 @@
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
   .panel {
-    background: var(--cream2);
-    border: 1px solid var(--line);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 18px;
     padding: 20px;
   }
@@ -262,37 +429,38 @@
     justify-content: space-between;
     align-items: center;
     gap: 10px;
+    min-height: 44px;
     padding: 12px 0;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--border);
+    text-decoration: none;
+    color: inherit;
   }
   .row:first-of-type {
     border-top: none;
   }
+  .row strong {
+    transition: color 0.12s;
+    overflow-wrap: anywhere;
+  }
   .row small {
     display: block;
-    color: var(--ink-soft);
+    color: var(--text-soft);
     font-size: 0.82rem;
   }
-  a.row {
-    text-decoration: none;
-    color: inherit;
-  }
-  a.row:hover strong {
-    color: var(--honey-d);
-  }
-  a.row strong {
-    transition: color 0.12s;
+  .row:hover strong {
+    color: var(--accent-text);
   }
   .badge {
-    background: rgba(92, 107, 74, 0.15);
-    color: #41502f;
+    background: color-mix(in srgb, var(--ok) 16%, transparent);
+    color: var(--text);
     font-weight: 700;
     font-size: 0.78rem;
     padding: 4px 10px;
     border-radius: 999px;
+    white-space: nowrap;
   }
   .badge.warn {
-    background: rgba(181, 64, 47, 0.13);
-    color: #b5402f;
+    background: color-mix(in srgb, var(--danger) 13%, transparent);
+    color: var(--danger);
   }
 </style>
