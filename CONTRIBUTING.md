@@ -83,6 +83,33 @@ you open a pull request. Rules for portable SQL:
   the helpers in `server/internal/service` (`coerceFields`, `tsArg`, `tsCmp`) instead of comparing
   strings in SQL.
 
+### Browser tests
+
+`make e2e` builds the single binary and runs the Playwright suite in `app/e2e/` against it, in
+Chromium at phone size: opening offline, two devices converging, recording and correcting records, the
+second tab, the update prompt, sign-in, accounts and passkeys, names that look like markup, a policy
+and accessibility check of every main route, and the demo. CI runs it as a job of its own; it is not
+part of `make check`.
+
+```bash
+cd app && npx playwright install chromium     # once; on Linux add --with-deps for the system libraries
+make e2e                                      # the whole suite, about a minute
+make e2e E2E_ARGS='offline'                   # only the files whose name matches
+make e2e E2E_ARGS='--headed --workers=1 -g "second tab"'
+cd app && npx playwright show-report          # report of the last run, with a trace of every failed test
+```
+
+Every worker starts the binary on a fresh SQLite database and data directory (password login with an
+instance admin, no mail server, maps off) on ports from 18400 up (`E2E_PORT_BASE` moves them). Tests
+create their accounts, workspaces and records through the API (`e2e/support/api.ts`) and open one
+browser context per device (`e2e/support/fixtures.ts`); a test that needs other server settings
+starts an instance of its own with `startServer`. When you add a test:
+
+- Wait for what a user would see; never sleep. Find elements by role, label or text.
+- Use a new account per test (`api.signUp()`): tests of one worker share a server.
+- A test for a bug that is not fixed yet is marked `test.fail()` with a comment that names the bug.
+  It turns red once the bug is fixed; remove the marker then.
+
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and the ADRs in `docs/adr/` for how the pieces fit
 together, and the [documentation](https://docs.openbeehive.org) for the user-facing explanation.
 

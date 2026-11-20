@@ -42,7 +42,7 @@ export PG_DSN MARIADB_DSN
 
 .PHONY: help tools proto proto-lint proto-breaking gen fmt lint test cover audit build dist check-fast check release \
 	tidy clean run-server dev-app app-deps app-lint app-test app-cover app-audit app-build \
-	test-db test-sqlite test-postgres test-mariadb
+	test-db test-sqlite test-postgres test-mariadb e2e
 
 help: ## list targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*##' '{printf "  %-16s %s\n", $$1, $$2}'
@@ -202,6 +202,12 @@ app-audit: app-deps ## npm audit (high+), licenses, unused dependencies
 
 app-build: app-deps ## static SPA build into app/build
 	cd $(APP) && npm run build
+
+# Not part of `check`: it needs a browser (see CONTRIBUTING.md, "Browser tests") and takes a few minutes.
+# Pass Playwright arguments with E2E_ARGS, e.g. make e2e E2E_ARGS='offline --headed'.
+E2E_ARGS ?=
+e2e: build ## browser tests (Playwright, Chromium) against the freshly built binary
+	cd $(APP) && npm run e2e -- $(E2E_ARGS)
 
 # ----------------------------------------------------------------------------
 # Local dev: run the backend and the frontend in separate shells
