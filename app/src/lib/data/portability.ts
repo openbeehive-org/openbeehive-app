@@ -1,30 +1,30 @@
-// Data portability: export and import all local data.
+// Data portability: export all local data.
 //
 // Formats
-//   - JSON  : full, round-trippable backup of every entity
+//   - JSON  : every record of the workspace (backup.ts; with photos as a ZIP)
 //   - CSV   : one file per entity (bundled as a .zip)
 //   - XLSX  : one spreadsheet, one sheet per entity
 //   - BeeXML: a structured, BeeXML-style XML interchange (apiary > hive > ...)
 //
-// Import accepts an Openbeehive JSON backup, a BeeXML file, or a generic
-// beekeeping CSV (migration from other apps, matched by column name).
+// Import (importer.ts) accepts an Openbeehive export, a BeeXML file, or a
+// generic beekeeping CSV (migration from other apps, matched by column name).
 //
-// Everything runs locally against the offline-first store; imported rows go
-// through the normal repo `patch`, so they sync like any other change.
+// Everything runs locally against the offline-first store. Values are
+// exported as stored: metric, whatever units the user displays.
 
 import { getDB } from '../local/db';
-import { patch } from '../local/repo';
 import { buildZip } from './zip';
 import { buildXlsx } from './xlsx';
+import { todayLocal } from '../dates';
 
-const orgId = () => localStorage.getItem('obh.orgId') ?? 'local';
-const userId = () => localStorage.getItem('obh.userId') ?? 'local';
+export const orgId = () => localStorage.getItem('obh.orgId') ?? 'local';
+export const userId = () => localStorage.getItem('obh.userId') ?? 'local';
 
-type Row = Record<string, any>;
+export type Row = Record<string, any>;
 type ScopeFn = (r: Row, ctx: { hiveApiary: Record<string, string> }) => string;
 
 // Entities in import dependency order. `cols` is the human-facing column set for
-// CSV/XLSX (internal columns field_hlc/deleted/photo_keys are never exported).
+// CSV/XLSX (internal columns are never exported, see INTERNAL).
 type Entity = { table: string; cols: string[]; scope: ScopeFn };
 
 export const ENTITIES: Entity[] = [
@@ -181,30 +181,36 @@ export const ENTITIES: Entity[] = [
   }
 ];
 
-const INTERNAL = new Set(['field_hlc', 'deleted', 'photo_keys']);
+// Bookkeeping columns, and the inline photo columns of 0.4.x (photos are
+// records of their own now), are neither exported nor imported.
+export const INTERNAL = new Set(['field_hlc', 'deleted', 'photo_keys', 'photo']);
 
 // --- gather ---
 
 export type Dataset = Record<string, Row[]>;
 
-export async function gatherAll(): Promise<Dataset> {
+// Personal tasks of other workspaces never reach this database, but rows
+// written by an older version may still be there.
+const IN_WORKSPACE = `(COALESCE(apiary_id, '') <> '' OR organization_id = ?)`;
+
+/** The live records of the workspace; with `photos` also the photo records. */
+export async function gatherAll(opts: { photos?: boolean } = {}): Promise<Dataset> {
   const db = await getDB();
   const out: Dataset = {};
-  for (const e of ENTITIES) {
-    const rows = await db.all<Row>(`SELECT * FROM ${e.table} WHERE deleted = 0`);
-    out[e.table] = rows.map((r) => {
+  const tables = ENTITIES.map((e) => e.table);
+  if (opts.photos) tables.push('photo');
+  for (const table of tables) {
+    const rows =
+      table === 'task'
+        ? await db.all<Row>(`SELECT * FROM task WHERE deleted = 0 AND ${IN_WORKSPACE}`, [orgId()])
+        : await db.all<Row>(`SELECT * FROM ${table} WHERE deleted = 0`);
+    out[table] = rows.map((r) => {
       const o: Row = {};
       for (const k of Object.keys(r)) if (!INTERNAL.has(k)) o[k] = r[k];
       return o;
     });
   }
   return out;
-}
-
-function hiveApiaryMap(data: Dataset): Record<string, string> {
-  const m: Record<string, string> = {};
-  for (const h of data.hive ?? []) m[h.id] = h.apiary_id;
-  return m;
 }
 
 // --- download helper ---
@@ -220,7 +226,7 @@ export function downloadBlob(filename: string, blob: Blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const stamp = () => new Date().toISOString().slice(0, 10);
+export const stamp = () => todayLocal();
 
 // --- CSV ---
 
@@ -237,20 +243,6 @@ export function toCSV(cols: string[], rows: Row[]): string {
 }
 
 // --- exporters ---
-
-export async function exportJSON() {
-  const data = await gatherAll();
-  const doc = {
-    openbeehive_export: true,
-    schema_version: '0.1.0',
-    exported_at: new Date().toISOString(),
-    data
-  };
-  downloadBlob(
-    `openbeehive-backup-${stamp()}.json`,
-    new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
-  );
-}
 
 export async function exportCSVZip() {
   const data = await gatherAll();
@@ -276,7 +268,8 @@ const xmlEsc = (s: unknown) =>
   String(s ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
 export async function exportBeeXML() {
   const data = await gatherAll();
@@ -293,7 +286,7 @@ export async function exportBeeXML() {
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!-- BeeXML-style interchange export from Openbeehive. -->',
-    `<beexml generator="Openbeehive" version="0.1.0" exported="${new Date().toISOString()}">`
+    `<beexml generator="Openbeehive" version="0.1.0" exported="${new Date().toISOString()}" workspace="${xmlEsc(orgId())}">`
   ];
   for (const a of data.apiary ?? []) {
     lines.push(`  <apiary id="${xmlEsc(a.id)}">`);
@@ -407,269 +400,4 @@ export async function printReport() {
   if (!w) throw new Error('Pop-up blocked: allow pop-ups to print the report.');
   w.document.write(html);
   w.document.close();
-}
-
-// --- import: write a dataset into the local store ---
-
-export type ImportResult = Record<string, number>;
-
-// Write an Openbeehive-shaped dataset. Rows keep their ids (round-trip /
-// idempotent restore); scope is resolved per entity. organization_id is set to
-// the importing account so the data becomes yours.
-export async function importDataset(data: Dataset): Promise<ImportResult> {
-  const ctx = { hiveApiary: hiveApiaryMap(data) };
-  const result: ImportResult = {};
-  for (const e of ENTITIES) {
-    const rows = data[e.table] ?? [];
-    let n = 0;
-    for (const r0 of rows) {
-      const r = { ...r0 };
-      const id = r.id || crypto.randomUUID();
-      delete r.id;
-      for (const k of Object.keys(r)) if (INTERNAL.has(k)) delete r[k];
-      const fields: Row = { ...r, organization_id: orgId(), deleted: 0 };
-      if (e.table === 'inspection') fields.photo_keys = '{}';
-      await patch(e.table, id, e.scope({ ...r0, id }, ctx), fields);
-      n++;
-    }
-    if (n) result[e.table] = n;
-  }
-  return result;
-}
-
-export async function importJSON(text: string): Promise<ImportResult> {
-  const doc = JSON.parse(text);
-  const data: Dataset = doc?.data ?? doc;
-  if (!data || typeof data !== 'object') throw new Error('Not a valid Openbeehive backup.');
-  return importDataset(data);
-}
-
-// --- BeeXML import ---
-
-export async function importBeeXML(text: string): Promise<ImportResult> {
-  const doc = new DOMParser().parseFromString(text, 'application/xml');
-  if (doc.querySelector('parsererror')) throw new Error('Invalid XML.');
-  const t = (el: Element | null, tag: string) =>
-    el?.querySelector(':scope > ' + tag)?.textContent?.trim() ?? '';
-  const data = {
-    apiary: [] as Row[],
-    hive: [] as Row[],
-    queen: [] as Row[],
-    inspection: [] as Row[]
-  } satisfies Dataset;
-
-  for (const a of Array.from(doc.querySelectorAll('beexml > apiary, apiary'))) {
-    const aid = a.getAttribute('id') || crypto.randomUUID();
-    data.apiary.push({
-      id: aid,
-      name: t(a, 'name'),
-      lat: +t(a, 'latitude') || 0,
-      lng: +t(a, 'longitude') || 0,
-      address: t(a, 'address'),
-      note: t(a, 'note')
-    });
-    for (const h of Array.from(a.querySelectorAll(':scope > hive'))) {
-      const hid = h.getAttribute('id') || crypto.randomUUID();
-      data.hive.push({
-        id: hid,
-        apiary_id: aid,
-        name: t(h, 'name'),
-        type: +t(h, 'type') || 0,
-        status: +t(h, 'status') || 0,
-        note: t(h, 'note')
-      });
-      for (const q of Array.from(h.querySelectorAll(':scope > queen')))
-        data.queen.push({
-          id: q.getAttribute('id') || crypto.randomUUID(),
-          hive_id: hid,
-          year: +t(q, 'year') || 0,
-          marking: +t(q, 'marking') || 0,
-          origin: t(q, 'origin'),
-          active: +t(q, 'active') || 0
-        });
-      for (const i of Array.from(h.querySelectorAll(':scope > inspection')))
-        data.inspection.push({
-          id: i.getAttribute('id') || crypto.randomUUID(),
-          hive_id: hid,
-          date: t(i, 'date'),
-          temp_hive: num(t(i, 'tempHive')),
-          temp_outside: num(t(i, 'tempOutside')),
-          humidity_hive: num(t(i, 'humidityHive')),
-          humidity_outside: num(t(i, 'humidityOutside')),
-          varroa: t(i, 'varroa'),
-          note: t(i, 'note')
-        });
-    }
-  }
-  return importDataset(data);
-}
-
-const num = (s: string) => (s === '' || s == null ? null : Number(s));
-
-// --- generic beekeeping CSV import (migration from other apps) ---
-
-function parseCSV(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cur = '';
-  let q = false;
-  text = text.replace(/^\uFEFF/, '');
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (q) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else q = false;
-      } else cur += ch;
-    } else if (ch === '"') q = true;
-    else if (ch === ',') {
-      row.push(cur);
-      cur = '';
-    } else if (ch === '\n') {
-      row.push(cur);
-      rows.push(row);
-      row = [];
-      cur = '';
-    } else if (ch === '\r') {
-      /* skip */
-    } else cur += ch;
-  }
-  if (cur !== '' || row.length) {
-    row.push(cur);
-    rows.push(row);
-  }
-  return rows.filter((r) => r.some((c) => c.trim() !== ''));
-}
-
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-// Column aliases recognised across common apps (Apiary Book, HiveBook, BeeKeeperPal,
-// spreadsheets). Header matching is case/space/punctuation-insensitive.
-const ALIASES: Record<string, string[]> = {
-  apiary: ['apiary', 'apiaryname', 'yard', 'location', 'standort', 'rucher', 'colmenar', 'apiario'],
-  hive: ['hive', 'hivename', 'colony', 'colonyname', 'beute', 'volk', 'ruche', 'colmena', 'arnia'],
-  date: ['date', 'inspectiondate', 'visitdate', 'datum', 'fecha', 'data'],
-  weather: ['weather', 'wetter', 'meteo', 'tiempo'],
-  note: ['note', 'notes', 'comment', 'comments', 'remarks', 'notiz', 'bemerkung'],
-  varroa: ['varroa', 'mites', 'mitecount', 'varroacount'],
-  temp_hive: ['hivetemp', 'hivetemperature', 'temphive', 'broodtemp'],
-  temp_outside: ['temperature', 'temp', 'outsidetemp', 'ambienttemp', 'tempoutside'],
-  humidity_hive: ['hivehumidity', 'humidityhive'],
-  humidity_outside: ['humidity', 'outsidehumidity', 'humidityoutside'],
-  weight_kg: ['weight', 'hiveweight', 'weightkg', 'gewicht'],
-  honey_kg: ['honey', 'honeykg', 'harvest', 'yield', 'honig', 'ernte']
-};
-
-function resolveHeaders(headers: string[]): Record<number, string> {
-  const map: Record<number, string> = {};
-  headers.forEach((h, idx) => {
-    const n = norm(h);
-    for (const [field, names] of Object.entries(ALIASES))
-      if (names.includes(n)) {
-        map[idx] = field;
-        break;
-      }
-  });
-  return map;
-}
-
-// Build apiaries / hives / inspections from a flat CSV of visits.
-export async function importBeekeepingCSV(text: string): Promise<ImportResult> {
-  const rows = parseCSV(text);
-  if (rows.length < 2) throw new Error('CSV has no data rows.');
-  const header = rows[0];
-  if (!header) throw new Error('CSV has no header row.');
-  const colMap = resolveHeaders(header);
-  const fields = Object.values(colMap);
-  if (!fields.includes('hive') && !fields.includes('date'))
-    throw new Error('Could not recognise this CSV. Expected at least a hive or date column.');
-
-  const data = {
-    apiary: [] as Row[],
-    hive: [] as Row[],
-    queen: [] as Row[],
-    placement: [] as Row[],
-    inspection: [] as Row[],
-    harvest: [] as Row[],
-    task: [] as Row[],
-    event: [] as Row[]
-  } satisfies Dataset;
-  const apiaryByName: Record<string, string> = {};
-  const hiveByName: Record<string, string> = {};
-  const DEFAULT_APIARY = 'Imported';
-
-  const ensureApiary = (name: string): string => {
-    name = name || DEFAULT_APIARY;
-    let id = apiaryByName[name];
-    if (!id) {
-      id = crypto.randomUUID();
-      apiaryByName[name] = id;
-      data.apiary.push({ id, name });
-    }
-    return id;
-  };
-  const ensureHive = (name: string, apiaryId: string): string => {
-    const key = apiaryId + '/' + name;
-    let id = hiveByName[key];
-    if (!id) {
-      id = crypto.randomUUID();
-      hiveByName[key] = id;
-      data.hive.push({ id, apiary_id: apiaryId, name: name || 'Hive' });
-    }
-    return id;
-  };
-
-  for (let r = 1; r < rows.length; r++) {
-    const get = (f: string) => {
-      const idx = Object.keys(colMap).find((k) => colMap[+k] === f);
-      return idx !== undefined ? (rows[r]?.[+idx]?.trim() ?? '') : '';
-    };
-    const apiaryId = ensureApiary(get('apiary'));
-    const hiveId = ensureHive(get('hive') || 'Hive ' + r, apiaryId);
-    const insp: Row = { id: crypto.randomUUID(), hive_id: hiveId };
-    let any = false;
-    for (const f of ['date', 'weather', 'note', 'varroa']) {
-      const v = get(f);
-      if (v) {
-        insp[f] = v;
-        any = true;
-      }
-    }
-    for (const f of [
-      'temp_hive',
-      'temp_outside',
-      'humidity_hive',
-      'humidity_outside',
-      'weight_kg',
-      'honey_kg'
-    ]) {
-      const v = get(f);
-      if (v !== '' && !isNaN(+v)) {
-        insp[f] = +v;
-        any = true;
-      }
-    }
-    if (any) data.inspection.push(insp);
-  }
-  return importDataset(data);
-}
-
-// --- dispatch by file ---
-
-export type ImportMode = 'auto' | 'json' | 'beexml' | 'csv';
-
-export async function importFile(file: File, mode: ImportMode = 'auto'): Promise<ImportResult> {
-  const text = await file.text();
-  const ext = file.name.toLowerCase().split('.').pop() ?? '';
-  let m = mode;
-  if (m === 'auto') {
-    if (ext === 'json' || text.trimStart().startsWith('{')) m = 'json';
-    else if (ext === 'xml' || text.trimStart().startsWith('<')) m = 'beexml';
-    else m = 'csv';
-  }
-  if (m === 'json') return importJSON(text);
-  if (m === 'beexml') return importBeeXML(text);
-  return importBeekeepingCSV(text);
 }

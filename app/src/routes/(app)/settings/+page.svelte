@@ -72,7 +72,10 @@
     <SyncProblems />
   </section>
 
-  <DataSection />
+  <DataSection
+    workspaceName={workspaces.find((w) => w.id === activeOrg)?.name ?? ''}
+    readOnly={isDemo}
+  />
 
   <AccountSection {email} orgId={activeOrg} {signedIn} {account} readOnly={isDemo} />
 
