@@ -9,10 +9,12 @@ vi.mock('./db', async () => {
   return { getDB: async () => getCurrentDB() };
 });
 const pullMock = vi.fn();
+const snapshotMock = vi.fn();
 vi.mock('#lib/client.js', () => ({
   syncClient: {
     push: vi.fn(async () => ({ rejected: [] })),
-    pull: (...a: unknown[]) => pullMock(...a)
+    pull: (...a: unknown[]) => pullMock(...a),
+    snapshot: (...a: unknown[]) => snapshotMock(...a)
   }
 }));
 
@@ -41,6 +43,9 @@ beforeEach(async () => {
   localStorage.clear();
   localStorage.setItem('obh.orgId', 'org1');
   pullMock.mockReset();
+  pullMock.mockResolvedValue({ changes: [], nextCursor: '', hasMore: false });
+  snapshotMock.mockReset();
+  snapshotMock.mockResolvedValue({ rows: [], cursor: '', nextPageToken: '' });
 });
 
 describe('pulled inline photos', () => {
@@ -104,6 +109,55 @@ describe('pulled inline photos', () => {
       `SELECT photo FROM hive WHERE id = 'h1'`
     );
     expect(hive?.photo).toBe('');
+  });
+});
+
+describe('inline photos in a snapshot', () => {
+  it('are left out as well', async () => {
+    snapshotMock.mockResolvedValueOnce({
+      rows: [
+        {
+          entity: 'hive',
+          entityId: 'h1',
+          payloadJson: JSON.stringify({
+            name: 'Hive 1',
+            apiary_id: 'a1',
+            photo: inline,
+            deleted: 0
+          }),
+          fieldHlcJson: JSON.stringify({ name: stamp(1), photo: stamp(1), deleted: stamp(1) })
+        },
+        {
+          entity: 'inspection',
+          entityId: 'i1',
+          payloadJson: JSON.stringify({
+            hive_id: 'h1',
+            note: 'strong colony',
+            deleted: 0,
+            photo_keys: {
+              [inline]: { a: [stamp(2)], r: [] },
+              'plain-key': { a: [stamp(2)], r: [] }
+            }
+          }),
+          fieldHlcJson: JSON.stringify({ hive_id: stamp(2), note: stamp(2), deleted: stamp(2) })
+        }
+      ],
+      cursor: 'e:2:t',
+      nextPageToken: ''
+    });
+    await pull();
+
+    const db = getCurrentDB();
+    const hive = await db.get<{ name: string; photo: string | null }>(
+      `SELECT name, photo FROM hive WHERE id = 'h1'`
+    );
+    expect(hive).toEqual({ name: 'Hive 1', photo: null });
+    const visit = await db.get<{ note: string; photo_keys: string }>(
+      `SELECT note, photo_keys FROM inspection WHERE id = 'i1'`
+    );
+    expect(visit?.note).toBe('strong colony');
+    expect(visit?.photo_keys).not.toContain('data:image');
+    expect(orValues(parseORSet(visit?.photo_keys))).toEqual(['plain-key']);
   });
 });
 

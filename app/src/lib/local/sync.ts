@@ -30,6 +30,7 @@ import {
   isInlinePhoto,
   setColsOf,
   toScalar,
+  withoutInlineElements,
   withoutInlinePhotos
 } from './tables';
 import { bumpData, initialSyncPending, resyncNotice, storageState } from './live';
@@ -460,11 +461,11 @@ async function applySnapshotRow(db: LocalDB, snap: SnapshotRow) {
   for (const [k, v] of Object.entries(payload)) {
     if (k === 'id' || k === 'field_hlc' || !cols.has(k)) continue;
     if (setCols.includes(k)) {
-      fields[k] = toORSet(v);
+      fields[k] = withoutInlineElements(snap.entity, k, toORSet(v));
       continue;
     }
     const value = toScalar(v);
-    if (value !== undefined) fields[k] = value;
+    if (value !== undefined && !isInlinePhoto(snap.entity, k, value)) fields[k] = value;
   }
 
   await exclusive(async () => {

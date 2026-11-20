@@ -32,6 +32,16 @@ export function isInlinePhoto(entity: string, column: string, value: unknown): b
   return entity === 'hive' && column === 'photo' && isInlineImage(value);
 }
 
+/** The elements of a set column as a snapshot delivers them, without inline photos. */
+export function withoutInlineElements<S extends Record<string, unknown>>(
+  entity: string,
+  column: string,
+  set: S
+): S {
+  if (entity !== 'inspection' || column !== 'photo_keys') return set;
+  return Object.fromEntries(Object.entries(set).filter(([e]) => !isInlineImage(e))) as S;
+}
+
 /** A pulled set delta without the inline photos it adds or removes. */
 export function withoutInlinePhotos<
   D extends { add?: string[]; remove?: string[]; removed_tags?: Record<string, string[]> }
