@@ -254,7 +254,6 @@
     "import": "Importer",
     "import_help": "Importez une sauvegarde Openbeehive (JSON, ou ZIP avec photos), un fichier BeeXML ou un CSV de visites d’une autre application apicole dans l’espace actif. Un aperçu s’affiche avant toute écriture.",
     "import_btn": "Choisir un fichier…",
-    "importing": "Importation…",
     "imported": "Importé : {created} nouveaux, {updated} écrasés, {restored} restaurés.",
     "import_failed": "Échec de l'import : {msg}",
     "mode_auto": "Détection automatique",

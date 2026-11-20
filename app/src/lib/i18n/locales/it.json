@@ -254,7 +254,6 @@
     "import": "Importa",
     "import_help": "Importa un backup Openbeehive (JSON, o ZIP con foto), un file BeeXML o un CSV di visite da un’altra app apistica nello spazio attivo. Prima di scrivere qualsiasi cosa vedi un’anteprima.",
     "import_btn": "Scegli file…",
-    "importing": "Importazione…",
     "imported": "Importato: {created} nuovi, {updated} sovrascritti, {restored} ripristinati.",
     "import_failed": "Importazione non riuscita: {msg}",
     "mode_auto": "Rilevamento automatico",

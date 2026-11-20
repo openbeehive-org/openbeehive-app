@@ -254,7 +254,6 @@
     "import": "Import",
     "import_help": "Import an Openbeehive backup (JSON, or ZIP with photos), a BeeXML file, or a CSV of visits from another beekeeping app into the active workspace. You see a preview before anything is written.",
     "import_btn": "Choose file…",
-    "importing": "Importing…",
     "imported": "Imported: {created} new, {updated} overwritten, {restored} restored.",
     "import_failed": "Import failed: {msg}",
     "mode_auto": "Auto-detect",

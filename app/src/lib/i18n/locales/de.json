@@ -254,7 +254,6 @@
     "import": "Importieren",
     "import_help": "Importiere ein Openbeehive-Backup (JSON oder ZIP mit Fotos), eine BeeXML-Datei oder eine CSV mit Durchsichten aus einer anderen Imker-App in den aktiven Arbeitsbereich. Bevor etwas geschrieben wird, siehst du eine Vorschau.",
     "import_btn": "Datei wählen…",
-    "importing": "Importiere…",
     "imported": "Importiert: {created} neu, {updated} überschrieben, {restored} wiederhergestellt.",
     "import_failed": "Import fehlgeschlagen: {msg}",
     "mode_auto": "Automatisch erkennen",
