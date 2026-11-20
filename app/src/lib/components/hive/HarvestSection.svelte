@@ -5,7 +5,7 @@
   import { formatDate, toDateInput, todayLocal } from '#lib/dates.js';
   import type { HarvestRow } from '../../../routes/(app)/rows.js';
   import { createSaver } from './saver.js';
-  import { dotted, storedDate } from './forms.js';
+  import { changedFrom, dotted, storedDate } from './forms.js';
   import FormFooter from './FormFooter.svelte';
   import { deleteWithUndo, type OfferUndo } from './deleting.js';
   import RecordActions from './RecordActions.svelte';
@@ -40,6 +40,8 @@
   let open = $state(false);
   let editing = $state<HarvestRow | null>(null);
   let f = $state(draft(null));
+  // What the form showed when it was opened; a correction saves only what differs.
+  let opened: ReturnType<typeof fields> | null = null;
   const saver = createSaver();
   const { busy, error } = saver;
   const valid = $derived(!!f.date && (f.amount_kg ?? 0) > 0);
@@ -49,6 +51,7 @@
   function show(row: HarvestRow | null) {
     editing = row;
     f = draft(row);
+    opened = row ? fields() : null;
     open = true;
   }
   function close() {
@@ -56,20 +59,23 @@
     editing = null;
   }
 
+  function fields() {
+    return {
+      date: storedDate(f.date, editing?.date),
+      amount_kg: f.amount_kg ?? 0,
+      variety: f.variety.trim(),
+      water_content: f.water_content ?? 0,
+      batch_number: f.batch_number.trim(),
+      best_before: storedDate(f.best_before, editing?.best_before),
+      note: f.note.trim()
+    };
+  }
+
   async function save() {
     if (!valid) return;
     const ok = await saver.run(async () => {
-      const fields = {
-        date: storedDate(f.date, editing?.date),
-        amount_kg: f.amount_kg ?? 0,
-        variety: f.variety.trim(),
-        water_content: f.water_content ?? 0,
-        batch_number: f.batch_number.trim(),
-        best_before: storedDate(f.best_before, editing?.best_before),
-        note: f.note.trim()
-      };
-      if (editing) await editHarvest(editing.id, fields);
-      else await recordHarvest({ hiveId, ...fields });
+      if (editing && opened) await editHarvest(editing.id, changedFrom(opened, fields()));
+      else await recordHarvest({ hiveId, ...fields() });
       await reload();
     });
     if (ok) close();

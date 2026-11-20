@@ -9,9 +9,9 @@
   import { formatDate, toDateInput, todayLocal } from '#lib/dates.js';
   import type { InspectionRow } from '../../../routes/(app)/rows.js';
   import type { PreparedPhoto } from '#lib/image.js';
-  import { carryOver, isSensor, level, reading, CLIMATE_KEYS } from './readings.js';
+  import { carryOver, isSensor, level, reading, CLIMATE_KEYS, COUNT_KEYS } from './readings.js';
   import { createSaver } from './saver.js';
-  import { storedDate } from './forms.js';
+  import { changedFrom, storedDate } from './forms.js';
   import FormFooter from './FormFooter.svelte';
   import Stepper from './Stepper.svelte';
   import Segmented from './Segmented.svelte';
@@ -122,14 +122,25 @@
     };
   }
 
+  // What the form showed when it was opened; a correction saves only what differs.
+  const opened = untrack(() => (editing ? fields() : null));
+
   async function save() {
     if (!v.date) return;
     const ok = await saver.run(async () => {
       let id = editing?.id;
-      if (editing) {
+      if (editing && opened) {
+        const now = fields();
+        const changes: Record<string, unknown> = changedFrom(opened, now);
         // Saved with this form, every count is explicit: empty or a number.
+        // When that changes how the stored counts read (an older visit,
+        // where 0 meant "not recorded"), all counts are written with it.
         const source = isSensor(editing) ? InspectionSource.SENSOR : InspectionSource.MANUAL;
-        await editInspection(editing.id, { ...fields(), source });
+        if (Object.keys(changes).length && source !== editing.source) {
+          for (const k of COUNT_KEYS) changes[k] = now[k];
+          changes.source = source;
+        }
+        await editInspection(editing.id, changes);
       } else {
         id = await recordInspection(hiveId, fields());
       }

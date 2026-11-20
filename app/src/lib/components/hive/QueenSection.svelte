@@ -7,7 +7,7 @@
   import { formatDate, fromDateInput, toDateInput, todayLocal } from '#lib/dates.js';
   import type { QueenRow } from '../../../routes/(app)/rows.js';
   import { createSaver } from './saver.js';
-  import { dotted, storedDate } from './forms.js';
+  import { changedFrom, dotted, storedDate } from './forms.js';
   import { deleteWithUndo, type OfferUndo } from './deleting.js';
   import FormFooter from './FormFooter.svelte';
   import RecordActions from './RecordActions.svelte';
@@ -52,6 +52,8 @@
   let open = $state(false);
   let editing = $state<QueenRow | null>(null);
   let f = $state(draft(null));
+  // What the form showed when it was opened; a correction saves only what differs.
+  let opened: ReturnType<typeof corrected> | null = null;
   const saver = createSaver();
   const { busy, error } = saver;
 
@@ -63,6 +65,7 @@
   function show(row: QueenRow | null) {
     editing = row;
     f = draft(row);
+    opened = row ? corrected() : null;
     open = true;
   }
   function close() {
@@ -70,23 +73,32 @@
     editing = null;
   }
 
+  function fields() {
+    return {
+      year: year ?? 0,
+      marking: effMarking,
+      origin: f.origin.trim(),
+      breeder_number: f.number.trim(),
+      note: f.note.trim()
+    };
+  }
+  // A correction also carries the introduction date, keeping its stored time.
+  function corrected() {
+    return { ...fields(), introduced_at: storedDate(f.introduced, editing?.introduced_at) };
+  }
+
   async function save() {
     if (!valid || year === null) return;
     const ok = await saver.run(async () => {
-      const fields = {
-        year,
-        marking: effMarking,
-        origin: f.origin.trim(),
-        breeder_number: f.number.trim(),
-        note: f.note.trim()
-      };
-      if (editing) {
-        const introduced_at = storedDate(f.introduced, editing.introduced_at);
-        await editQueen(editing.id, { ...fields, introduced_at });
+      if (editing && opened) {
+        await editQueen(editing.id, changedFrom(opened, corrected()));
       } else if (f.introduced === todayLocal()) {
-        await setQueen(hiveId, apiaryId, fields); // introduced right now
+        await setQueen(hiveId, apiaryId, fields()); // introduced right now
       } else {
-        await setQueen(hiveId, apiaryId, { ...fields, introduced_at: fromDateInput(f.introduced) });
+        await setQueen(hiveId, apiaryId, {
+          ...fields(),
+          introduced_at: fromDateInput(f.introduced)
+        });
       }
       await reload();
     });

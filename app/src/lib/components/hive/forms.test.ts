@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { fromDateInput, toDateInput } from '#lib/dates.js';
-import { dotted, storedDate } from './forms';
+import { changedFrom, dotted, storedDate } from './forms';
 import { createSaver } from './saver';
 import { deleteWithUndo } from './deleting';
 import { get } from 'svelte/store';
@@ -101,5 +101,19 @@ describe('dotted', () => {
     expect(dotted('Blue', 'own breeding')).toBe('Blue · own breeding');
     expect(dotted('Blue', '', null, undefined, false)).toBe('Blue');
     expect(dotted('Honey', 0)).toBe('Honey · 0');
+  });
+});
+
+describe('changedFrom', () => {
+  it('keeps only the fields that differ from the values the form was opened with', () => {
+    const opened = { name: 'Orchard', note: 'barn', lat: 0, lng: 0 };
+    expect(changedFrom(opened, { ...opened, name: 'Meadow' })).toEqual({ name: 'Meadow' });
+    expect(changedFrom(opened, { ...opened })).toEqual({});
+  });
+
+  it('treats an empty string and an unset value as equal', () => {
+    expect(changedFrom({ note: null as string | null }, { note: '' })).toEqual({});
+    expect(changedFrom({ note: '' as string | null }, { note: null })).toEqual({});
+    expect(changedFrom({ n: null as number | null }, { n: 0 })).toEqual({ n: 0 });
   });
 });

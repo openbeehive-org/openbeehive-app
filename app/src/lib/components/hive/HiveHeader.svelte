@@ -18,7 +18,7 @@
   import type { ApiaryRow, HiveRow } from '../../../routes/(app)/rows.js';
   import QrLabel from '#lib/components/QrLabel.svelte';
   import { createSaver } from './saver.js';
-  import { dotted } from './forms.js';
+  import { changedFrom, dotted } from './forms.js';
   import FormFooter from './FormFooter.svelte';
   import Photos from './Photos.svelte';
   import './hive.css';
@@ -46,6 +46,8 @@
   let name = $state('');
   let type = $state(0);
   let status = $state(1);
+  // What the edit panel showed when it was opened; Save writes only what differs.
+  let opened = { name: '', type: 0, status: 1 };
 
   const saver = createSaver();
   const { busy, error } = saver;
@@ -62,6 +64,7 @@
       name = hive.name;
       type = hive.type ?? 0;
       status = hive.status ?? 1;
+      opened = { name, type, status };
     }
     panel = next;
   }
@@ -81,7 +84,8 @@
   async function saveHive() {
     if (!name.trim()) return;
     const ok = await saver.run(async () => {
-      await updateHive(hive.id, hive.apiary_id, { name: name.trim(), type, status });
+      const changes = changedFrom(opened, { name: name.trim(), type, status });
+      await updateHive(hive.id, hive.apiary_id, changes);
       await reload();
     });
     if (ok) panel = '';

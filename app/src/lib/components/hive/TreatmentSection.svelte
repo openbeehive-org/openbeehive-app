@@ -7,7 +7,7 @@
   import { toast } from '#lib/toast.js';
   import type { TreatmentRow } from '../../../routes/(app)/rows.js';
   import { createSaver } from './saver.js';
-  import { storedDate } from './forms.js';
+  import { changedFrom, storedDate } from './forms.js';
   import { deleteWithUndo, type OfferUndo } from './deleting.js';
   import { printTreatmentRegister, withdrawalActive } from './treatmentRegister.js';
   import FormFooter from './FormFooter.svelte';
@@ -47,6 +47,8 @@
   let open = $state(false);
   let editing = $state<TreatmentRow | null>(null);
   let f = $state(draft(null));
+  // What the form showed when it was opened; a correction saves only what differs.
+  let opened: ReturnType<typeof fields> | null = null;
   const saver = createSaver();
   const { busy, error } = saver;
   const valid = $derived(!!f.date && !!f.product.trim());
@@ -55,6 +57,7 @@
   function show(row: TreatmentRow | null) {
     editing = row;
     f = draft(row);
+    opened = row ? fields() : null;
     open = true;
   }
   function close() {
@@ -62,22 +65,25 @@
     editing = null;
   }
 
+  function fields() {
+    return {
+      date: storedDate(f.date, editing?.date),
+      product: f.product.trim(),
+      active_ingredient: f.active_ingredient.trim(),
+      dose: f.dose.trim(),
+      method: f.method.trim(),
+      batch_number: f.batch_number.trim(),
+      withdrawal_until: storedDate(f.withdrawal_until, editing?.withdrawal_until),
+      reason: f.reason.trim(),
+      note: f.note.trim()
+    };
+  }
+
   async function save() {
     if (!valid) return;
     const ok = await saver.run(async () => {
-      const fields = {
-        date: storedDate(f.date, editing?.date),
-        product: f.product.trim(),
-        active_ingredient: f.active_ingredient.trim(),
-        dose: f.dose.trim(),
-        method: f.method.trim(),
-        batch_number: f.batch_number.trim(),
-        withdrawal_until: storedDate(f.withdrawal_until, editing?.withdrawal_until),
-        reason: f.reason.trim(),
-        note: f.note.trim()
-      };
-      if (editing) await editTreatment(editing.id, fields);
-      else await recordTreatment({ hiveId, ...fields });
+      if (editing && opened) await editTreatment(editing.id, changedFrom(opened, fields()));
+      else await recordTreatment({ hiveId, ...fields() });
       await reload();
     });
     if (ok) close();

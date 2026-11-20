@@ -11,6 +11,7 @@
   } from '#lib/components/hive/treatmentRegister.js';
   import { toast } from '#lib/toast.js';
   import { createHive } from '#lib/local/history.js';
+  import { changedFrom } from '#lib/components/hive/forms.js';
   import type { ApiaryRow } from '../../rows.js';
   import { dataVersion } from '#lib/local/live.js';
   import { qrSvg, hiveUrl, shortCode } from '#lib/qr.js';
@@ -35,6 +36,8 @@
   let eNote = $state('');
   let eLat = $state(0);
   let eLng = $state(0);
+  // The values the edit form was opened with; Save writes only what differs.
+  let opened: Record<string, unknown> = {};
   let locating = $state(false);
   let locationFailed = $state(false);
 
@@ -73,6 +76,7 @@
     eNote = apiary.note ?? '';
     eLat = apiary.lat ?? 0;
     eLng = apiary.lng ?? 0;
+    opened = editedFields();
     locationFailed = false;
     editing = true;
   }
@@ -97,15 +101,19 @@
       { enableHighAccuracy: true, timeout: 10_000 }
     );
   }
-  async function saveEdit() {
-    if (!eName.trim()) return;
-    await apiaries.update(id, {
+  function editedFields(): Record<string, unknown> {
+    return {
       name: eName.trim(),
       address: eAddress.trim(),
       note: eNote.trim(),
       lat: eLat || 0,
       lng: eLng || 0
-    });
+    };
+  }
+  async function saveEdit() {
+    if (!eName.trim()) return;
+    const changes = changedFrom(opened, editedFields());
+    if (Object.keys(changes).length) await apiaries.update(id, changes);
     editing = false;
     await load();
   }

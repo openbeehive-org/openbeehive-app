@@ -87,47 +87,44 @@ test('edits of different fields of one visit on two devices both survive', async
   expect(stored).toMatchObject({ note: 'corrected on A', weather: 'rain, corrected on B' });
 });
 
-// BUG (app, src/routes/(app)/apiaries/[id]/+page.svelte, saveEdit): the apiary
-// form saves name, address, note and position on every Save, also the fields
-// the user did not touch, and each gets a fresh stamp. Merging is per field
-// by stamp, so the device that saves last also "wins" the fields it never
-// edited: here A's rename is replaced by the old name B still had. The other
-// record forms send only what changed (changedFields in lib/local/history.ts).
-test.fail(
-  'edits of different fields of one apiary on two devices both survive',
-  async ({ api, device }) => {
-    const account = await api.signUp();
-    const as = api.as(account);
-    const apiary = await as.createApiary('Orchard Meadow', { note: 'behind the barn' });
+// Merging is per field by stamp, so an edit form must save only the fields
+// the user changed: otherwise the device that saves last also "wins" the
+// fields it never edited, and A's rename is replaced by the old name B had.
+test('edits of different fields of one apiary on two devices both survive', async ({
+  api,
+  device
+}) => {
+  const account = await api.signUp();
+  const as = api.as(account);
+  const apiary = await as.createApiary('Orchard Meadow', { note: 'behind the barn' });
 
-    const a = await device({ session: account });
-    const b = await device({ session: account });
-    for (const { page } of [a, b]) {
-      await page.goto(`/apiaries/${apiary}`);
-      await expect(page.getByRole('heading', { name: 'Orchard Meadow' })).toBeVisible();
-      await expectSynced(page);
-    }
-    const editApiary = async (page: Page, label: string, value: string) => {
-      await page.getByRole('button', { name: 'Edit apiary' }).click();
-      await page.getByLabel(label, { exact: true }).fill(value);
-      await page.getByRole('button', { name: 'Save' }).click();
-      await expect(page.getByRole('button', { name: 'Save' })).toBeHidden();
-    };
-
-    await a.context.setOffline(true);
-    await editApiary(a.page, 'Name', 'Renamed on A');
-    await editApiary(b.page, 'Note', 'note from B');
-    await expectSynced(b.page);
-
-    await a.context.setOffline(false);
-    await expectSynced(a.page);
-    await syncedChip(b.page).click();
-
-    for (const { page } of [a, b]) {
-      await expect(page.getByText('note from B')).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Renamed on A' })).toBeVisible({
-        timeout: 5000
-      });
-    }
+  const a = await device({ session: account });
+  const b = await device({ session: account });
+  for (const { page } of [a, b]) {
+    await page.goto(`/apiaries/${apiary}`);
+    await expect(page.getByRole('heading', { name: 'Orchard Meadow' })).toBeVisible();
+    await expectSynced(page);
   }
-);
+  const editApiary = async (page: Page, label: string, value: string) => {
+    await page.getByRole('button', { name: 'Edit apiary' }).click();
+    await page.getByLabel(label, { exact: true }).fill(value);
+    await page.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('button', { name: 'Save' })).toBeHidden();
+  };
+
+  await a.context.setOffline(true);
+  await editApiary(a.page, 'Name', 'Renamed on A');
+  await editApiary(b.page, 'Note', 'note from B');
+  await expectSynced(b.page);
+
+  await a.context.setOffline(false);
+  await expectSynced(a.page);
+  await syncedChip(b.page).click();
+
+  for (const { page } of [a, b]) {
+    await expect(page.getByText('note from B')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Renamed on A' })).toBeVisible({
+      timeout: 5000
+    });
+  }
+});
