@@ -1,7 +1,8 @@
 # Runs `make check`, the definition of green: proto lint + breaking, lint (Go + app), tests, coverage gates,
-# audit (govulncheck, licenses, tidy, npm audit, gitleaks), build and fleetlint; plus an image build without push.
+# audit (govulncheck, licenses, tidy, npm audit, gitleaks), build and fleetlint; then the Go suite again on
+# Postgres and MariaDB (`make check` itself tests on SQLite); plus an image build without push.
 # release.yml calls this workflow as the gate before it publishes an image from a v* tag.
-# Actions are pinned to commit SHAs; Renovate keeps the pins current.
+# Actions are pinned to commit SHAs and service images to digests; Renovate keeps the pins current.
 name: check
 on:
   push:
@@ -23,6 +24,34 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The supported server databases besides SQLite. Throwaway instances: the credentials below exist only
+    # inside this job, and the data lives in memory (every test creates and migrates a database of its own,
+    # which is slow on a disk that honours each DDL fsync). MariaDB is pinned to an exact release, the one
+    # the docs name as tested.
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+        env:
+          POSTGRES_USER: beehive
+          POSTGRES_PASSWORD: beehive
+          POSTGRES_DB: beehive
+        ports:
+          - 5432:5432
+        options: >-
+          --tmpfs /var/lib/postgresql
+          --health-cmd "pg_isready -U beehive -d beehive"
+          --health-interval 5s --health-timeout 5s --health-retries 24
+      mariadb:
+        image: mariadb:13.0.2@sha256:54f493ea0d60b621a5bff84e5b20100f8b86b6efa6b79158e04756c5194a5e4d
+        env:
+          MARIADB_ROOT_PASSWORD: beehive
+          MARIADB_DATABASE: beehive
+        ports:
+          - 3306:3306
+        options: >-
+          --tmpfs /var/lib/mysql
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 24
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,6 +83,15 @@ jobs:
           make tools
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: make check
+      # Runs even when `make check` failed, so one push reports both.
+      - name: Go tests on Postgres and MariaDB
+        if: ${{ !cancelled() }}
+        env:
+          PG_DSN: postgres://beehive:beehive@127.0.0.1:5432/beehive?sslmode=disable
+          MARIADB_DSN: root:beehive@tcp(127.0.0.1:3306)/beehive
+        run: |
+          make test-postgres
+          make test-mariadb
 
   # The image build must stay green on every PR; only release.yml pushes.
   image:
