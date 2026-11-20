@@ -3,13 +3,11 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 
 	"github.com/jmoiron/sqlx"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
-	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
 // --- Organizations (tenants) ---
@@ -86,6 +84,7 @@ func (r *orgRepo) deleteChecked(ctx context.Context, id string, check func(tx *s
 		}
 	}
 	stmts := []string{
+		`DELETE FROM photo WHERE organization_id = ?`,
 		`DELETE FROM event WHERE organization_id = ?`,
 		`DELETE FROM placement WHERE organization_id = ?`,
 		`DELETE FROM harvest WHERE organization_id = ?`,
@@ -108,42 +107,6 @@ func (r *orgRepo) deleteChecked(ctx context.Context, id string, check func(tx *s
 		}
 	}
 	return tx.Commit()
-}
-
-func (r *orgRepo) PhotoKeysByOrg(ctx context.Context, id string) ([]string, error) {
-	var raws []string
-	err := r.s.db.SelectContext(ctx, &raws, r.s.db.Rebind(
-		`SELECT photo_keys FROM inspection WHERE organization_id = ? AND photo_keys <> ''`), id)
-	if err != nil {
-		return nil, err
-	}
-	seen := map[string]bool{}
-	var keys []string
-	for _, raw := range raws {
-		for _, k := range photoKeyElements(raw) {
-			if k != "" && !seen[k] {
-				seen[k] = true
-				keys = append(keys, k)
-			}
-		}
-	}
-	return keys, nil
-}
-
-// photoKeyElements extracts every element from a photo_keys column value:
-// OR-Set JSON since 0003 (all elements, added or removed), with a fallback
-// for the pre-0003 plain JSON array format.
-func photoKeyElements(raw string) []string {
-	if set := wsync.ParseORSet(raw); len(set) > 0 {
-		out := make([]string, 0, len(set))
-		for elem := range set {
-			out = append(out, elem)
-		}
-		return out
-	}
-	var arr []string
-	_ = json.Unmarshal([]byte(raw), &arr)
-	return arr
 }
 
 // --- Memberships ---

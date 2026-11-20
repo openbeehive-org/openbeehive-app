@@ -163,10 +163,6 @@ type OrgRepo interface {
 	// back until it ends: ErrNotOnlyMember if somebody else belongs to it,
 	// and nothing is deleted.
 	DeleteIfOnlyMember(ctx context.Context, id, userID string) error
-	// PhotoKeysByOrg returns every blob key the tenant's inspections have ever
-	// referenced, including OR-Set-removed ones, whose blobs also linger.
-	// Used to purge the blob store when the tenant is deleted.
-	PhotoKeysByOrg(ctx context.Context, id string) ([]string, error)
 }
 
 type MemberRepo interface {

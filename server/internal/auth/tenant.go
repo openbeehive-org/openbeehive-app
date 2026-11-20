@@ -370,12 +370,6 @@ func (t *TenantAPI) deleteTenant(w http.ResponseWriter, r *http.Request) {
 // makes sure byUser still is the only member and answers
 // storage.ErrNotOnlyMember otherwise.
 func (t *TenantAPI) removeWorkspace(ctx context.Context, orgID, byUser string, onlyMember bool) error {
-	// Collect blob keys BEFORE the rows go away; purge after the delete
-	// commits so a failed delete never loses photos.
-	photoKeys, err := t.orgs.PhotoKeysByOrg(ctx, orgID)
-	if err != nil {
-		log.Printf("tenant: %s: listing photo keys failed (%v); blobs will be orphaned", orgID, err)
-	}
 	remove := t.orgs.Delete
 	if onlyMember {
 		remove = func(ctx context.Context, id string) error { return t.orgs.DeleteIfOnlyMember(ctx, id, byUser) }
@@ -385,8 +379,9 @@ func (t *TenantAPI) removeWorkspace(ctx context.Context, orgID, byUser string, o
 	}
 	t.sessions.Invalidate() // members of the deleted workspace lose access now
 	log.Printf("tenant: %s deleted by %s", orgID, byUser)
-	if t.blobs != nil && len(photoKeys) > 0 {
-		go t.purgeBlobs(orgID, photoKeys) //nolint:gosec // G118: the purge outlives the request on purpose
+	// The photos go after the rows: a failed delete never loses photos.
+	if t.blobs != nil {
+		go t.purgeBlobs(orgID) //nolint:gosec // G118: the purge outlives the request on purpose
 	}
 	return nil
 }
@@ -416,20 +411,19 @@ func (t *TenantAPI) moveSession(w http.ResponseWriter, r *http.Request, id Ident
 	respondJSON(w, http.StatusOK, map[string]any{"status": "ok", "active_org": next, "token": tok})
 }
 
-// purgeBlobs deletes a deleted tenant's photos, best-effort in the background:
-// the rows are already gone, so a blob failure only leaves an orphan (logged),
-// never a broken tenant. Detached from the request on purpose.
-func (t *TenantAPI) purgeBlobs(orgID string, keys []string) {
+// purgeBlobs removes everything the deleted workspace kept in the blob
+// store, in the background: the rows are already gone, so a failure only
+// leaves blobs without a record, which the photo sweep removes later.
+// Detached from the request on purpose.
+func (t *TenantAPI) purgeBlobs(orgID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	failed := 0
-	for _, key := range keys {
-		if err := t.blobs.Delete(ctx, key); err != nil {
-			failed++
-			log.Printf("tenant: %s: blob %s not deleted: %v", orgID, key, err)
-		}
+	n, err := t.blobs.DeletePrefix(ctx, blob.WorkspacePrefix(orgID))
+	if err != nil {
+		log.Printf("tenant: %s: purging photo blobs stopped after %d: %v", orgID, n, err)
+		return
 	}
-	log.Printf("tenant: %s: purged %d/%d photo blobs", orgID, len(keys)-failed, len(keys))
+	log.Printf("tenant: %s: purged %d photo blobs", orgID, n)
 }
 
 type acceptReq struct {
