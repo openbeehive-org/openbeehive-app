@@ -258,7 +258,8 @@ func (s *SyncService) Pull(
 		page = page[:limit]
 	}
 	for _, e := range page {
-		if !client.legacy() || forLegacy(e.change) {
+		// Each kind of client gets the form of the change it can use.
+		if (client.legacy() && forLegacy(e.change)) || (!client.legacy() && forCurrent(e.change)) {
 			res.Changes = append(res.Changes, e.change)
 		}
 	}

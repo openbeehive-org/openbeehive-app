@@ -219,7 +219,7 @@ func TestDeletingAConvertedPhotoReachesLegacyDevices(t *testing.T) {
 
 	// The server derived the set remove a 0.4.x device understands.
 	var removes int
-	for _, c := range changesFor(f.pullAll(t, ctxA), "inspection") {
+	for _, c := range changesFor(pullLog(t, f.sync, legacyA), "inspection") {
 		if d, ok := photoKeysDelta(c.PayloadJson); ok && len(d.Remove) == 1 && d.Remove[0] == inline {
 			removes++
 			if d.RemovedTags != nil || c.ScopeId != "apiary-a" || !wsync.Valid(c.Hlc) {

@@ -91,11 +91,12 @@ func TestPushKeepsIDsApartThatDifferInCase(t *testing.T) {
 	}
 }
 
-// TestPushStoresLargePhoto: a hive photo of about 1 MB (inline data URL)
-// is stored and comes back through Pull byte for byte.
+// TestPushStoresLargePhoto: a hive photo of about 1 MB (an inline data URL,
+// the way 0.4.x apps sync photos) is stored and comes back to such an app
+// through Pull byte for byte.
 func TestPushStoresLargePhoto(t *testing.T) {
 	svc := newSyncFixture(t)
-	ctx := identityCtx("user-a", "org-a")
+	ctx := legacyCtx("user-a", "org-a")
 	photo := "data:image/jpeg;base64," + strings.Repeat("A", 1<<20)
 	payload := `{"apiary_id":"apiary-a","name":"Photo hive","photo":"` + photo +
 		`","created_at":"2026-07-11T10:00:00Z","updated_at":"2026-07-11T10:00:00Z"}`

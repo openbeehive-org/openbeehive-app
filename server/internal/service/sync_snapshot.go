@@ -187,6 +187,7 @@ func (s *SyncService) snapshotRows(ctx context.Context, id auth.Identity, tok sn
 		for _, c := range spec.setCols {
 			payload[c] = wsync.ParseORSet(asString(m[c]))
 		}
+		withoutInlinePhotos(tok.Entity, payload)
 		pj, err := json.Marshal(payload)
 		if err != nil {
 			return nil, false, err
