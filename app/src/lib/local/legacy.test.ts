@@ -341,7 +341,7 @@ describe('a 0.4.1 app pulling from the current server', () => {
     const visible = Object.keys(set).filter((k) =>
       set[k]!.a.some((tag) => !set[k]!.r.includes(tag))
     );
-    expect(visible).toEqual(['k2']);
+    expect(visible).toEqual(['data:k2']);
   });
 
   it('is sent every column it has, and no other', async () => {

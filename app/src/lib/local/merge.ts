@@ -31,53 +31,77 @@ export function accept(fc: FieldClock, field: string, hlc: string): boolean {
 type Elem = { a: string[]; r: string[] };
 export type ORSet = Record<string, Elem>;
 
+// Element names come from other devices, so a set must not inherit anything:
+// in a plain object, set["constructor"] or set["__proto__"] finds (or
+// replaces) a built-in property instead of an element, and the merge throws.
+// Sets are therefore objects without a prototype, and every lookup goes
+// through own().
+export const emptySet = (): ORSet => Object.create(null) as ORSet;
+
+const own = <T>(o: Record<string, T>, key: string): T | undefined =>
+  Object.hasOwn(o, key) ? o[key] : undefined;
+
+// The entry of elem, created when missing. Entries are written with
+// defineProperty, which makes even "__proto__" an ordinary key.
+function entry(set: ORSet, elem: string): Elem {
+  let e = own(set, elem);
+  if (!e) {
+    e = { a: [], r: [] };
+    Object.defineProperty(set, elem, {
+      value: e,
+      enumerable: true,
+      writable: true,
+      configurable: true
+    });
+  }
+  return e;
+}
+
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 
 // Reads a decoded JSON value as an OR-Set; anything else is the empty set.
 export function toORSet(raw: unknown): ORSet {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const set: ORSet = {};
+  const set = emptySet();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return set;
   for (const [elem, e] of Object.entries(raw as Record<string, Partial<Elem> | null>)) {
-    set[elem] = { a: strings(e?.a), r: strings(e?.r) };
+    const out = entry(set, elem);
+    out.a = strings(e?.a);
+    out.r = strings(e?.r);
   }
   return set;
 }
 
 export function parseORSet(s: string | null | undefined): ORSet {
-  if (!s || s === 'null') return {};
+  if (!s || s === 'null') return emptySet();
   try {
     return toORSet(JSON.parse(s));
   } catch {
-    return {};
+    return emptySet();
   }
 }
 
 const uniq = (xs: string[], x: string) => (xs.includes(x) ? xs : [...xs, x]);
 
 export function orAdd(set: ORSet, elem: string, tag: string) {
-  const e = set[elem] ?? { a: [], r: [] };
+  const e = entry(set, elem);
   e.a = uniq(e.a, tag);
-  set[elem] = e;
 }
 export function orRemove(set: ORSet, elem: string) {
-  const e = set[elem] ?? { a: [], r: [] };
+  const e = entry(set, elem);
   for (const t of e.a) e.r = uniq(e.r, t); // remove only observed tags
-  set[elem] = e;
 }
 // Remove exactly the tags the ORIGIN device had observed (carried in the sync
 // delta). Tags added concurrently elsewhere stay visible: true add-wins.
 export function orRemoveTags(set: ORSet, elem: string, tags: string[]) {
-  const e = set[elem] ?? { a: [], r: [] };
+  const e = entry(set, elem);
   for (const t of tags) e.r = uniq(e.r, t);
-  set[elem] = e;
 }
 export function orMerge(into: ORSet, other: ORSet) {
   for (const [elem, oe] of Object.entries(other)) {
-    const e = into[elem] ?? { a: [], r: [] };
-    for (const t of oe.a) e.a = uniq(e.a, t);
-    for (const t of oe.r) e.r = uniq(e.r, t);
-    into[elem] = e;
+    const e = entry(into, elem);
+    for (const t of strings(oe?.a)) e.a = uniq(e.a, t);
+    for (const t of strings(oe?.r)) e.r = uniq(e.r, t);
   }
 }
 export function orValues(set: ORSet): string[] {
@@ -113,12 +137,18 @@ export function parseSetDelta(v: unknown): SetDelta | null {
   if (o.removed_tags != null) {
     const raw = o.removed_tags;
     if (typeof raw !== 'object' || Array.isArray(raw)) return null;
-    d.removed_tags = {};
+    const removed: Record<string, string[]> = Object.create(null);
     for (const [elem, list] of Object.entries(raw as Record<string, unknown>)) {
       const tags = stringList(list);
       if (!tags) return null;
-      d.removed_tags[elem] = tags;
+      Object.defineProperty(removed, elem, {
+        value: tags,
+        enumerable: true,
+        writable: true,
+        configurable: true
+      });
     }
+    d.removed_tags = removed;
   }
   return d;
 }
@@ -132,7 +162,7 @@ export function orApplyDelta(set: ORSet, d: SetDelta, hlc: string) {
   for (const e of d.add ?? []) orAdd(set, e, hlc);
   for (const e of d.remove ?? []) {
     if (!d.removed_tags) orRemove(set, e);
-    else orRemoveTags(set, e, d.removed_tags[e] ?? []);
+    else orRemoveTags(set, e, own(d.removed_tags, e) ?? []);
   }
 }
 
@@ -159,7 +189,7 @@ export function mergeFields(
   for (const [col, v] of Object.entries(fields)) {
     if (col === 'id' || col === 'field_hlc') continue;
     if (setCols.includes(col)) {
-      const set = (row.sets[col] ??= {});
+      const set = (row.sets[col] ??= emptySet());
       orApplyDelta(set, v as SetDelta, hlc);
       changed.push(col);
     } else if (accept(row.clock, col, hlc)) {
@@ -189,7 +219,7 @@ export function mergeSnapshot(
   for (const [col, v] of Object.entries(fields)) {
     if (col === 'id' || col === 'field_hlc') continue;
     if (setCols.includes(col)) {
-      orMerge((row.sets[col] ??= {}), v as ORSet);
+      orMerge((row.sets[col] ??= emptySet()), v as ORSet);
       changed.push(col);
     } else if (compare(stamps[col], undefined) > 0) {
       if (accept(row.clock, col, stamps[col]!)) changed.push(col);

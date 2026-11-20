@@ -501,8 +501,10 @@ async function applySnapshotRow(db: LocalDB, snap: SnapshotRow) {
 
   await exclusive(async () => {
     const row = await loadRow(db, snap.entity, snap.entityId);
-    const changed = mergeSnapshot(row, fields, stamps, setCols);
-    await storeMerged(db, snap.entity, snap.entityId, row, changed, fields);
+    const changed = merged(snap.entity, snap.entityId, () =>
+      mergeSnapshot(row, fields, stamps, setCols)
+    );
+    if (changed) await storeMerged(db, snap.entity, snap.entityId, row, changed, fields);
   });
   // Every later local stamp must sort after what this row carries.
   for (const stamp of Object.values(stamps)) hlc.recv(stamp);
@@ -768,6 +770,20 @@ function remoteFields(ch: Change, cols: Set<string>): Record<string, unknown> | 
   return fields;
 }
 
+// Runs the merge of one remote change or snapshot row. The merge itself
+// touches no database, so an exception from it is about the data of that one
+// change: the change is skipped (and logged), the ones behind it are applied
+// and the cursor moves on. Letting it escape would stop every later pull of
+// the workspace at the same change, on every device.
+function merged(entity: string, id: string, merge: () => string[]): string[] | null {
+  try {
+    return merge();
+  } catch (e) {
+    console.warn('skipping remote change that cannot be merged:', entity, id, e);
+    return null;
+  }
+}
+
 // Per-field LWW + OR-Set: only newer fields are applied, set columns are
 // merged by union. A change this device cannot make sense of (unknown table,
 // malformed stamp or payload) is skipped: it must not stop the changes
@@ -790,8 +806,8 @@ async function applyRemote(db: LocalDB, ch: Change) {
   // between would be overwritten together with its field stamps.
   await exclusive(async () => {
     const row = await loadRow(db, ch.entity, ch.entityId);
-    const changed = mergeFields(row, fields, setCols, ch.hlc);
-    await storeMerged(db, ch.entity, ch.entityId, row, changed, fields);
+    const changed = merged(ch.entity, ch.entityId, () => mergeFields(row, fields, setCols, ch.hlc));
+    if (changed) await storeMerged(db, ch.entity, ch.entityId, row, changed, fields);
   });
   // A stamp the clock cannot follow (too far ahead) is still merged above;
   // it just does not drag this device's clock along.

@@ -472,6 +472,76 @@ describe('pull / applyRemote', () => {
     expect(orValues(parseORSet(row!.photo_keys)).sort()).toEqual(['p1', 'p2']);
   });
 
+  // Element names come from other devices. One that is also the name of a
+  // built-in object property must neither throw nor stop the pull.
+  it('set elements named like built-in properties are merged like any other', async () => {
+    await getCurrentDB().exec(
+      `INSERT INTO inspection (id, photo_keys, deleted, field_hlc) VALUES ('i1', ?, 0, '{}')`,
+      [JSON.stringify({ p1: { a: [t(1, 'local')], r: [] } })]
+    );
+    const delta = (d: unknown, ms: number) => ({
+      entity: 'inspection',
+      entityId: 'i1',
+      op: 1,
+      hlc: t(ms),
+      payloadJson: JSON.stringify({ photo_keys: d })
+    });
+    pullMock.mockResolvedValueOnce({
+      changes: [
+        delta({ add: ['constructor'] }, 2),
+        {
+          ...delta({ add: ['__proto__'] }, 3),
+          payloadJson: '{"photo_keys":{"add":["__proto__"]}}'
+        },
+        delta({ remove: ['toString'], removed_tags: {} }, 4),
+        delta({ remove: ['valueOf'], removed_tags: { hasOwnProperty: [t(1)] } }, 5),
+        {
+          entity: 'apiary',
+          entityId: 'a1',
+          op: 1,
+          hlc: t(6),
+          payloadJson: JSON.stringify({ name: 'After', deleted: 0 })
+        }
+      ],
+      nextCursor: 'c9',
+      hasMore: false
+    });
+
+    await pull();
+
+    const row = await getCurrentDB().get<any>(`SELECT photo_keys FROM inspection WHERE id = 'i1'`);
+    expect(orValues(parseORSet(row!.photo_keys)).sort()).toEqual([
+      '__proto__',
+      'constructor',
+      'p1'
+    ]);
+    const a = await getCurrentDB().get<any>(`SELECT name FROM apiary WHERE id = 'a1'`);
+    expect(a!.name).toBe('After');
+    expect(await meta('cursor')).toBe('c9');
+  });
+
+  it('a snapshot set with built-in property names loads', async () => {
+    snapshotMock.mockResolvedValueOnce({
+      rows: [
+        snapRow(
+          'inspection',
+          'i1',
+          {
+            photo_keys: { constructor: { a: [t(1)], r: [] }, toString: { a: [t(1)], r: [t(1)] } },
+            deleted: 0
+          },
+          { deleted: t(1) }
+        )
+      ],
+      nextPageToken: '',
+      cursor: '9:1:aa'
+    });
+    await pull();
+    const row = await getCurrentDB().get<any>(`SELECT photo_keys FROM inspection WHERE id = 'i1'`);
+    expect(orValues(parseORSet(row!.photo_keys))).toEqual(['constructor']);
+    expect(await meta('cursor')).toBe('9:1:aa');
+  });
+
   // The server and the app must read removed_tags the same way: an empty
   // list means "observed nothing", only a delta without the field is the
   // old remove-everything form.

@@ -10,7 +10,15 @@
 import { getDB, type LocalDB, type Statement } from './db';
 import { hlc } from './hlc';
 import { exclusive } from './lock';
-import { parseFieldClock, parseORSet, orAdd, orRemove, type FieldClock, type ORSet } from './merge';
+import {
+  emptySet,
+  parseFieldClock,
+  parseORSet,
+  orAdd,
+  orRemove,
+  type FieldClock,
+  type ORSet
+} from './merge';
 import { columnsOf, setColsOf, toScalar } from './tables';
 import { syncOnce } from './sync';
 
@@ -131,7 +139,7 @@ async function planSet(
     throw new Error(`${t.entity}.${field} is not a set column`);
   }
   const d = await draft(p, t);
-  const set = (d.sets[field] ??= {});
+  const set = (d.sets[field] ??= emptySet());
   const stamp = hlc.now();
   let delta: unknown;
   if (kind === 'setAdd') {
