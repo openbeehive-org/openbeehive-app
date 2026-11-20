@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"time"
 
 	"connectrpc.com/connect/v2"
 )
@@ -20,6 +21,11 @@ type Identity struct {
 	// ReadOnly marks identities that may only call reading RPCs: the demo
 	// account and API keys created with the "read" scope.
 	ReadOnly bool
+	// LoginAt is when the user signed in, for a session token that came
+	// straight out of a sign-in (password, passkey or provider). It is zero
+	// for every other token: one reissued for another workspace, after
+	// "log out everywhere" or by session recovery, and for API keys.
+	LoginAt time.Time
 }
 
 func WithIdentity(ctx context.Context, id Identity) context.Context {

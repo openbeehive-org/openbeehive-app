@@ -34,6 +34,9 @@ type sessionClaims struct {
 	// IssuedAt is in Unix milliseconds. Tokens minted by 0.4.x servers have
 	// none (0): they stay valid until their account's first revocation.
 	IssuedAt int64 `json:"iat,omitempty"`
+	// LoginAt (Unix milliseconds) is set only on the token a sign-in hands
+	// out; see Identity.LoginAt.
+	LoginAt int64 `json:"lat,omitempty"`
 }
 
 // sessionStateTTL is how long a verified (account, workspace) pair is trusted
@@ -93,16 +96,37 @@ func (s *SessionManager) sign(body string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// Issue mints a signed token for the given identity.
+// Issue mints a signed token for the given identity: a session that follows
+// from an existing one (another workspace, a revocation, a recovery).
 func (s *SessionManager) Issue(id Identity) (string, error) {
-	return s.issueAt(id, time.Now())
+	return s.issueAt(id, time.Now(), false)
 }
 
-func (s *SessionManager) issueAt(id Identity, at time.Time) (string, error) {
-	payload, err := json.Marshal(sessionClaims{
+// IssueLogin mints the token for a user who has just signed in. Only such a
+// token counts as proof of a recent sign-in (see RecentLogin).
+func (s *SessionManager) IssueLogin(id Identity) (string, error) {
+	return s.issueAt(id, time.Now(), true)
+}
+
+// RecentLoginWindow is how long after a sign-in its session confirms
+// actions that need the user to prove they are present.
+const RecentLoginWindow = 5 * time.Minute
+
+// RecentLogin reports whether the session came straight out of a sign-in
+// that happened within RecentLoginWindow.
+func RecentLogin(id Identity, now time.Time) bool {
+	return !id.LoginAt.IsZero() && !now.Before(id.LoginAt) && now.Sub(id.LoginAt) <= RecentLoginWindow
+}
+
+func (s *SessionManager) issueAt(id Identity, at time.Time, login bool) (string, error) {
+	claims := sessionClaims{
 		UserID: id.UserID, OrgID: id.OrgID, Email: id.Email, Role: id.Role,
 		Exp: at.Add(s.ttl).Unix(), IssuedAt: at.UnixMilli(),
-	})
+	}
+	if login {
+		claims.LoginAt = at.UnixMilli()
+	}
+	payload, err := json.Marshal(claims)
 	if err != nil {
 		return "", err
 	}
@@ -112,7 +136,7 @@ func (s *SessionManager) issueAt(id Identity, at time.Time) (string, error) {
 
 var (
 	errSessionRevoked = errors.New("session revoked; sign in again")
-	errNotMember      = errors.New("no longer a member of this workspace; sign in again")
+	errNotMember      = errors.New("no longer a member of this workspace; continue in another one (POST /auth/session/recover) or sign in again")
 	// errSessionUnverifiable means the session could not be checked (database
 	// trouble), not that it is invalid: callers answer "try again", never
 	// "signed out".
@@ -162,7 +186,11 @@ func (s *SessionManager) verifyAccount(ctx context.Context, token string) (id Id
 	if c.IssuedAt < st.validAfter {
 		return Identity{}, false, errSessionRevoked
 	}
-	return Identity{UserID: c.UserID, OrgID: c.OrgID, Email: c.Email, Role: c.Role}, st.member, nil
+	id = Identity{UserID: c.UserID, OrgID: c.OrgID, Email: c.Email, Role: c.Role}
+	if c.LoginAt > 0 {
+		id.LoginAt = time.UnixMilli(c.LoginAt)
+	}
+	return id, st.member, nil
 }
 
 // lookupState returns the account's revocation mark and its membership in the
@@ -222,7 +250,7 @@ func (s *SessionManager) RevokeAll(ctx context.Context, id Identity) (string, er
 	if err != nil {
 		return "", err
 	}
-	return s.issueAt(id, mark)
+	return s.issueAt(id, mark, false)
 }
 
 // RevokeEvery ends every session of the account without exception (after a

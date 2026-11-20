@@ -404,7 +404,7 @@ func (a *WebAuthn) loginFinish(w http.ResponseWriter, r *http.Request) {
 		role = "demo"
 	}
 	org := a.prov.ResolveActiveOrg(r.Context(), account)
-	tok, err := a.sessions.Issue(Identity{UserID: account.ID, OrgID: org, Email: account.Email, Role: role})
+	tok, err := a.sessions.IssueLogin(Identity{UserID: account.ID, OrgID: org, Email: account.Email, Role: role})
 	if err != nil {
 		internalError(w, "issue session", err)
 		return

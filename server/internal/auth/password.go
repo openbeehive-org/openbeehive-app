@@ -281,7 +281,8 @@ func (p *PasswordAuth) verify(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login?verified=1", http.StatusFound)
 }
 
-// issue mints a session for the user with the given active tenant, sets the
+// issue mints the session of a user who has just signed in (or up), with the
+// given active tenant, sets the
 // cookie, and returns the token (for clients that use Bearer auth, e.g. the SPA
 // talking to a different origin). On failure it writes the error response and
 // returns false.
@@ -292,7 +293,7 @@ func (p *PasswordAuth) issue(w http.ResponseWriter, u *storage.User, orgID strin
 	if isDemoAccount(p.cfg, u.Email) {
 		role = "demo"
 	}
-	tok, err := p.sessions.Issue(Identity{UserID: u.ID, OrgID: orgID, Email: u.Email, Role: role})
+	tok, err := p.sessions.IssueLogin(Identity{UserID: u.ID, OrgID: orgID, Email: u.Email, Role: role})
 	if err != nil {
 		internalError(w, "issue session", err)
 		return "", false

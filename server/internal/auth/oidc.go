@@ -160,7 +160,7 @@ func (m *Manager) callback(sessions *SessionManager, users storage.UserRepo, pro
 		if isDemoAccount(cfg, u.Email) {
 			role = "demo" // demo sessions are read-only
 		}
-		tok, err := sessions.Issue(Identity{UserID: u.ID, OrgID: org, Email: u.Email, Role: role})
+		tok, err := sessions.IssueLogin(Identity{UserID: u.ID, OrgID: org, Email: u.Email, Role: role})
 		if err != nil {
 			redirectInternalError(w, r, "issue session", err)
 			return
