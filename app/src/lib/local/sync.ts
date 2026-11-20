@@ -21,14 +21,16 @@ import {
 import { columnsOf, setColsOf, toScalar } from './tables';
 import { bumpData, initialSyncPending, storageState } from './live';
 import { syncClient } from '#lib/client.js'; // generated Connect client (SyncService)
-import { ChangeOp, type Change } from '../proto/openbeehive/v1/sync_pb';
+import { ChangeOp, UpgradeRequiredSchema, type Change } from '../proto/openbeehive/v1/sync_pb';
 
 // --- Status, for the status chip and the "sync problems" list ---
 
 // idle: nothing to do or all done. syncing: a run is in flight. offline: no
 // network. error: the last run failed and will be retried. signed_out: the
 // server no longer accepts this session; sync stays off until sign-in.
-export type SyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'signed_out';
+// update_required: the server no longer talks to this version of the app;
+// sync stays off until the app is updated.
+export type SyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'signed_out' | 'update_required';
 
 export interface SyncStatus {
   state: SyncState;
@@ -498,10 +500,24 @@ export async function discardFailed(id?: string) {
 // --- Orchestration ---
 let running = false;
 let rerun = false;
-let signedOut = false;
+// Why sync is switched off: the server rejected the session, or it no
+// longer talks to this version of the app. Asking again every few seconds
+// cannot help; sync resumes on the next page load or syncNow().
+let halted: 'signed_out' | 'update_required' | null = null;
 
 const isUnauthenticated = (e: unknown) =>
   e instanceof ConnectError && e.code === Code.Unauthenticated;
+
+// The server refuses this app version (see UpgradeRequired in sync.proto).
+const isUpgradeRequired = (e: unknown) =>
+  e instanceof ConnectError &&
+  e.code === Code.FailedPrecondition &&
+  e.findDetails(UpgradeRequiredSchema).length > 0;
+
+// Failures that end the run and switch sync off, as opposed to the ones
+// that are simply retried.
+const haltReason = (e: unknown) =>
+  isUnauthenticated(e) ? 'signed_out' : isUpgradeRequired(e) ? 'update_required' : null;
 
 // Single-flight: the UI fires syncOnce() after every local write, so many calls
 // can overlap. Running them concurrently would open competing SQLite write
@@ -512,9 +528,7 @@ export async function syncOnce() {
   // Another tab owns the database; this one shows a notice and waits.
   if (get(storageState) === 'elsewhere') return;
   await refreshCounts().catch(() => undefined);
-  // The server rejected the session. Asking again every few seconds cannot
-  // help; sync resumes on the next sign-in (page load) or syncNow().
-  if (signedOut) return;
+  if (halted) return;
   if (!navigator.onLine) {
     // No pull is coming: what is stored locally is all there is right now, so
     // pages must show their real (possibly empty) state, not a syncing hint.
@@ -537,7 +551,7 @@ export async function syncOnce() {
       try {
         await push();
       } catch (e) {
-        if (isUnauthenticated(e)) throw e;
+        if (haltReason(e)) throw e;
         console.warn('push deferred:', e);
         failure = e;
       }
@@ -553,9 +567,9 @@ export async function syncOnce() {
   }
 
   await refreshCounts().catch(() => undefined);
-  if (isUnauthenticated(failure)) {
-    signedOut = true;
-    setState('signed_out');
+  halted = haltReason(failure);
+  if (halted) {
+    setState(halted);
   } else if (failure !== undefined) {
     setState(navigator.onLine ? 'error' : 'offline');
   } else {
@@ -566,9 +580,9 @@ export async function syncOnce() {
 }
 
 // A sync the user asked for (status chip, retry): also tries again after
-// the server had rejected the session.
+// the server had rejected the session or the app version.
 export async function syncNow() {
-  signedOut = false;
+  halted = null;
   await syncOnce();
 }
 

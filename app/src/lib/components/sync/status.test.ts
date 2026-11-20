@@ -35,6 +35,14 @@ describe('status chip', () => {
     });
   });
 
+  it('says when the app itself is too old to sync, before anything else it could say', () => {
+    expect(chipView({ ...base, state: 'update_required', pending: 3, failed: 2 })).toEqual({
+      tone: 'bad',
+      key: 'sync.chip_update_required',
+      n: 0
+    });
+  });
+
   it('puts what needs the user first', () => {
     expect(chipView({ ...base, state: 'offline', pending: 4, failed: 2 })).toEqual({
       tone: 'bad',

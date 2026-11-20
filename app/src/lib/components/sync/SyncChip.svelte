@@ -1,10 +1,12 @@
 <script lang="ts">
   // Compact sync status: a dot and one line saying whether this device's
   // changes are on the server (pending uploads, refused changes, offline,
-  // signed out, time of the last sync). Tapping it syncs now; while the
-  // server refuses changes it leads to the list of them instead.
+  // signed out, app too old, time of the last sync). Tapping it syncs now;
+  // while the server refuses changes it leads to the list of them, and
+  // while the server refuses this app version it loads the new one.
   import { _, locale } from 'svelte-i18n';
   import { syncStatus, syncNow } from '#lib/local/sync.js';
+  import { applyUpdate } from '#lib/update.js';
   import { chipView, ago } from './status.js';
 
   let {
@@ -33,8 +35,13 @@
   );
   // The label of a fully synced device already says so; add the time to it.
   const text = $derived(view.tone === 'ok' && when ? `${label} · ${when}` : label);
+  const outdated = $derived($syncStatus.state === 'update_required');
   const href = $derived(
-    $syncStatus.state === 'signed_out' ? '/login' : $syncStatus.failed > 0 ? problemsHref : ''
+    $syncStatus.state === 'signed_out'
+      ? '/login'
+      : !outdated && $syncStatus.failed > 0
+        ? problemsHref
+        : ''
   );
 </script>
 
@@ -50,8 +57,8 @@
   <button
     type="button"
     class="chip {view.tone}"
-    title={`${synced} · ${$_('sync.chip_sync_now')}`}
-    onclick={() => void syncNow()}
+    title={outdated ? $_('sync.update_now') : `${synced} · ${$_('sync.chip_sync_now')}`}
+    onclick={() => (outdated ? applyUpdate() : void syncNow())}
   >
     {@render body()}
   </button>

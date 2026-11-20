@@ -7,6 +7,7 @@ import { browser } from '$app/env';
 // Generated via `make proto` into src/lib/proto (protoc-gen-es v2: services
 // live in the *_pb modules):
 import { SyncService } from './proto/openbeehive/v1/sync_pb';
+import { version as appVersion } from '../../package.json';
 
 // Default to the current origin in the browser: the Go binary always serves the
 // SPA and API on one origin (cloud behind a reverse proxy, or the single
@@ -23,9 +24,20 @@ const authInterceptor: Interceptor = (next) => async (req) => {
   return next(req);
 };
 
+// Version of the sync protocol this build speaks (see sync.proto). The
+// server serves a client that does not say so as an app of release 0.4.x:
+// without the columns and tables added since, and without snapshots.
+export const SYNC_PROTOCOL = 1;
+
+const versionInterceptor: Interceptor = (next) => async (req) => {
+  req.header.set('Openbeehive-Sync-Protocol', String(SYNC_PROTOCOL));
+  req.header.set('Openbeehive-App-Version', appVersion);
+  return next(req);
+};
+
 const transport = createConnectTransport({
   baseUrl: API_URL,
-  interceptors: [authInterceptor]
+  interceptors: [authInterceptor, versionInterceptor]
 });
 
 export const syncClient = createClient(SyncService, transport);

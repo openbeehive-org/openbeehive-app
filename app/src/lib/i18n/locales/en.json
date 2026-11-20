@@ -627,6 +627,8 @@
     "chip_signed_out": "Signed out · sign in to sync",
     "chip_problems": "Sync problems: {n}",
     "chip_sync_now": "Sync now",
+    "chip_update_required": "App out of date · update to sync",
+    "update_now": "Load the new version",
     "last_synced": "Last synced {when}",
     "never_synced": "Not synced yet",
     "just_now": "just now",

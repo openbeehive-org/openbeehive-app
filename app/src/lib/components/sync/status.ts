@@ -16,6 +16,9 @@ export interface ChipView {
 // why nothing moves, then progress.
 export function chipView(s: SyncStatus): ChipView {
   if (s.state === 'signed_out') return { tone: 'bad', key: 'sync.chip_signed_out', n: 0 };
+  if (s.state === 'update_required') {
+    return { tone: 'bad', key: 'sync.chip_update_required', n: 0 };
+  }
   if (s.failed > 0) return { tone: 'bad', key: 'sync.chip_problems', n: s.failed };
   if (s.state === 'offline') {
     return s.pending > 0

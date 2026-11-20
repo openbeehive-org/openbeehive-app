@@ -28,6 +28,7 @@ import {
   retryFailed,
   discardFailed
 } from './sync';
+import { UpgradeRequiredSchema } from '../proto/openbeehive/v1/sync_pb';
 import { patch, setAdd, setRemove } from './repo';
 import { hlc, formatHLC, parseHLC, MAX_DRIFT_MS } from './hlc';
 import { parseFieldClock, parseORSet, orValues } from './merge';
@@ -725,6 +726,50 @@ describe('syncOnce and the status store', () => {
     pushMock.mockResolvedValue({});
     await syncNow();
     expect(get(syncStatus)).toMatchObject({ state: 'idle', pending: 0 });
+  });
+
+  // The server turns this app version away (see UpgradeRequired in
+  // sync.proto). That is not a failure to retry every few seconds.
+  it('stops and says so when the server requires a newer app', async () => {
+    const tooOld = () =>
+      new ConnectError('upgrade required', Code.FailedPrecondition, undefined, [
+        { desc: UpgradeRequiredSchema, value: { minProtocol: 2 } }
+      ]);
+    await queueOutbox('apiary', 'a1', { name: 'X' }, t(1, 'local'));
+    pushMock.mockRejectedValue(tooOld());
+    pullMock.mockRejectedValue(tooOld());
+
+    await syncOnce();
+    expect(get(syncStatus)).toMatchObject({ state: 'update_required', pending: 1 });
+    expect(await outbox()).toHaveLength(1); // nothing is dropped
+    expect(pullMock).not.toHaveBeenCalled();
+
+    await syncOnce();
+    await syncOnce();
+    expect(pushMock).toHaveBeenCalledOnce(); // not hammering
+
+    // After the update (or when the user asks) it tries again.
+    pushMock.mockResolvedValue({});
+    pullMock.mockResolvedValue(emptyPull);
+    await syncNow();
+    expect(get(syncStatus)).toMatchObject({ state: 'idle', pending: 0 });
+  });
+
+  it('also when only pull is refused; any other failed precondition is retried', async () => {
+    pullMock.mockRejectedValue(
+      new ConnectError('upgrade required', Code.FailedPrecondition, undefined, [
+        { desc: UpgradeRequiredSchema, value: { minProtocol: 2 } }
+      ])
+    );
+    await syncOnce();
+    expect(get(syncStatus).state).toBe('update_required');
+
+    pullMock.mockRejectedValue(new ConnectError('not now', Code.FailedPrecondition));
+    await syncNow();
+    expect(get(syncStatus).state).toBe('error');
+    pullMock.mockResolvedValue(emptyPull);
+    await syncOnce(); // an ordinary error does not switch sync off
+    expect(get(syncStatus).state).toBe('idle');
   });
 
   it('a session that expires during pull also ends in signed_out', async () => {

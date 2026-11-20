@@ -627,6 +627,8 @@
     "chip_signed_out": "Sesión cerrada · inicia sesión para sincronizar",
     "chip_problems": "Problemas de sincronización: {n}",
     "chip_sync_now": "Sincronizar ahora",
+    "chip_update_required": "Aplicación desactualizada · actualízala para sincronizar",
+    "update_now": "Cargar la nueva versión",
     "last_synced": "Última sincronización {when}",
     "never_synced": "Aún sin sincronizar",
     "just_now": "ahora mismo",

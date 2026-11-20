@@ -627,6 +627,8 @@
     "chip_signed_out": "Déconnecté · connectez-vous pour synchroniser",
     "chip_problems": "Problèmes de synchronisation : {n}",
     "chip_sync_now": "Synchroniser maintenant",
+    "chip_update_required": "Application obsolète · mettez-la à jour pour synchroniser",
+    "update_now": "Charger la nouvelle version",
     "last_synced": "Dernière synchronisation {when}",
     "never_synced": "Pas encore synchronisé",
     "just_now": "à l'instant",
