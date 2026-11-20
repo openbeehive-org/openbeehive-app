@@ -292,6 +292,23 @@ export class PhotoTransfers {
   }
 
   /**
+   * The full-size image for an export: from the device if it is here, else
+   * fetched without keeping a copy (an export must not push the photos
+   * the user looks at out of the cache).
+   */
+  async read(id: string): Promise<{ blob: Blob } | { unavailable: Unavailable }> {
+    const local = await this.store.get(id);
+    if (local) return { blob: local };
+    if (!this.online()) return { unavailable: 'offline' };
+    const result = await this.transport.download(id).catch((): DownloadResult => 'retry');
+    if (result === 'missing') return { unavailable: 'not_uploaded' };
+    if (result === 'signed_out' || result === 'retry') {
+      return { unavailable: this.online() ? 'error' : 'offline' };
+    }
+    return result;
+  }
+
+  /**
    * Removes the least recently used cached copies until the cache is within
    * `budget` bytes. Pending images are never touched. Returns whether
    * anything was removed.

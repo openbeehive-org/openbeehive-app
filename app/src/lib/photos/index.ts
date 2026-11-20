@@ -105,6 +105,17 @@ export async function deletePhoto(id: string): Promise<void> {
 /** The full-size image, from the device or fetched from the server. */
 export const openPhoto = (id: string) => transfers().open(id);
 
+/**
+ * The images of photos written by an import: kept on the device as not yet
+ * uploaded (before their records are written), or dropped again when the
+ * import fails or is undone. Read gives an image for an export.
+ */
+export const photoImages = {
+  keep: (id: string, image: Blob) => transfers().keep(id, image),
+  drop: (id: string) => transfers().drop(id),
+  read: (id: string) => transfers().read(id)
+};
+
 /** Tries the uploads that are due now. */
 export const uploadPhotosNow = () => transfers().uploadDue();
 

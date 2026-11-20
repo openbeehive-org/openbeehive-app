@@ -310,6 +310,27 @@ describe('viewing on another device', () => {
   });
 });
 
+describe('reading for an export', () => {
+  it('takes the image from the device, or fetches it without keeping a copy', async () => {
+    await d.take('here');
+    const other = new Device(d.server);
+    d.server.stored.set('there', image(10));
+    expect('blob' in (await d.transfers.read('here'))).toBe(true);
+    expect(d.server.downloads).toEqual([]);
+    const got = await other.transfers.read('there');
+    expect('blob' in got && got.blob.size).toBe(10);
+    expect(await other.meta('there')).toBeUndefined();
+  });
+
+  it('says why an image cannot be had', async () => {
+    expect(await d.transfers.read('never-uploaded')).toEqual({ unavailable: 'not_uploaded' });
+    d.server.unreachable = true;
+    expect(await d.transfers.read('x')).toEqual({ unavailable: 'error' });
+    d.online = false;
+    expect(await d.transfers.read('x')).toEqual({ unavailable: 'offline' });
+  });
+});
+
 describe('a server restored from a backup', () => {
   it('gets every image this device keeps uploaded again', async () => {
     await d.take('mine');
