@@ -73,6 +73,10 @@ type SessionManager struct {
 	mu    sync.Mutex
 	state map[string]sessionState // "<user>\x00<org>"
 	epoch int                     // bumped by Invalidate; stale lookups are not cached
+	// floor is the latest revocation mark (Unix ms). Tokens are never
+	// stamped before it: the mark lies a millisecond ahead of the clock, and
+	// a session issued after the revocation must not count as revoked.
+	floor int64
 }
 
 // NewSessionManager refuses secrets shorter than config.MinSessionSecretBytes:
@@ -120,6 +124,11 @@ func RecentLogin(id Identity, now time.Time) bool {
 }
 
 func (s *SessionManager) issueAt(id Identity, at time.Time, login bool) (string, error) {
+	s.mu.Lock()
+	if floor := time.UnixMilli(s.floor); at.Before(floor) {
+		at = floor
+	}
+	s.mu.Unlock()
 	claims := sessionClaims{
 		UserID: id.UserID, OrgID: id.OrgID, Email: id.Email, Role: id.Role,
 		Exp: at.Add(s.ttl).Unix(), IssuedAt: at.UnixMilli(),
@@ -271,8 +280,15 @@ func (s *SessionManager) RevokeEvery(ctx context.Context, userID string) error {
 // revoke moves the account's revocation mark to now and returns it.
 func (s *SessionManager) revoke(ctx context.Context, userID string) (time.Time, error) {
 	// One millisecond ahead: a token issued in this very millisecond, before
-	// the revocation, must not survive it.
+	// the revocation, must not survive it. Tokens may already be stamped at
+	// an earlier mark (the floor), so the new mark also lies beyond that.
+	s.mu.Lock()
 	mark := time.Now().Add(time.Millisecond)
+	if floor := time.UnixMilli(s.floor + 1); mark.Before(floor) {
+		mark = floor
+	}
+	s.floor = mark.UnixMilli()
+	s.mu.Unlock()
 	if err := s.users.SetSessionsValidAfter(ctx, userID, mark.UnixMilli()); err != nil {
 		return time.Time{}, err
 	}

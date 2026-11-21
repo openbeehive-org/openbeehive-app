@@ -66,7 +66,6 @@ func TestLogoutAllEndsEveryOtherSession(t *testing.T) {
 	if res := f.call(t, http.MethodGet, "/auth/me", other.token, nil); res.status != http.StatusOK {
 		t.Fatalf("another account's session: %d", res.status)
 	}
-	time.Sleep(2 * time.Millisecond) // a sign-in in the revocation's own millisecond is refused by design
 	if res := f.call(t, http.MethodGet, "/auth/me", signin(), nil); res.status != http.StatusOK {
 		t.Fatalf("sign-in after logout-all: %d", res.status)
 	}
