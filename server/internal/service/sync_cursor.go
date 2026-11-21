@@ -7,8 +7,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/jmoiron/sqlx"
 
@@ -60,26 +62,129 @@ func parseCursor(s string) (cursor, bool) {
 // before anything writes: a change logged before the mark would move the
 // mark past positions that devices may hold from before a restore.
 func RecordBoot(ctx context.Context, db *sqlx.DB) error {
-	var tag [8]byte
-	if _, err := rand.Read(tag[:]); err != nil {
-		return err
-	}
 	tx, err := db.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var head int64
-	if err := tx.GetContext(ctx, &head, `SELECT val FROM seq_counter WHERE name = 'change'`); err != nil {
+	st, err := headOf(ctx, tx)
+	if err != nil {
 		return err
 	}
-	// A second start at the same position replaces the mark: that is the
-	// restore of a backup taken right after a start.
+	if err := recordMark(ctx, tx, st.head); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	heads.reset(st.epoch, st.head)
+	return nil
+}
+
+// recordMark records a new boot mark at head. A second mark at the same
+// position replaces the first: that is the restore of a backup taken right
+// after a start.
+func recordMark(ctx context.Context, tx *sqlx.Tx, head int64) error {
+	var tag [8]byte
+	if _, err := rand.Read(tag[:]); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, tx.Rebind(`DELETE FROM sync_boot WHERE head = ?`), head); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO sync_boot (head, tag) VALUES (?, ?)`),
-		head, int64(binary.BigEndian.Uint64(tag[:])>>1)|1); err != nil {
+	_, err := tx.ExecContext(ctx, tx.Rebind(`INSERT INTO sync_boot (head, tag) VALUES (?, ?)`),
+		head, int64(binary.BigEndian.Uint64(tag[:])>>1)|1)
+	return err
+}
+
+// A database can also go back in time under a running server: a managed
+// database that fails over to a replica that lagged behind, or a
+// point-in-time restore. No start leaves its mark then, so the server
+// remembers the highest end of the log it has seen per database (epoch). A
+// writer that finds the log ending lower records a mark itself, before it
+// logs anything (checkHead, called with the write lock held), and Pull
+// does the same as soon as it reads a lower end (noteHead).
+type headWatch struct {
+	mu   sync.Mutex
+	seen map[int64]int64 // epoch -> highest head seen
+}
+
+var heads = &headWatch{seen: map[int64]int64{}}
+
+func (w *headWatch) reset(epoch, head int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.seen[epoch] = head
+}
+
+// observe records head and reports whether it is lower than what was seen.
+func (w *headWatch) observe(epoch, head int64) (lower bool, seen int64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	seen = w.seen[epoch]
+	if head < seen {
+		return true, seen
+	}
+	w.seen[epoch] = head
+	return false, seen
+}
+
+// headOf reads the epoch and the end of the log.
+func headOf(ctx context.Context, q sqlx.QueryerContext) (syncState, error) {
+	var st syncState
+	err := sqlx.GetContext(ctx, q, &st.head, `SELECT val FROM seq_counter WHERE name = 'change'`)
+	if err != nil {
+		return st, err
+	}
+	err = sqlx.GetContext(ctx, q, &st.epoch, `SELECT val FROM sync_state WHERE name = 'epoch'`)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil // before migration 0019: nothing to watch
+	}
+	return st, err
+}
+
+// checkHead runs inside a writing transaction that holds the write lock. When
+// the log ends lower than this process has seen it end, the database went
+// back in time: it records a mark at the current end, so every cursor
+// issued for a position after it is recognised (see cursor).
+func checkHead(ctx context.Context, tx *sqlx.Tx) error {
+	st, err := headOf(ctx, tx)
+	if err != nil || st.epoch == 0 {
+		return err
+	}
+	lower, seen := heads.observe(st.epoch, st.head)
+	if !lower {
+		return nil
+	}
+	if err := recordMark(ctx, tx, st.head); err != nil {
+		return err
+	}
+	log.Printf("sync: the change log ends at %d, but this server has seen it reach %d: the database went back "+
+		"in time (restore or failover). Devices that read past %d will send their data again.", st.head, seen, st.head)
+	// The new end counts from here on; should the transaction roll back,
+	// the next writer finds the same and records the mark again.
+	heads.reset(st.epoch, st.head)
+	return nil
+}
+
+// noteHead is called with every state Pull and Snapshot read. A lower end of the log
+// than seen before is handed to a writing transaction, which checks again
+// under the lock (a read that started before a commit can return an older
+// end without anything having gone back).
+func (s *SyncService) noteHead(ctx context.Context, st syncState) error {
+	heads.mu.Lock()
+	lower := st.head < heads.seen[st.epoch]
+	heads.mu.Unlock()
+	if !lower {
+		heads.observe(st.epoch, st.head)
+		return nil
+	}
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := lockWrites(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -141,7 +246,7 @@ func (s *SyncService) state(ctx context.Context) (syncState, error) {
 	if st.epoch == 0 {
 		return syncState{}, errors.New("sync_state has no epoch: migration 0019 did not complete")
 	}
-	return st, nil
+	return st, s.noteHead(ctx, st)
 }
 
 // checkCursor decides whether the log can be read on from the cursor of a

@@ -225,3 +225,43 @@ func TestChangeThatChangesNothingIsNotLogged(t *testing.T) {
 		t.Fatalf("a real change must be logged: %d entries, want %d", got, logged+1)
 	}
 }
+
+// A database can go back in time without a server start (failover to a
+// lagging replica, point-in-time restore under a running server). The
+// first writer or reader that sees the log end lower than before must
+// leave the mark a start would leave.
+func TestRestoreUnderARunningServerIsDetected(t *testing.T) {
+	const reset = wv1.PullStatus_PULL_STATUS_RESET_REQUIRED
+	for name, firstAfterRestore := range map[string]func(t *testing.T, svc *SyncService, ctx context.Context){
+		"a write comes first": func(t *testing.T, svc *SyncService, ctx context.Context) {
+			for _, n := range []string{"new 1", "new 2", "new 3"} {
+				if err := rename(svc, ctx, n); err != nil {
+					t.Fatal(err)
+				}
+			}
+		},
+		"a pull comes first": func(t *testing.T, svc *SyncService, ctx context.Context) {
+			pullStatus(t, svc, ctx, "")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := newSyncFixture(t)
+			ctx := identityCtx("user-a", "org-a")
+			if err := rename(svc, ctx, "in the backup"); err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range []string{"lost 1", "lost 2"} {
+				if err := rename(svc, ctx, n); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ahead := pullStatus(t, svc, ctx, "").NextCursor
+
+			restoreLogTo(t, svc, 1) // and no restart
+			firstAfterRestore(t, svc, ctx)
+			if got := pullStatus(t, svc, ctx, ahead); got.Status != reset {
+				t.Fatalf("a device that read the lost changes: status %v", got.Status)
+			}
+		})
+	}
+}

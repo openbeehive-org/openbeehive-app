@@ -454,8 +454,10 @@ func legacyClockAhead(cerr *changeError) error {
 // later commit silently undoes the earlier one. Taking it before any row is
 // touched also gives every writer the same lock order.
 func lockWrites(ctx context.Context, tx *sqlx.Tx) error {
-	_, err := tx.ExecContext(ctx, "UPDATE seq_counter SET val = val WHERE name = 'change'")
-	return err
+	if _, err := tx.ExecContext(ctx, "UPDATE seq_counter SET val = val WHERE name = 'change'"); err != nil {
+		return err
+	}
+	return checkHead(ctx, tx)
 }
 
 // scopeSet holds the scopes the caller may write: the personal scope and
