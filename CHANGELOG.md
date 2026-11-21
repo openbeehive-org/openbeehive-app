@@ -161,8 +161,15 @@ Details are in the
 - Photos of a refused or failed 0.4.x push leave no blobs behind; a retried
   push replaces the blobs of its earlier attempt.
 - The dashboard highlights a due hive from the same 10 days that make it
-  due, and `GetDashboard` counts those days in calendar days like the app.
-- Save and Add are switched off on every record form in the demo.
+  due, and `GetDashboard` counts those days in calendar days like the app,
+  in the caller's `time_zone` (UTC when not given).
+- Save and Add are switched off on every record form in the demo, and so are
+  deleting, photo changes and ticking off tasks; the demo offers no import.
+- Photos converted from 0.4.x apps get their image back after a database
+  restore.
+- An old unclaimed local store with nothing unsent is removed from the
+  device after the first sync of the new one.
+- The first sync of a large workspace is much faster.
 - Pre-release databases that ran migrations 0015 and 0017 under their
   earlier names start again.
 
