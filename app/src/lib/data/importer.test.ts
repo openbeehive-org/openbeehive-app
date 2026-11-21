@@ -162,7 +162,15 @@ describe('JSON import into the same workspace', () => {
     expect(plan.counts.hive).toMatchObject({ skip: 1, restore: 0 });
     expect(plan.counts.inspection).toMatchObject({ skip: 1 }); // unchanged
     const apiaryOp = plan.ops.find((o) => o.entity === 'apiary')!;
-    expect(Object.keys(apiaryOp.fields).sort()).toEqual(['name', 'updated_at']);
+    // Only what differs from the file is written: the name, never the note the
+    // file leaves out. updated_at is written as well when the edit above fell
+    // into another millisecond than the export, so it is not asserted.
+    expect(Object.keys(apiaryOp.fields)).toContain('name');
+    expect(
+      Object.keys(apiaryOp.fields)
+        .filter((k) => k !== 'updated_at')
+        .sort()
+    ).toEqual(['name']);
     await applyImport(plan);
     expect(await row('apiary', a)).toMatchObject({ name: 'Orchard', note: 'kept' });
     expect((await row('hive', 'h1')).deleted).toBe(1);
