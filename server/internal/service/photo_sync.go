@@ -99,7 +99,9 @@ func (p *Photos) afterChange(ctx context.Context, tx *sqlx.Tx, ch *wv1.Change, o
 // hooks again.
 func (p *Photos) derive(ctx context.Context, tx *sqlx.Tx, cause *wv1.Change, orgID string, ch *wv1.Change) error {
 	ch.ScopeId, ch.AuthorId = cause.ScopeId, cause.AuthorId
-	if err := applyChange(ctx, tx, entityCols[ch.Entity], ch, orgID); err != nil {
+	// Logged even when it changes nothing: whoever derives it relies on
+	// devices receiving it.
+	if _, err := applyChange(ctx, tx, entityCols[ch.Entity], ch, orgID); err != nil {
 		return err
 	}
 	return appendChangeLog(ctx, tx, ch, orgID)

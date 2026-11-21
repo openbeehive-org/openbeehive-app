@@ -190,3 +190,38 @@ func TestLegacyPushWithClockAheadFailsAsAWhole(t *testing.T) {
 	res = pushRes(t, svc, ctxA, ahead)
 	wantRejected(t, res, map[int32]string{0: rejClockAhead})
 }
+
+// A change that changes nothing is not logged. After a restore every device
+// sends all its rows again; logging them would grow the log by devices
+// times rows.
+func TestChangeThatChangesNothingIsNotLogged(t *testing.T) {
+	svc := newSyncFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	create := change("inspection", "in-1", "apiary-a",
+		`{"hive_id":"hive-a","date":"2026-07-11T10:00:00Z","created_at":"2026-07-11T10:00:00Z","deleted":0,"photo_keys":{"add":["data:x"]}}`)
+	if err := push(svc, ctx, create); err != nil {
+		t.Fatal(err)
+	}
+	count := func() int {
+		var n int
+		if err := svc.db.Get(&n, `SELECT COUNT(*) FROM change_log`); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	logged := count()
+	stale := change("inspection", "in-1", "apiary-a", `{"date":"2026-07-10T10:00:00Z"}`)
+	stale.Hlc = wsync.Format(time.Now().Add(-time.Hour).UnixMilli(), 0, "dev")
+	if err := push(svc, ctx, create, create, stale); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != logged {
+		t.Fatalf("the log grew from %d to %d entries for changes that changed nothing", logged, got)
+	}
+	if err := push(svc, ctx, change("inspection", "in-1", "apiary-a", `{"note":"newer"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := count(); got != logged+1 {
+		t.Fatalf("a real change must be logged: %d entries, want %d", got, logged+1)
+	}
+}

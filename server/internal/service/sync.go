@@ -604,7 +604,12 @@ func applyLogged(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	if skip, err := photos.beforeChange(ctx, tx, ch, orgID); err != nil || skip {
 		return err
 	}
-	if err := applyChange(ctx, tx, spec, ch, orgID); err != nil {
+	changed, err := applyChange(ctx, tx, spec, ch, orgID)
+	if err != nil || !changed {
+		// A change that changed nothing (every field stale, every set tag
+		// known) is not logged: after a restore every device sends all of
+		// its rows again, and logging those would grow the log by devices
+		// times rows for nothing.
 		return err
 	}
 	if err := appendChangeLog(ctx, tx, ch, logOrg(spec, ch, orgID)); err != nil {
@@ -704,32 +709,33 @@ var errWrongTenant = errors.New("change targets another tenant's data")
 //
 // The payload is validated and reduced to the entity's known columns first,
 // and ch.PayloadJson is replaced by that normalised form: it is what the
-// change log stores and every other device receives.
-func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) error {
+// change log stores and every other device receives. changed reports
+// whether the row is different afterwards.
+func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, orgID string) (changed bool, err error) {
 	if !wsync.Valid(ch.Hlc) {
-		return invalidChange("malformed hlc stamp %q", clip(ch.Hlc))
+		return false, invalidChange("malformed hlc stamp %q", clip(ch.Hlc))
 	}
 	fields, cerr := wireFields(ch.Entity, spec, ch)
 	if cerr == nil && spec.perUser {
 		cerr = checkSettingValues(fields)
 	}
 	if cerr != nil {
-		return cerr
+		return false, cerr
 	}
 	if v, ok := fields["organization_id"]; ok {
 		if org, _ := v.(string); org == "" {
 			fields["organization_id"] = orgID // unset -> stamp the caller's tenant
 		} else if org != orgID {
-			return errWrongTenant
+			return false, errWrongTenant
 		}
 	}
 
 	row, exists, rowOrg, err := loadMergeState(ctx, tx, spec, ch.EntityId)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if exists && rowOrg != "" && rowOrg != orgID {
-		return errWrongTenant
+		return false, errWrongTenant
 	}
 	if !exists && !spec.perUser {
 		fields["organization_id"] = orgID // new rows always belong to the caller's tenant
@@ -738,11 +744,21 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 
 	payload, err := json.Marshal(fields)
 	if err != nil {
-		return err
+		return false, err
 	}
 	ch.PayloadJson = string(payload)
 
-	changed := row.Apply(fields, ch.Hlc)
+	return mergeRow(ctx, tx, spec, ch, row, exists, fields)
+}
+
+// mergeRow merges the change's fields into the stored state of the row and
+// writes what changed. It reports whether the row is different afterwards.
+func mergeRow(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Change, row wsync.Row, exists bool, fields map[string]any) (bool, error) {
+	before := make(map[string]string, len(spec.setCols))
+	for _, sc := range spec.setCols {
+		before[sc] = row.Sets[sc].Marshal()
+	}
+	cols := row.Apply(fields, ch.Hlc)
 	values := dbValues(ch.Entity, fields, tx.DriverName())
 	for _, sc := range spec.setCols {
 		values[sc] = row.Sets[sc].Marshal()
@@ -751,14 +767,26 @@ func applyChange(ctx context.Context, tx *sqlx.Tx, spec entitySpec, ch *wv1.Chan
 	if !exists {
 		// A new row stores every set column, also the ones the change does
 		// not mention: their column default is not valid OR-Set JSON.
-		err = insertRow(ctx, tx, spec, ch.EntityId, union(changed, spec.setCols), values)
-	} else if len(changed) > 0 { // nothing to store when every field was stale
-		err = updateRow(ctx, tx, spec, ch.EntityId, changed, values)
+		if err := insertRow(ctx, tx, spec, ch.EntityId, union(cols, spec.setCols), values); err != nil {
+			return false, err
+		}
+		return true, claimOwner(ctx, tx, ch)
 	}
-	if err != nil {
-		return err
+	// Apply names every set column the change carries; the row changed only
+	// where the content of the set differs now.
+	var stored []string
+	for _, c := range cols {
+		if b, isSet := before[c]; !isSet || b != values[c] {
+			stored = append(stored, c)
+		}
 	}
-	return claimOwner(ctx, tx, ch)
+	if len(stored) == 0 {
+		return false, nil // every field was stale
+	}
+	if err := updateRow(ctx, tx, spec, ch.EntityId, stored, values); err != nil {
+		return false, err
+	}
+	return true, claimOwner(ctx, tx, ch)
 }
 
 // stampAuthor sets the author column of a record (event.author_id). Who
