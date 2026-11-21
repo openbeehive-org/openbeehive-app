@@ -732,6 +732,7 @@
     "problems_none": "Keine Sync-Probleme.",
     "problems_retry": "Erneut versuchen",
     "problems_retry_all": "Alle erneut versuchen",
+    "problems_details": "Technische Details",
     "problems_discard": "Verwerfen",
     "problems_discard_confirm": "Diese Änderung nicht mehr hochladen? Der Eintrag bleibt auf diesem Gerät, wie er ist, erreicht aber nie den Server.",
     "problems_changed": "{entity} geändert",

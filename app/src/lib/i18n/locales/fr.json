@@ -732,6 +732,7 @@
     "problems_none": "Aucun problème de synchronisation.",
     "problems_retry": "Réessayer",
     "problems_retry_all": "Tout réessayer",
+    "problems_details": "Détails techniques",
     "problems_discard": "Abandonner",
     "problems_discard_confirm": "Ne plus essayer d'envoyer cette modification ? L'enregistrement reste tel quel sur cet appareil, mais n'atteindra jamais le serveur.",
     "problems_changed": "{entity} : modification",

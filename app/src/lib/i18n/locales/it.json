@@ -732,6 +732,7 @@
     "problems_none": "Nessun problema di sincronizzazione.",
     "problems_retry": "Riprova",
     "problems_retry_all": "Riprova tutte",
+    "problems_details": "Dettagli tecnici",
     "problems_discard": "Scarta",
     "problems_discard_confirm": "Smettere di provare a inviare questa modifica? Il dato resta su questo dispositivo così com'è, ma non arriverà mai al server.",
     "problems_changed": "{entity}: modifica",

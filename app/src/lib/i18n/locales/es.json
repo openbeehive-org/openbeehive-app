@@ -732,6 +732,7 @@
     "problems_none": "No hay problemas de sincronización.",
     "problems_retry": "Reintentar",
     "problems_retry_all": "Reintentar todos",
+    "problems_details": "Detalles técnicos",
     "problems_discard": "Descartar",
     "problems_discard_confirm": "¿Dejar de intentar subir este cambio? El registro se queda en este dispositivo tal como está, pero nunca llegará al servidor.",
     "problems_changed": "{entity}: cambio",

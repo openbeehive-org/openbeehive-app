@@ -51,6 +51,12 @@ test('the chip opens a sheet with what is waiting; refused changes are one tap a
   await expect(problems).toBeFocused();
   await expect(problems).toBeInViewport();
   await expect(problems.getByRole('button', { name: 'Try again' })).toBeVisible();
+  // The server's English reason is not the visible text; it sits behind a
+  // translated "Technical details" toggle.
+  await expect(problems.locator('[title]')).toHaveCount(0);
+  await expect(problems.getByText('refused by the test')).toBeHidden();
+  await problems.getByText('Technical details').click();
+  await expect(problems.getByText('refused by the test')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Data & sync' })).toHaveAttribute(
     'aria-current',
     'page'

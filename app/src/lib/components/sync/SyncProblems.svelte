@@ -68,7 +68,15 @@
         <li>
           <div class="what">
             <strong>{title(f)}</strong>
-            <span class="why" title={f.reason}>{$_(codeKey(f.code))}</span>
+            <span class="why">{$_(codeKey(f.code))}</span>
+            {#if f.reason}
+              <!-- The server's reason is technical and in English; it stays
+                   one tap away for whoever helps with the problem. -->
+              <details class="reason">
+                <summary>{$_('sync.problems_details')}</summary>
+                <code>{f.reason}</code>
+              </details>
+            {/if}
             <span class="when"
               >{formatDate(f.failedAt, $locale, { dateStyle: 'medium', timeStyle: 'short' })}</span
             >
@@ -130,6 +138,17 @@
   }
   .why {
     color: var(--danger);
+  }
+  .reason {
+    color: var(--text-soft);
+    font-size: 0.78rem;
+  }
+  .reason summary {
+    cursor: pointer;
+  }
+  .reason code {
+    display: block;
+    overflow-wrap: anywhere;
   }
   .when {
     color: var(--text-soft);

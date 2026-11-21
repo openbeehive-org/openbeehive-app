@@ -732,6 +732,7 @@
     "problems_none": "No sync problems.",
     "problems_retry": "Try again",
     "problems_retry_all": "Try all again",
+    "problems_details": "Technical details",
     "problems_discard": "Discard",
     "problems_discard_confirm": "Stop trying to upload this change? The record stays on this device as it is, but never reaches the server.",
     "problems_changed": "{entity} changed",
