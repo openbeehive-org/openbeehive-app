@@ -61,6 +61,10 @@ export default defineConfig({
   ],
   // Client-exposed env vars are namespaced BEEHIVE_ (VITE_ kept for compatibility).
   envPrefix: ['BEEHIVE_', 'VITE_'],
+  // Builds for the browser tests must not pick up a developer's app/.env
+  // (Vite ignores an empty BEEHIVE_API_URL in the environment and falls back
+  // to the file), so they read env files from a directory that has none.
+  envDir: process.env.OBH_IGNORE_DOTENV ? 'e2e/support' : '.',
   server: { port: 5173 },
   // Don't pre-bundle sqlite-wasm: the optimizer rewrites its path so the
   // sibling sqlite3.wasm can no longer be fetched (404). Excluding it keeps

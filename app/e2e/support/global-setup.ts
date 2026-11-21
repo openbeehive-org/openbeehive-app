@@ -52,7 +52,11 @@ export default function globalSetup() {
   // The tests talk to the server that serves the app. An app built with a
   // BEEHIVE_API_URL from app/.env calls another server instead, which the
   // Content-Security-Policy blocks, and every test fails.
-  const urls = configuredApiUrls(appDir);
+  // `make e2e` builds with OBH_IGNORE_DOTENV, which makes Vite skip app/.env,
+  // so the build is known to be clean. Otherwise look for the configured URL
+  // in the build (this can also match the code's own non-browser fallback,
+  // http://localhost:8080; the advice to run `make e2e` is right either way).
+  const urls = process.env.OBH_IGNORE_DOTENV ? [] : configuredApiUrls(appDir);
   const named = buildFilesNaming(WEB_DIST, urls);
   if (named.length > 0) {
     throw new Error(

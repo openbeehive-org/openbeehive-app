@@ -210,6 +210,7 @@ E2E_ARGS ?=
 # The app under test talks to the server that serves it: a BEEHIVE_API_URL
 # from app/.env is overridden (Vite lets the environment win over .env files).
 e2e: export BEEHIVE_API_URL =
+e2e: export OBH_IGNORE_DOTENV = 1
 e2e: build ## browser tests (Playwright, Chromium) against the freshly built binary
 	cd $(APP) && npm run e2e -- $(E2E_ARGS)
 
