@@ -282,6 +282,18 @@ describe('files the importer cannot read', () => {
     expect(parsed.data.apiary?.map((a) => a.name)).toEqual(['Importiert']);
     expect(parsed.data.hive?.map((h) => h.name)).toEqual(['Beute 1']);
   });
+
+  it('stops an archive that unpacks to too much', async () => {
+    const big = deflatedZip([['backup.json', new Uint8Array(4096)]]);
+    expect(await codeOf(readZip(big, 1024))).toBe('zip_too_large');
+    expect((await readZip(big, 8192)).get('backup.json')?.length).toBe(4096);
+    const two = deflatedZip([
+      ['a.json', new Uint8Array(3000)],
+      ['b.json', new Uint8Array(3000)]
+    ]);
+    expect(await codeOf(readZip(two, 5000))).toBe('zip_too_large');
+    expect(await codeOf(readZip(new Uint8Array([0x50, 0x4b, 3, 4, 1, 2])))).toBe('zip_damaged');
+  });
 });
 
 describe('export with photos', () => {

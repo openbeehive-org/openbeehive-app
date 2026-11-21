@@ -6,7 +6,13 @@ import { CodedError } from '../errors';
 
 const dec = new TextDecoder();
 
+// What an archive may unpack to, in all. A real export (records and photos of
+// at most 5 MiB each) stays far below; a crafted archive that inflates a few
+// kilobytes into gigabytes would otherwise take the tab down.
+export const MAX_UNPACKED_BYTES = 512 * 1024 * 1024;
+
 const damaged = () => new CodedError('zip_damaged', 'damaged ZIP archive');
+const tooLarge = () => new CodedError('zip_too_large', 'the archive unpacks to too much data');
 
 const EOCD = 0x06054b50;
 const CENTRAL = 0x02014b50;
@@ -19,19 +25,44 @@ export function looksLikeZip(bytes: Uint8Array): boolean {
   );
 }
 
-async function inflate(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data as BlobPart])
+// Inflates one entry, stopping as soon as it grows past `limit` bytes.
+async function inflate(data: Uint8Array, limit: number): Promise<Uint8Array> {
+  const reader = new Blob([data as BlobPart])
     .stream()
-    .pipeThrough(new DecompressionStream('deflate-raw'));
-  try {
-    return new Uint8Array(await new Response(stream).arrayBuffer());
-  } catch {
-    throw damaged();
+    .pipeThrough(new DecompressionStream('deflate-raw'))
+    .getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    let next: ReadableStreamReadResult<Uint8Array>;
+    try {
+      next = await reader.read();
+    } catch {
+      throw damaged();
+    }
+    const { done, value } = next;
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      await reader.cancel();
+      throw tooLarge();
+    }
+    chunks.push(value);
   }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
 }
 
 /** The files of a ZIP archive by name. Directories are left out. */
-export async function readZip(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
+export async function readZip(
+  bytes: Uint8Array,
+  maxUnpacked = MAX_UNPACKED_BYTES
+): Promise<Map<string, Uint8Array>> {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   // The end record sits in the last 22 bytes plus at most a 64 KiB comment.
   let end = -1;
@@ -46,6 +77,7 @@ export async function readZip(bytes: Uint8Array): Promise<Map<string, Uint8Array
   let pos = view.getUint32(end + 16, true);
 
   const out = new Map<string, Uint8Array>();
+  let left = maxUnpacked;
   for (let n = 0; n < count; n++) {
     if (pos + 46 > bytes.length || view.getUint32(pos, true) !== CENTRAL) {
       throw damaged();
@@ -71,8 +103,10 @@ export async function readZip(bytes: Uint8Array): Promise<Map<string, Uint8Array
     if (data.length !== size) throw damaged();
     let file: Uint8Array;
     if (method === 0) file = data;
-    else if (method === 8) file = await inflate(data);
+    else if (method === 8) file = await inflate(data, left);
     else throw new CodedError('zip_unsupported', `unsupported ZIP compression method ${method}`);
+    left -= file.length;
+    if (left < 0) throw tooLarge();
     out.set(name, file);
   }
   return out;
