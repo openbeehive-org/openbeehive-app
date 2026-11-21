@@ -129,6 +129,18 @@ func dashboardHoney(ctx context.Context, q dashboardQuery, res *wv1.DashboardRes
 	return nil
 }
 
+// calendarDaysSince counts whole calendar days (UTC) from d to now, never
+// fewer than 0: a visit on the previous day is 1 day ago at any hour. The
+// app counts the same way in local time and stores visits at local noon,
+// which falls on the same UTC date for offsets up to 11 hours.
+func calendarDaysSince(d, now time.Time) int {
+	day := func(t time.Time) time.Time {
+		y, m, dd := t.UTC().Date()
+		return time.Date(y, m, dd, 0, 0, 0, 0, time.UTC)
+	}
+	return max(0, int(day(now).Sub(day(d)).Hours()/24))
+}
+
 // dashboardDue: days since the last visit per hive (never = -1), hives at or
 // past the threshold. Sensor readings are not visits and do not count. Lost
 // and dissolved colonies cannot be inspected any more and are left out, as
@@ -155,7 +167,7 @@ func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardRespo
 	for _, h := range hives {
 		days := int32(-1)
 		if d, ok := lastByHive[rs(h["id"])]; ok {
-			days = i32(int64(q.now.Sub(d).Hours() / 24))
+			days = i32(int64(calendarDaysSince(d, q.now)))
 			if days < i32(int64(q.threshold)) {
 				continue
 			}
