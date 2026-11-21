@@ -250,7 +250,7 @@
             <span>{$_('stats.min')} {m.min}</span>
             <span>{$_('stats.max')} {m.max}</span>
           {/if}
-          <span>{m.count} {$_('stats.points')}</span>
+          <span>{$_('stats.points', { values: { n: m.count } })}</span>
           <span>{m.span}</span>
         </div>
         {#if m.kind === 'number' && m.skipped}

@@ -54,6 +54,63 @@ describe('plural forms', () => {
   });
 });
 
+describe('counts in every language', () => {
+  // Every message that shows a count must read right for one and for many.
+  const counted: [string, Record<string, string | number>][] = [
+    ['data.pending_note', {}],
+    ['data.failed_note', {}],
+    ['data.photos_missing', {}],
+    ['data.photos_no_image', {}],
+    ['data.undo_help', { date: '1.2.2026' }],
+    ['data.undone', {}],
+    ['data.undone_kept', { kept: 1 }],
+    ['stats.points', {}],
+    ['sync.sheet_problems', {}]
+  ];
+  const one: Record<Lang, RegExp> = {
+    en: /\b1 (change|photo|record|reading)(?=[\s.,;:]|$)|\b1 day(?=[\s.,;:]|$)/,
+    de: /\b1 (Änderung|Foto|Eintrag|Wert)(?=[\s.,;:]|$)/,
+    fr: /\b1 (modification|photo|enregistrement|relevé)(?=[\s.,;:]|$)/,
+    es: /\b1 (cambio|foto|registro|lectura)(?=[\s.,;:]|$)/,
+    it: /\b1 (modifica|foto|record|rilevazione)(?=[\s.,;:]|$)/
+  };
+  const wrongOne: Record<Lang, RegExp> = {
+    en: /\b1 (changes|photos|records|readings|days)(?=[\s.,;:]|$)|were refused|are missing/,
+    de: /\b1 (Änderungen|Fotos|Einträge|Werte|Tagen)(?=[\s.,;:]|$)/,
+    fr: /\b1 (modifications|photos|enregistrements|relevés|jours)(?=[\s.,;:]|$)/,
+    es: /\b1 (cambios|fotos|registros|lecturas|días)(?=[\s.,;:]|$)/,
+    it: /\b1 (modifiche|record eliminati|rilevazioni|giorni)(?=[\s.,;:]|$)/
+  };
+
+  it.each(Object.keys(LOCALES) as Lang[])('uses the singular for 1 in %s', (lang) => {
+    for (const [key, extra] of counted) {
+      const text = t(lang, key, { n: 1, ...extra });
+      expect(text, `${lang} ${key}`).toMatch(one[lang]);
+      expect(text, `${lang} ${key}`).not.toMatch(wrongOne[lang]);
+      expect(text, `${lang} ${key}`).not.toMatch(/[{}]/);
+    }
+    const day = t(lang, 'dashboard.days_ago', { days: 1 });
+    expect(day, `${lang} days_ago`).not.toMatch(wrongOne[lang]);
+    expect(day).toContain('1');
+  });
+
+  it('uses the plural for several', () => {
+    expect(t('en', 'data.failed_note', { n: 3 })).toMatch(/^3 changes were refused/);
+    expect(t('de', 'stats.points', { n: 2 })).toBe('2 Werte');
+    expect(t('de', 'stats.points', { n: 1 })).toBe('1 Wert');
+    expect(t('de', 'dashboard.days_ago', { days: 1 })).toBe('vor 1 Tag');
+    expect(t('de', 'dashboard.days_ago', { days: 5 })).toBe('vor 5 Tagen');
+    expect(t('en', 'data.undone_kept', { n: 1, kept: 2 })).toBe(
+      'Import undone: 1 record deleted. 2 were kept because records were added to them since.'
+    );
+  });
+
+  it('shows no count in the chip while offline', () => {
+    for (const lang of Object.keys(LOCALES) as Lang[])
+      expect(t(lang, 'sync.chip_offline_pending', { n: 1 })).not.toMatch(/\d/);
+  });
+});
+
 describe('messages with placeholders', () => {
   // Every message of the list, dashboard, task, scan and label pages must
   // format in every language without leaving a raw placeholder behind.
