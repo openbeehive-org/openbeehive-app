@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Version 0.5.0. Records can be corrected and deleted, photos move out of the
+## [0.5.0] - 2026-11-21
+
+Records can be corrected and deleted, photos move out of the
 database into blob storage, accounts get password reset, deletion and member
 management, and sync becomes robust against bad changes, wrong device clocks
 and restored backups. Installed 0.4.x apps keep working with this server.
@@ -518,7 +520,8 @@ First public release. 🐝
   Docker image for the cloud profile.
 - **Multi-language UI:** English, German, French, Spanish, Italian.
 
-[Unreleased]: https://github.com/openbeehive-org/openbeehive-app/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/openbeehive-org/openbeehive-app/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.5.0
 [0.4.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.4.1
 [0.3.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.3.1
 [0.3.0]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.3.0
