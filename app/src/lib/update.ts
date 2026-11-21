@@ -67,7 +67,7 @@ export function watchForUpdates(): () => void {
     if (Date.now() - lastCheck < CHECK_INTERVAL_MS) return;
     lastCheck = Date.now();
     // Failing here only means the check is repeated the next time.
-    registration?.update().catch((err) => console.debug('update check failed', err));
+    registration?.update().catch(() => undefined);
   };
 
   sw.addEventListener('message', onMessage);

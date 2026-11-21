@@ -325,7 +325,6 @@
     "stat_open": "Open tasks",
     "due": "Due inspections",
     "next_tasks": "Upcoming tasks",
-    "recent": "Recent inspections",
     "honey_season": "Honey this season",
     "never": "never",
     "days_ago": "{days}d ago",
@@ -615,12 +614,9 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "kg": "kg",
-    "confirm_delete": "Delete this? This cannot be undone.",
     "saving": "Saving…",
     "save_failed": "Could not save: {msg}",
-    "syncing": "Syncing your data…",
-    "volatile_store": "Storage is unavailable — changes will not persist on this device."
+    "syncing": "Syncing your data…"
   },
   "pk": {
     "title": "Passkeys",

@@ -137,10 +137,13 @@ describe('removing a workspace from the device', () => {
   });
 
   it('does nothing where there is no IndexedDB, or for a memory store', async () => {
-    await removeFileStore('org1');
+    expect(typeof indexedDB).toBe('undefined'); // plain node
+    await expect(removeFileStore('org1')).resolves.toBeUndefined();
     const memory = new MemoryFileStore();
     await memory.put(meta('p1'), blob('abc'));
-    await removeFileStore('org1', memory);
+    await expect(removeFileStore('org1', memory)).resolves.toBeUndefined();
+    // A memory store is gone with the page anyway; it is left as it is.
+    expect((await memory.list()).map((m) => m.id)).toEqual(['p1']);
   });
 });
 

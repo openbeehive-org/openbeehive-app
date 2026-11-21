@@ -111,18 +111,6 @@
     --warn-bg: #f6e3b4;
     --warn-text: #5a3d00;
     --shadow: rgb(44 35 22 / 0.25);
-
-    /* Brand palette names from before the tokens existed. They follow the
-       theme so styles that still use them stay readable in dark mode. */
-    --cream: var(--bg);
-    --cream2: var(--surface);
-    --ink: var(--text);
-    --ink-soft: var(--text-soft);
-    --line: var(--border);
-    --moss: var(--ok);
-    --honey: #c77f22;
-    --honey-d: #a4641a;
-    --honey-l: #e9a744;
   }
   /* data-theme is set by static/theme-init.js before the first paint and
      kept up to date by lib/theme.ts. */
@@ -143,8 +131,6 @@
     --warn-bg: #4a3a12;
     --warn-text: #f6e3b4;
     --shadow: rgb(0 0 0 / 0.5);
-
-    --honey-d: var(--accent-text); /* used as a text colour */
   }
   :global(*) {
     box-sizing: border-box;

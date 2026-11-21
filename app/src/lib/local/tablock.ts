@@ -1,7 +1,6 @@
-// One tab at a time owns the local database. The OPFS file can only be
-// opened once, and a second tab used to fall back to an empty in-memory
-// database whose writes were gone on reload. Instead the tab that does not
-// get the lock shows a notice, and "Use it here" takes the lock over.
+// One tab at a time owns the local database: the OPFS file can only be
+// opened once. The tab that does not get the lock shows a notice, and "Use
+// it here" takes the lock over.
 //
 // Web Locks does the bookkeeping: the owner holds an exclusive lock for as
 // long as it lives; a takeover requests the same lock with `steal`, which

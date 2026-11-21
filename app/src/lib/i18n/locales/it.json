@@ -325,7 +325,6 @@
     "stat_open": "Attività aperte",
     "due": "Visite in scadenza",
     "next_tasks": "Prossime attività",
-    "recent": "Visite recenti",
     "honey_season": "Miele in questa stagione",
     "never": "mai",
     "days_ago": "{days} g fa",
@@ -615,12 +614,9 @@
     "save": "Salva",
     "cancel": "Annulla",
     "delete": "Elimina",
-    "kg": "kg",
-    "confirm_delete": "Eliminare questo? L'operazione non può essere annullata.",
     "saving": "Salvataggio…",
     "save_failed": "Salvataggio non riuscito: {msg}",
-    "syncing": "Sincronizzazione dei dati…",
-    "volatile_store": "Archiviazione non disponibile: le modifiche non verranno conservate su questo dispositivo."
+    "syncing": "Sincronizzazione dei dati…"
   },
   "pk": {
     "title": "Passkeys",

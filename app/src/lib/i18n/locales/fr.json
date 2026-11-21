@@ -325,7 +325,6 @@
     "stat_open": "Tâches ouvertes",
     "due": "Visites à effectuer",
     "next_tasks": "Tâches à venir",
-    "recent": "Visites récentes",
     "honey_season": "Miel cette saison",
     "never": "jamais",
     "days_ago": "il y a {days} j",
@@ -615,12 +614,9 @@
     "save": "Enregistrer",
     "cancel": "Annuler",
     "delete": "Supprimer",
-    "kg": "kg",
-    "confirm_delete": "Supprimer ceci ? Cette action est irréversible.",
     "saving": "Enregistrement…",
     "save_failed": "Échec de l’enregistrement : {msg}",
-    "syncing": "Synchronisation de vos données…",
-    "volatile_store": "Le stockage est indisponible — les modifications ne seront pas conservées sur cet appareil."
+    "syncing": "Synchronisation de vos données…"
   },
   "pk": {
     "title": "Passkeys",

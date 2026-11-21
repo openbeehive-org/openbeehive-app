@@ -325,7 +325,6 @@
     "stat_open": "Tareas abiertas",
     "due": "Inspecciones pendientes",
     "next_tasks": "Próximas tareas",
-    "recent": "Inspecciones recientes",
     "honey_season": "Miel esta temporada",
     "never": "nunca",
     "days_ago": "hace {days} d",
@@ -615,12 +614,9 @@
     "save": "Guardar",
     "cancel": "Cancelar",
     "delete": "Eliminar",
-    "kg": "kg",
-    "confirm_delete": "¿Eliminar esto? Esta acción no se puede deshacer.",
     "saving": "Guardando…",
     "save_failed": "No se pudo guardar: {msg}",
-    "syncing": "Sincronizando tus datos…",
-    "volatile_store": "El almacenamiento no está disponible: los cambios no se conservarán en este dispositivo."
+    "syncing": "Sincronizando tus datos…"
   },
   "pk": {
     "title": "Passkeys",

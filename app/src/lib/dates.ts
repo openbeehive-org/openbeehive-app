@@ -3,8 +3,7 @@
 //
 // Records store an ISO timestamp. A date-only entry is stored as local noon,
 // so it stays on the same calendar day for readers up to twelve hours east or
-// west of the writer, where UTC midnight used to slip to the previous day west
-// of Greenwich.
+// west of the writer.
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -29,10 +28,10 @@ export function fromDateInput(value: string): string {
 }
 
 /**
- * Parses a stored value as the calendar day it was meant as. Two older forms
- * name a day rather than an instant and are read as that local day: a bare
- * `YYYY-MM-DD` (imports) and exactly UTC midnight, which is how date-only
- * entries were stored before they moved to local noon.
+ * Parses a stored value as the calendar day it was meant as. Two forms name
+ * a day rather than an instant and are read as that local day: a bare
+ * `YYYY-MM-DD` (imports) and exactly UTC midnight (date-only entries written
+ * by app versions before 0.5).
  */
 export function parseStored(value: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.0+)?Z)?$/.exec(value);

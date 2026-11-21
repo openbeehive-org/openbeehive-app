@@ -325,7 +325,6 @@
     "stat_open": "Offene Aufgaben",
     "due": "Fällige Durchsichten",
     "next_tasks": "Anstehende Aufgaben",
-    "recent": "Letzte Durchsichten",
     "honey_season": "Honig diese Saison",
     "never": "noch nie",
     "days_ago": "vor {days} T.",
@@ -615,12 +614,9 @@
     "save": "Speichern",
     "cancel": "Abbrechen",
     "delete": "Löschen",
-    "kg": "kg",
-    "confirm_delete": "Wirklich löschen? Das kann nicht rückgängig gemacht werden.",
     "saving": "Wird gespeichert…",
     "save_failed": "Speichern fehlgeschlagen: {msg}",
-    "syncing": "Daten werden synchronisiert…",
-    "volatile_store": "Speicher nicht verfügbar — Änderungen bleiben auf diesem Gerät nicht erhalten."
+    "syncing": "Daten werden synchronisiert…"
   },
   "pk": {
     "title": "Passkeys",
