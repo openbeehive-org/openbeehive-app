@@ -132,6 +132,14 @@ export async function migrateLocal(db: LocalDB) {
       id TEXT PRIMARY KEY, entity TEXT, entity_id TEXT, scope_id TEXT,
       op INTEGER, payload TEXT, hlc TEXT, author_id TEXT,
       code TEXT, reason TEXT, failed_at TEXT)`);
+
+  // Changes received from the server that this device could not merge. They
+  // are kept here instead of stopping every later pull at the same place,
+  // and listed with the sync problems until the user discards them.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS inbox_failed (
+      id TEXT PRIMARY KEY, entity TEXT, entity_id TEXT, op INTEGER,
+      payload TEXT, hlc TEXT, error TEXT, failed_at TEXT)`);
 }
 
 // Add any missing columns to an existing table (idempotent; SQLite ALTER TABLE

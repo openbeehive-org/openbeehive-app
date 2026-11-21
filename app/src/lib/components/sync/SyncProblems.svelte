@@ -37,15 +37,24 @@
     }
   }
   const retry = (id?: string) => run(() => retryFailed(id));
-  function discard(id: string) {
-    if (!confirm($_('sync.problems_discard_confirm'))) return;
-    void run(() => discardFailed(id));
+  function discard(f: FailedChange) {
+    const ask =
+      f.kind === 'unapplied'
+        ? 'sync.problems_discard_unapplied_confirm'
+        : 'sync.problems_discard_confirm';
+    if (!confirm($_(ask))) return;
+    void run(() => discardFailed(f.id));
   }
 
   const title = (f: FailedChange) =>
-    $_(f.op === 2 ? 'sync.problems_deleted' : 'sync.problems_changed', {
-      values: { entity: $_(entityKey(f.entity)) }
-    });
+    $_(
+      f.kind === 'unapplied'
+        ? 'sync.problems_unapplied'
+        : f.op === 2
+          ? 'sync.problems_deleted'
+          : 'sync.problems_changed',
+      { values: { entity: $_(entityKey(f.entity)) } }
+    );
 </script>
 
 <div class="problems">
@@ -65,17 +74,19 @@
             >
           </div>
           <div class="actions">
-            <button type="button" disabled={busy} onclick={() => retry(f.id)}
-              >{$_('sync.problems_retry')}</button
-            >
-            <button type="button" class="danger" disabled={busy} onclick={() => discard(f.id)}
+            {#if f.kind === 'refused'}
+              <button type="button" disabled={busy} onclick={() => retry(f.id)}
+                >{$_('sync.problems_retry')}</button
+              >
+            {/if}
+            <button type="button" class="danger" disabled={busy} onclick={() => discard(f)}
               >{$_('sync.problems_discard')}</button
             >
           </div>
         </li>
       {/each}
     </ul>
-    {#if items.length > 1}
+    {#if items.filter((f) => f.kind === 'refused').length > 1}
       <button type="button" disabled={busy} onclick={() => retry()}
         >{$_('sync.problems_retry_all')}</button
       >

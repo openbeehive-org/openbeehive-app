@@ -49,7 +49,8 @@ const CODES = [
   'invalid',
   'clock_ahead',
   'too_large',
-  'unknown_entity'
+  'unknown_entity',
+  'unapplied'
 ];
 const ENTITIES = [
   'apiary',

@@ -56,7 +56,7 @@ export type SyncState = 'idle' | 'syncing' | 'offline' | 'error' | 'signed_out' 
 export interface SyncStatus {
   state: SyncState;
   pending: number; // local changes waiting to be uploaded
-  failed: number; // changes the server refused; see listFailed()
+  failed: number; // sync problems: refused uploads and unmergeable downloads; see listFailed()
   lastSyncedAt: number | null; // unix ms of the last complete run on this device
 }
 
@@ -66,16 +66,17 @@ export const syncStatus: Readable<SyncStatus> = { subscribe: status.subscribe };
 const setState = (state: SyncState) => status.update((s) => ({ ...s, state }));
 
 async function counts(db: LocalDB) {
-  const r = await db.get<{ pending: number; failed: number }>(
+  const r = await db.get<{ pending: number; refused: number; unapplied: number }>(
     `SELECT (SELECT COUNT(*) FROM outbox) AS pending,
-            (SELECT COUNT(*) FROM outbox_failed) AS failed`
+            (SELECT COUNT(*) FROM outbox_failed) AS refused,
+            (SELECT COUNT(*) FROM inbox_failed) AS unapplied`
   );
-  return { pending: r?.pending ?? 0, failed: r?.failed ?? 0 };
+  return { pending: r?.pending ?? 0, refused: r?.refused ?? 0, unapplied: r?.unapplied ?? 0 };
 }
 
 async function refreshCounts() {
   const c = await counts(await getDB());
-  status.update((s) => ({ ...s, ...c }));
+  status.update((s) => ({ ...s, pending: c.pending, failed: c.refused + c.unapplied }));
 }
 
 // Local changes that have not reached the server: waiting or refused. What
@@ -83,7 +84,7 @@ async function refreshCounts() {
 // unsynced; ask before doing it when this is not 0.
 export async function unsentCount(): Promise<number> {
   const c = await counts(await getDB());
-  return c.pending + c.failed;
+  return c.pending + c.refused;
 }
 
 // --- sync_meta: cursor and bookkeeping ---
@@ -504,7 +505,11 @@ async function applySnapshotRow(db: LocalDB, snap: SnapshotRow) {
     const changed = merged(snap.entity, snap.entityId, () =>
       mergeSnapshot(row, fields, stamps, setCols)
     );
-    if (changed) await storeMerged(db, snap.entity, snap.entityId, row, changed, fields);
+    if (Array.isArray(changed)) {
+      await storeMerged(db, snap.entity, snap.entityId, row, changed, fields);
+    } else {
+      await park(db, snap.entity, snap.entityId, ChangeOp.UPSERT, snap.payloadJson, '', changed);
+    }
   });
   // Every later local stamp must sort after what this row carries.
   for (const stamp of Object.values(stamps)) hlc.recv(stamp);
@@ -770,18 +775,46 @@ function remoteFields(ch: Change, cols: Set<string>): Record<string, unknown> | 
   return fields;
 }
 
-// Runs the merge of one remote change or snapshot row. The merge itself
-// touches no database, so an exception from it is about the data of that one
-// change: the change is skipped (and logged), the ones behind it are applied
-// and the cursor moves on. Letting it escape would stop every later pull of
-// the workspace at the same change, on every device.
-function merged(entity: string, id: string, merge: () => string[]): string[] | null {
+// Runs the merge of one remote change or snapshot row and returns the
+// columns to store, or the error. The merge itself touches no database, so
+// an exception from it is about the data of that one change: the caller
+// parks it (park), the ones behind it are applied and the cursor moves on.
+// Letting it escape would stop every later pull of the workspace at the
+// same change, on every device.
+function merged(entity: string, id: string, merge: () => string[]): string[] | string {
   try {
     return merge();
   } catch (e) {
-    console.warn('skipping remote change that cannot be merged:', entity, id, e);
-    return null;
+    console.warn('parking remote change that cannot be merged:', entity, id, e);
+    return String(e);
   }
+}
+
+// Keeps a received change this device could not merge, for the sync
+// problems list. The same change received again replaces its entry.
+async function park(
+  db: LocalDB,
+  entity: string,
+  id: string,
+  op: number,
+  payload: string,
+  stamp: string,
+  error: string
+) {
+  await db.exec(
+    `INSERT OR REPLACE INTO inbox_failed (id, entity, entity_id, op, payload, hlc, error, failed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      `${entity}\n${id}\n${stamp || 'snapshot'}`,
+      entity,
+      id,
+      op,
+      payload,
+      stamp,
+      error.slice(0, 500),
+      new Date().toISOString()
+    ]
+  );
 }
 
 // Per-field LWW + OR-Set: only newer fields are applied, set columns are
@@ -807,7 +840,11 @@ async function applyRemote(db: LocalDB, ch: Change) {
   await exclusive(async () => {
     const row = await loadRow(db, ch.entity, ch.entityId);
     const changed = merged(ch.entity, ch.entityId, () => mergeFields(row, fields, setCols, ch.hlc));
-    if (changed) await storeMerged(db, ch.entity, ch.entityId, row, changed, fields);
+    if (Array.isArray(changed)) {
+      await storeMerged(db, ch.entity, ch.entityId, row, changed, fields);
+    } else {
+      await park(db, ch.entity, ch.entityId, ch.op, ch.payloadJson, ch.hlc, changed);
+    }
   });
   // A stamp the clock cannot follow (too far ahead) is still merged above;
   // it just does not drag this device's clock along.
@@ -818,22 +855,28 @@ async function applyRemote(db: LocalDB, ch: Change) {
 
 export interface FailedChange {
   id: string;
+  // refused: a local change the server did not accept (can be retried);
+  // unapplied: a change from the server this device could not merge.
+  kind: 'refused' | 'unapplied';
   entity: string;
   entityId: string;
   op: number;
-  code: string; // machine-readable cause, e.g. "wrong_tenant", "invalid"
-  reason: string; // the server's plain-English explanation
+  code: string; // machine-readable cause, e.g. "wrong_tenant", "invalid"; "unapplied"
+  reason: string; // the server's plain-English explanation, or the local error
   failedAt: string; // ISO timestamp
 }
 
 export async function listFailed(): Promise<FailedChange[]> {
   const db = await getDB();
   const rows = await db.all<Record<string, string | number>>(
-    `SELECT id, entity, entity_id, op, code, reason, failed_at FROM outbox_failed
+    `SELECT id, 'refused' AS kind, entity, entity_id, op, code, reason, failed_at, hlc FROM outbox_failed
+     UNION ALL
+     SELECT id, 'unapplied', entity, entity_id, op, 'unapplied', error, failed_at, hlc FROM inbox_failed
      ORDER BY failed_at DESC, hlc DESC`
   );
   return rows.map((r) => ({
     id: String(r.id),
+    kind: r.kind === 'unapplied' ? 'unapplied' : 'refused',
     entity: String(r.entity),
     entityId: String(r.entity_id),
     op: Number(r.op),
@@ -861,12 +904,19 @@ export async function retryFailed(id?: string) {
   await syncNow();
 }
 
-// Gives up on uploading one refused change (or all). The record itself
-// stays on this device as it is; it just never reaches the server.
+// Gives up on uploading one refused change (or all), or on a received
+// change that could not be applied. The records on this device stay as they
+// are.
 export async function discardFailed(id?: string) {
   const db = await getDB();
-  if (id === undefined) await db.batch([{ sql: `DELETE FROM outbox_failed` }]);
-  else await db.batch([{ sql: `DELETE FROM outbox_failed WHERE id = ?`, params: [id] }]);
+  if (id === undefined) {
+    await db.batch([{ sql: `DELETE FROM outbox_failed` }, { sql: `DELETE FROM inbox_failed` }]);
+  } else {
+    await db.batch([
+      { sql: `DELETE FROM outbox_failed WHERE id = ?`, params: [id] },
+      { sql: `DELETE FROM inbox_failed WHERE id = ?`, params: [id] }
+    ]);
+  }
   await refreshCounts();
 }
 
