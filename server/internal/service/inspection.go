@@ -231,9 +231,11 @@ func (s *InspectionService) AddInspectionPhoto(ctx context.Context, req *wv1.Add
 	if len(found) == 0 {
 		return nil, writeErr(storage.ErrNotFound)
 	}
-	if ctx, err = photos.prepareInline(ctx, id.OrgID, []string{req.Photo}, 1); err != nil {
+	ctx, release, err := photos.prepareInline(ctx, id.OrgID, []string{req.Photo}, 1)
+	if err != nil {
 		return nil, writeErr(err)
 	}
+	defer release()
 	var out *wv1.Inspection
 	err = s.w.Run(ctx, id, func(t *txWriter) error {
 		cur, err := t.row("inspection", req.InspectionId)

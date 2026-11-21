@@ -392,12 +392,17 @@ func (s *SyncService) Push(
 	}
 	now := time.Now()
 	ctx = withPhotos(ctx, s.photos)
+	candidates, err := precheck(req.Changes, now, client.legacy())
+	if err != nil {
+		return nil, err
+	}
 	// Inline photos of 0.4.x apps are decoded and stored before the write
 	// lock is taken (see prepareInline).
-	ctx, err = s.photos.prepareInline(ctx, id.OrgID, inlineImages(req.Changes), maxThumbsPerPush)
+	ctx, release, err := s.photos.prepareInline(ctx, id.OrgID, inlineImages(candidates), maxThumbsPerPush)
 	if err != nil {
 		return nil, internalErr(err)
 	}
+	defer release()
 
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -422,9 +427,8 @@ func (s *SyncService) Push(
 			return nil, internalErr(err)
 		}
 		if cerr != nil {
-			if cerr.code == rejClockAhead && client.legacy() {
-				return nil, legacyClockAhead(cerr)
-			}
+			// A 0.4.x app's change stamped too far ahead never gets here:
+			// precheck fails its Push.
 			rejected = append(rejected, &wv1.RejectedChange{
 				Index: int32(i), Code: cerr.code, Reason: cerr.reason,
 			})
@@ -441,6 +445,28 @@ func (s *SyncService) Push(
 		_ = s.hlc.Recv(stamp)
 	}
 	return &wv1.PushResponse{Rejected: rejected, ServerTimeMs: now.UnixMilli()}, nil
+}
+
+// precheck runs the checks that need no database before anything else, so
+// a 0.4.x Push that fails as a whole fails before anything is stored. It
+// returns the changes whose inline images are worth preparing: those not
+// already refused here.
+func precheck(changes []*wv1.Change, now time.Time, legacy bool) ([]*wv1.Change, error) {
+	var out []*wv1.Change
+	for _, ch := range changes {
+		if _, cerr := checkChange(ch, now); cerr != nil {
+			if cerr.code == rejClockAhead && legacy {
+				return nil, legacyClockAhead(cerr)
+			}
+			continue
+		}
+		// Rows that carry inline images (hives, inspections) never live in
+		// a personal scope or under a personal id.
+		if !isPersonal(ch.EntityId) && !isPersonal(ch.ScopeId) {
+			out = append(out, ch)
+		}
+	}
+	return out, nil
 }
 
 // legacyClockAhead fails the Push of a 0.4.x app that sent a change stamped

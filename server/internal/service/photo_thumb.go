@@ -5,11 +5,15 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/jpeg"
 	_ "image/png" // PNG input
+	"log"
+	"slices"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -103,9 +107,12 @@ func shrink(src image.Image, edge int) *image.RGBA {
 // carrying them, which holds the global write lock. Decoding an image and
 // writing its blob are slow, so both happen before: prepareInline does the
 // work for every inline image of a request first, and createFromInline only
-// records what was prepared. A prepared blob whose change is then refused
-// or turns out to be a replay has no record; the sweep removes it like any
-// other blob without one.
+// records what was prepared. When the request is over, the release function
+// prepareInline returns deletes every prepared blob that no photo record
+// uses: the change carrying it was refused, was a replay, or the request
+// failed. A prepared blob's key is derived from the workspace and the image
+// content, so a 0.4.x app that retries a failed Push replaces the blobs of
+// its earlier attempt instead of adding new ones.
 
 // preparedImage is an inline image whose blob is already stored.
 type preparedImage struct {
@@ -137,19 +144,25 @@ func (m preparedImages) take(inline string) (preparedImage, bool) {
 // prepareInline stores the blobs of the given inline images and makes their
 // thumbnails, at most maxThumbs of them, and returns a context that hands
 // them to createFromInline. Values that are not JPEG, PNG or WebP images
-// are skipped; createFromInline leaves those alone anyway.
-func (p *Photos) prepareInline(ctx context.Context, orgID string, inlines []string, maxThumbs int) (context.Context, error) {
+// are skipped; createFromInline leaves those alone anyway. The caller must
+// call release once the transaction that records the photos has committed
+// or rolled back.
+func (p *Photos) prepareInline(ctx context.Context, orgID string, inlines []string, maxThumbs int) (_ context.Context, release func(), _ error) {
+	release = func() {}
 	if p == nil || p.blobs == nil || len(inlines) == 0 {
-		return ctx, nil
+		return ctx, release, nil
 	}
 	known, err := p.knownImages(ctx, orgID, inlines)
 	if err != nil {
-		return ctx, err
+		return ctx, release, err
 	}
 	out := preparedImages{}
 	thumbs := map[string]string{}
+	var keys []string
+	release = func() { p.releasePrepared(context.WithoutCancel(ctx), orgID, keys) }
 	for _, inline := range inlines {
-		if known[legacyKey(inline)] {
+		k := legacyKey(inline)
+		if known[k] {
 			continue // a replay, or seen before: converted under the lock if at all
 		}
 		data := decodeDataURL(inline, MaxPhotoBytes)
@@ -157,20 +170,83 @@ func (p *Photos) prepareInline(ctx context.Context, orgID string, inlines []stri
 		if typ == "" {
 			continue
 		}
-		k := legacyKey(inline)
 		thumb, made := thumbs[k]
 		if !made && len(thumbs) < maxThumbs {
 			thumb = makeThumb(data)
 			thumbs[k] = thumb
 		}
+		// The n-th copy of an image in a request gets its own blob, so two
+		// records never share one.
 		img := preparedImage{id: uuid.NewString(), typ: typ, thumb: thumb, size: len(data)}
-		img.key = blob.PhotoKey(orgID, img.id)
+		img.key = blob.PhotoKey(orgID, fmt.Sprintf("inline:%s:%d", k, len(out[k])))
+		p.hold(img.key)
+		keys = append(keys, img.key)
 		if err := p.blobs.Put(ctx, img.key, bytes.NewReader(data), int64(len(data)), typ); err != nil {
-			return ctx, err
+			release()
+			return ctx, func() {}, err
 		}
 		out[k] = append(out[k], img)
 	}
-	return context.WithValue(ctx, preparedKey{}, out), nil
+	return context.WithValue(ctx, preparedKey{}, out), release, nil
+}
+
+// hold marks a prepared blob as in use by a running request.
+func (p *Photos) hold(key string) {
+	p.inflightMu.Lock()
+	defer p.inflightMu.Unlock()
+	if p.inflight == nil {
+		p.inflight = map[string]int{}
+	}
+	p.inflight[key]++
+}
+
+// releasePrepared ends a request's hold on its prepared blobs and deletes
+// those that neither a photo record nor another running request uses. Two
+// requests carrying the same image prepare the same key; the lock keeps one
+// from deleting the blob after the other has stored it.
+func (p *Photos) releasePrepared(ctx context.Context, orgID string, keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+	p.inflightMu.Lock()
+	defer p.inflightMu.Unlock()
+	var free []string
+	for _, k := range keys {
+		if p.inflight[k]--; p.inflight[k] <= 0 {
+			delete(p.inflight, k)
+			free = append(free, k)
+		}
+	}
+	if len(free) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	q, args, err := sqlx.In(`SELECT blob_key FROM photo WHERE organization_id = ? AND blob_key IN (?)`, orgID, free)
+	var used []string
+	if err == nil {
+		err = p.db.SelectContext(ctx, &used, p.db.Rebind(q), args...)
+	}
+	if err != nil {
+		log.Printf("photos: unused prepared blobs are left to the sweep: %v", err)
+		return
+	}
+	for _, k := range free {
+		if slices.Contains(used, k) {
+			continue
+		}
+		if err := p.blobs.Delete(ctx, k); err != nil {
+			log.Printf("photos: unused prepared blob is left to the sweep: %v", err)
+		}
+	}
+}
+
+// blobInUse reports whether a photo record already stores its image under
+// key. A prepared blob is used for one record only.
+func blobInUse(ctx context.Context, tx *sqlx.Tx, orgID, key string) (bool, error) {
+	var n int
+	err := tx.GetContext(ctx, &n, tx.Rebind(`SELECT COUNT(*) FROM photo WHERE organization_id = ? AND blob_key = ?`), orgID, key)
+	return n > 0, err
 }
 
 // knownImages reports which of the inline images already have a photo

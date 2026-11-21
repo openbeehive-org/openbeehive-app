@@ -192,6 +192,15 @@ func (p *Photos) createFromInline(ctx context.Context, tx *sqlx.Tx, cause *wv1.C
 		return nil
 	}
 	img, ok := preparedFrom(ctx).take(inline)
+	if ok {
+		// Another request carrying the same image may have recorded the
+		// prepared blob first.
+		inUse, err := blobInUse(ctx, tx, orgID, img.key)
+		if err != nil {
+			return err
+		}
+		ok = !inUse
+	}
 	if !ok {
 		// Not prepared (the start-up conversion): do the work here.
 		data := decodeDataURL(inline, MaxPhotoBytes)

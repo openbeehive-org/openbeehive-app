@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -78,6 +79,10 @@ type Photos struct {
 	// OrphanGrace is how long a blob that no photo row knows is kept (see
 	// photo_sweep.go).
 	OrphanGrace time.Duration
+	// inflight counts, per blob key, the requests that prepared that blob
+	// and have not finished yet (see prepareInline).
+	inflightMu sync.Mutex
+	inflight   map[string]int
 }
 
 func NewPhotos(db *sqlx.DB, hlc *wsync.HLC, blobs blob.Store) *Photos {
