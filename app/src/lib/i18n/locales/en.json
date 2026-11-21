@@ -581,7 +581,10 @@
     "register": "Treatment register",
     "print_register": "Print register",
     "register_printed": "Printed on {date}",
-    "print_blocked": "The print window was blocked. Allow pop-ups for this site and try again."
+    "print_blocked": "The print window was blocked. Allow pop-ups for this site and try again.",
+    "register_help": "Print the register for the whole workspace, one apiary or one year. Each hive's page prints its own.",
+    "all_years": "All years",
+    "register_empty": "No treatments recorded for this selection."
   },
   "temperament": {
     "0": "—",

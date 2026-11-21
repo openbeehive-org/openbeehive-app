@@ -581,7 +581,10 @@
     "register": "Registre des traitements",
     "print_register": "Imprimer le registre",
     "register_printed": "Imprimé le {date}",
-    "print_blocked": "La fenêtre d'impression a été bloquée. Autorisez les fenêtres pop-up pour ce site, puis réessayez."
+    "print_blocked": "La fenêtre d'impression a été bloquée. Autorisez les fenêtres pop-up pour ce site, puis réessayez.",
+    "register_help": "Imprimez le registre de tout l'espace, d'un rucher ou d'une année. La page de chaque ruche imprime le sien.",
+    "all_years": "Toutes les années",
+    "register_empty": "Aucun traitement enregistré pour cette sélection."
   },
   "temperament": {
     "0": "—",

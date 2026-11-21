@@ -581,7 +581,10 @@
     "register": "Registro dei trattamenti",
     "print_register": "Stampa registro",
     "register_printed": "Stampato il {date}",
-    "print_blocked": "La finestra di stampa è stata bloccata. Consenti i pop-up per questo sito e riprova."
+    "print_blocked": "La finestra di stampa è stata bloccata. Consenti i pop-up per questo sito e riprova.",
+    "register_help": "Stampa il registro di tutto lo spazio, di un apiario o di un anno. La pagina di ogni arnia stampa il proprio.",
+    "all_years": "Tutti gli anni",
+    "register_empty": "Nessun trattamento registrato per questa selezione."
   },
   "temperament": {
     "0": "—",

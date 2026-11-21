@@ -31,6 +31,7 @@
   } from '#lib/data/importer.js';
   import { formatDate } from '#lib/dates.js';
   import { syncStatus } from '#lib/local/sync.js';
+  import TreatmentRegisterSection from './TreatmentRegisterSection.svelte';
   import './settings.css';
 
   let { workspaceName = '', readOnly = false }: { workspaceName?: string; readOnly?: boolean } =
@@ -377,6 +378,9 @@
 
   {#if msg}<p class="st-msg" class:err={msgErr} role="status">{msg}</p>{/if}
 </section>
+
+<!-- Printed records belong with the exports. -->
+<TreatmentRegisterSection />
 
 <style>
   .exports {

@@ -133,3 +133,46 @@ test('the report opens in a print window, translated and in the chosen units', a
   await expect.poll(() => printed.length).toBe(1);
   expect(problems.csp).toEqual([]);
 });
+
+test('the treatment register prints for the whole workspace or one apiary, with the reason', async ({
+  api,
+  device
+}) => {
+  const owner = await api.signUp();
+  const as = api.as(owner);
+  const orchard = await as.createApiary('Orchard Meadow');
+  const wood = await as.createApiary('Beech Wood');
+  await as.createTreatment(await as.createHive(orchard, 'Hive 7'), 'Oxuvar', {
+    reason: 'varroa'
+  });
+  await as.createTreatment(await as.createHive(wood, 'Hive 3'), 'Thymovar', {
+    reason: 'late summer'
+  });
+
+  const { context, page, problems } = await device({ session: owner });
+  await context.addInitScript(() => {
+    window.print = () => {};
+  });
+  await page.goto('/settings');
+  await expectSynced(page);
+  const section = page.locator('#treatment-register');
+  const print = async () => {
+    const opened = context.waitForEvent('page');
+    await section.getByRole('button', { name: 'Print register' }).click();
+    return opened;
+  };
+
+  const all = await print();
+  await expect(all.getByRole('columnheader', { name: 'Reason' }).first()).toBeVisible();
+  await expect(all.getByRole('heading', { name: 'Hive 3 · Beech Wood' })).toBeVisible();
+  await expect(all.getByRole('heading', { name: 'Hive 7 · Orchard Meadow' })).toBeVisible();
+  await expect(all.getByRole('cell', { name: 'late summer' })).toBeVisible();
+  await all.close();
+
+  await section.getByLabel('Apiary').selectOption({ label: 'Orchard Meadow' });
+  const one = await print();
+  await expect(one.getByRole('heading', { name: 'Hive 7 · Orchard Meadow' })).toBeVisible();
+  await expect(one.getByRole('heading', { name: /Hive 3/ })).toHaveCount(0);
+  await one.close();
+  expect(problems.csp).toEqual([]);
+});

@@ -581,7 +581,10 @@
     "register": "Registro de tratamientos",
     "print_register": "Imprimir registro",
     "register_printed": "Impreso el {date}",
-    "print_blocked": "Se bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio e inténtalo de nuevo."
+    "print_blocked": "Se bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio e inténtalo de nuevo.",
+    "register_help": "Imprime el registro de todo el espacio, de un colmenar o de un año. La página de cada colmena imprime el suyo.",
+    "all_years": "Todos los años",
+    "register_empty": "No hay tratamientos registrados para esta selección."
   },
   "temperament": {
     "0": "—",

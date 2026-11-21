@@ -581,7 +581,10 @@
     "register": "Bestandsbuch",
     "print_register": "Bestandsbuch drucken",
     "register_printed": "Gedruckt am {date}",
-    "print_blocked": "Das Druckfenster wurde blockiert. Erlaube Pop-ups für diese Seite und versuche es erneut."
+    "print_blocked": "Das Druckfenster wurde blockiert. Erlaube Pop-ups für diese Seite und versuche es erneut.",
+    "register_help": "Drucke das Bestandsbuch für den ganzen Arbeitsbereich, einen Standort oder ein Jahr. Jede Beute druckt ihres auf ihrer eigenen Seite.",
+    "all_years": "Alle Jahre",
+    "register_empty": "Für diese Auswahl sind keine Behandlungen erfasst."
   },
   "temperament": {
     "0": "—",

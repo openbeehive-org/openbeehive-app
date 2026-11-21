@@ -398,6 +398,14 @@ export const treatments = {
       [apiaryId]
     );
   },
+  // Every treatment of the workspace's hives, for the workspace register.
+  async listAll() {
+    const db = await getDB();
+    return db.all<any>(
+      `SELECT t.* FROM treatment t JOIN hive h ON h.id = t.hive_id
+       WHERE t.deleted = 0 AND h.deleted = 0 ORDER BY t.date DESC`
+    );
+  },
   update: (id: string, apiaryId: string, fields: Record<string, unknown>) =>
     patch('treatment', id, apiaryId, fields),
   remove: (id: string, apiaryId: string) => remove('treatment', id, apiaryId)
