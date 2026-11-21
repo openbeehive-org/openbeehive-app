@@ -39,11 +39,7 @@
   $effect(() => {
     const search = listStateToSearch({ query, status, apiary, sort });
     if (search === location.search) return;
-    void goto(`${location.pathname}${search}`, {
-      replaceState: true,
-      keepFocus: true,
-      noScroll: true
-    });
+    void goto(`${location.pathname}${search}`, { replace: true, reset: false });
   });
 
   const STATUSES = ['1', '2', '3', '4', '5'];

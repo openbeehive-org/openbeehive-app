@@ -42,7 +42,9 @@ test('the hive list keeps its search, filter and sort after opening a hive', asy
   const { page } = await device({ session: account });
   await page.goto('/hives');
   await expectSynced(page);
-  await page.getByLabel('Search').fill('beta');
+  // Typing keeps the field focused while the URL follows along.
+  await page.getByLabel('Search').pressSequentially('beta');
+  await expect(page.getByLabel('Search')).toBeFocused();
   await page.getByLabel('Sort').selectOption('apiary');
   await expect(page).toHaveURL(/q=beta/);
   await page.getByRole('link', { name: /Beta/ }).click();
