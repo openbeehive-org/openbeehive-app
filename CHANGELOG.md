@@ -65,7 +65,8 @@ Details are in the
   above.
 - **Device clocks.** Changes stamped more than 10 minutes ahead of the
   server's time are refused. Updated apps correct their clock and send them
-  again; a 0.4.x app with a clock that runs ahead loses such changes, so
+  again. A 0.4.x app with a clock that runs ahead keeps its changes but
+  stops uploading until its clock is fixed or the app updates itself, so
   update the app on every device.
 - **Scripts** that call `SyncService` must send `Openbeehive-Sync-Protocol: 1`.
   Update calls change only the fields sent, and `DeleteApiary` fails while
