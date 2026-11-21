@@ -120,7 +120,7 @@ test('the report opens in a print window, translated and in the chosen units', a
   await context.addInitScript(() => {
     window.print = () => (window as unknown as { __e2ePrinted: () => void }).__e2ePrinted();
   });
-  await page.goto('/settings');
+  await page.goto('/settings?tab=data');
   await expectSynced(page);
   const opened = context.waitForEvent('page');
   await page.getByRole('button', { name: 'Report (PDF)' }).click();
@@ -153,7 +153,7 @@ test('the treatment register prints for the whole workspace or one apiary, with 
   await context.addInitScript(() => {
     window.print = () => {};
   });
-  await page.goto('/settings');
+  await page.goto('/settings#treatment-register');
   await expectSynced(page);
   const section = page.locator('#treatment-register');
   const print = async () => {

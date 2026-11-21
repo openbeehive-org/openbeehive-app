@@ -31,7 +31,6 @@
   } from '#lib/data/importer.js';
   import { formatDate } from '#lib/dates.js';
   import { syncStatus } from '#lib/local/sync.js';
-  import TreatmentRegisterSection from './TreatmentRegisterSection.svelte';
   import { errorKey } from '#lib/errors.js';
   import './settings.css';
 
@@ -386,9 +385,6 @@
 
   {#if msg}<p class="st-msg" class:err={msgErr} role="status">{msg}</p>{/if}
 </section>
-
-<!-- Printed records belong with the exports. -->
-<TreatmentRegisterSection />
 
 <style>
   .exports {

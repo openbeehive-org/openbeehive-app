@@ -15,6 +15,7 @@ export const ANCHORS: Record<string, Group> = {
   'delete-workspace': 'workspace',
   'sync-problems': 'data',
   'data-export': 'data',
+  'treatment-register': 'data',
   account: 'account',
   passkeys: 'account',
   'delete-account': 'account'

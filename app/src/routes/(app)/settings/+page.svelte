@@ -11,6 +11,7 @@
   import WorkspaceSection from '#lib/components/settings/WorkspaceSection.svelte';
   import DeleteWorkspace from '#lib/components/settings/DeleteWorkspace.svelte';
   import DataSection from '#lib/components/settings/DataSection.svelte';
+  import TreatmentRegisterSection from '#lib/components/settings/TreatmentRegisterSection.svelte';
   import AccountSection from '#lib/components/settings/AccountSection.svelte';
   import PasskeysSection from '#lib/components/settings/PasskeysSection.svelte';
   import ApiKeysSection from '#lib/components/settings/ApiKeysSection.svelte';
@@ -146,7 +147,8 @@
     <div id="data-export" tabindex="-1">
       <DataSection workspaceName={active?.name ?? ''} readOnly={isDemo} apiKeys={!noLogin} />
     </div>
-    <!-- Workspace-wide records (such as a treatment register) go here. -->
+    <!-- Workspace-wide printed records, after the exports. -->
+    <TreatmentRegisterSection />
   {:else if group === 'account'}
     <div id="account" tabindex="-1">
       <AccountSection {email} orgId={activeOrg} {signedIn} {account} readOnly={isDemo} />

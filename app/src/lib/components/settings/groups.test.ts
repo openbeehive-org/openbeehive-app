@@ -15,6 +15,7 @@ describe('settings groups', () => {
   it('opens the group that holds an anchor', () => {
     expect(groupFor(url('/settings#sync-problems'), GROUPS)).toBe('data');
     expect(groupFor(url('/settings#delete-account'), GROUPS)).toBe('account');
+    expect(groupFor(url('/settings#treatment-register'), GROUPS)).toBe('data');
     expect(groupFor(url('/settings?tab=preferences#sync-problems'), GROUPS)).toBe('data');
   });
 
