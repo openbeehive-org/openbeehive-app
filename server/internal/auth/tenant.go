@@ -47,6 +47,7 @@ func (t *TenantAPI) Routes(rt *Router) {
 	rt.PostJSON("/tenants/members/role", t.setMemberRole)
 	rt.PostJSON("/tenants/leave", t.leave)
 	rt.PostJSON("/auth/accept-invite", t.accept)
+	rt.Get("/auth/invite", t.inviteInfo)
 }
 
 // InstanceHandler serves GET /auth/instance: the onboarding state, every
