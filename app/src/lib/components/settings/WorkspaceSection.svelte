@@ -1,11 +1,11 @@
 <script lang="ts">
   // The account's workspaces: switch, create, and manage the active one
-  // (members, invites, deletion).
+  // (members, invites). Deleting it is offered at the end of the Settings
+  // group, after everything else.
   import { _ } from 'svelte-i18n';
   import { call, openWorkspace, type SessionPayload } from '#lib/account.js';
   import MembersSection from './MembersSection.svelte';
   import InvitesSection from './InvitesSection.svelte';
-  import DeleteWorkspace from './DeleteWorkspace.svelte';
   import type { Workspace } from './members.js';
   import './settings.css';
 
@@ -83,7 +83,6 @@
     <MembersSection orgId={active.id} workspaceName={active.name} {readOnly} />
     {#if isOwner && !readOnly}
       <InvitesSection orgId={active.id} />
-      <DeleteWorkspace workspace={active} />
     {/if}
   {/if}
 </section>

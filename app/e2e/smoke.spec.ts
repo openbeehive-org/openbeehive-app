@@ -73,7 +73,9 @@ function routes(ids: { apiary: string; hive: string }): Route[] {
         await expect(page.getByText('Starting camera…')).toBeHidden();
       }
     },
-    { name: 'settings', path: '/settings', ready: heading('Delete account') },
+    { name: 'settings', path: '/settings?tab=account', ready: heading('Delete account') },
+    { name: 'settings-data', path: '/settings?tab=data', ready: heading('Sync problems') },
+    { name: 'settings-workspace', path: '/settings?tab=workspace', ready: heading('Members') },
     { name: 'login', path: '/login', ready: heading('Sign in'), signedOut: true }
   ];
 }

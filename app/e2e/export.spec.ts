@@ -21,7 +21,7 @@ test('a backup comes back on a new device, with a preview and an undo', async ({
 
   // Export on the device that holds the workspace.
   const first = await device({ session: owner });
-  await first.page.goto('/settings');
+  await first.page.goto('/settings?tab=data');
   await expectSynced(first.page);
   const [download] = await Promise.all([
     first.page.waitForEvent('download'),
@@ -37,7 +37,7 @@ test('a backup comes back on a new device, with a preview and an undo', async ({
   // A wiped device, in a fresh workspace: the import shows what it will do.
   const fresh = await api.signUp();
   const { page } = await device({ session: fresh });
-  await page.goto('/settings');
+  await page.goto('/settings?tab=data');
   await expectSynced(page);
   await page.getByLabel('Choose file…').setInputFiles(file);
   const preview = page.getByRole('region', { name: 'Preview' });
@@ -60,7 +60,7 @@ test('a backup comes back on a new device, with a preview and an undo', async ({
   expect(mine?.id).not.toBe(apiary);
 
   // The same file again changes nothing; undo removes what the import made.
-  await page.goto('/settings');
+  await page.goto('/settings?tab=data');
   await page.getByLabel('Choose file…').setInputFiles(file);
   await expect(preview).toContainText('Nothing to import');
   await preview.getByRole('button', { name: 'Cancel' }).click();
@@ -80,7 +80,7 @@ test('the server copy downloads from Settings and with an API key', async ({
   await as.createApiary('Lime Avenue');
 
   const { page } = await device({ session: owner });
-  await page.goto('/settings');
+  await page.goto('/settings?tab=data');
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Download server copy' }).click()

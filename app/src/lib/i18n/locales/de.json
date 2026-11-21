@@ -68,17 +68,24 @@
   "settings": {
     "title": "Einstellungen",
     "language": "Sprache",
-    "language_help": "Wähle die Sprache der App. Deine Auswahl wird mit deinem Konto gespeichert und gilt auf allen deinen Geräten.",
+    "language_help": "Wähle die Sprache der App. Deine Auswahl wird auf dem Server gespeichert und gilt auf jedem Gerät, das du nutzt.",
     "account": "Konto",
     "user": "Angemeldet als",
     "logout": "Abmelden",
     "copy": "Kopieren",
     "copied": "Kopiert",
-    "import_format": "Dateiformat"
+    "import_format": "Dateiformat",
+    "groups": "Bereiche der Einstellungen",
+    "group_preferences": "Anzeige",
+    "group_workspace": "Arbeitsbereich",
+    "group_data": "Daten & Sync",
+    "group_account": "Konto",
+    "no_login_title": "Ohne Anmeldung",
+    "no_login_help": "Dieser Server läuft ohne Konten: Alle, die ihn öffnen, arbeiten mit denselben Einträgen, auf jedem Gerät. Wer ihn betreibt, kann die Anmeldung in den Server-Einstellungen einschalten."
   },
   "units": {
     "title": "Einheiten",
-    "help": "Wähle, wie Gewichte und Temperaturen angezeigt und eingegeben werden. Deine Auswahl wird mit deinem Konto gespeichert und gilt auf allen deinen Geräten.",
+    "help": "Wähle, wie Gewichte und Temperaturen angezeigt und eingegeben werden. Deine Auswahl wird auf dem Server gespeichert und gilt auf jedem Gerät, das du nutzt.",
     "weight": "Gewicht",
     "temperature": "Temperatur",
     "kg": "Kilogramm",
@@ -319,7 +326,8 @@
     "undo": "Letzten Import rückgängig machen",
     "undo_help": "Der Import vom {date} hat {n} Einträge angelegt.",
     "undone": "Import rückgängig gemacht: {n} Einträge gelöscht.",
-    "undone_kept": "Import rückgängig gemacht: {n} Einträge gelöscht. {kept} wurden behalten, weil seitdem Einträge dazu erfasst wurden."
+    "undone_kept": "Import rückgängig gemacht: {n} Einträge gelöscht. {kept} wurden behalten, weil seitdem Einträge dazu erfasst wurden.",
+    "server_help_no_login": "Die vollständige Kopie der Einträge auf dem Server, im selben Format wie das vollständige Backup. Änderungen, die ein Gerät noch nicht hochgeladen hat, fehlen darin. Skripte können sie unter /export abrufen (/export?photos=1 für das ZIP). Einige Downloads pro Stunde sind möglich."
   },
   "dashboard": {
     "welcome": "Willkommen zurück",

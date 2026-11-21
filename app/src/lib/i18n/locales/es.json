@@ -68,17 +68,24 @@
   "settings": {
     "title": "Ajustes",
     "language": "Idioma",
-    "language_help": "Elige el idioma de la aplicación. Tu elección se guarda con tu cuenta y se aplica en todos tus dispositivos.",
+    "language_help": "Elige el idioma de la aplicación. Tu elección se guarda en el servidor y se aplica en cada dispositivo que uses.",
     "account": "Cuenta",
     "user": "Sesión iniciada como",
     "logout": "Cerrar sesión",
     "copy": "Copiar",
     "copied": "Copiado",
-    "import_format": "Formato del archivo"
+    "import_format": "Formato del archivo",
+    "groups": "Secciones de los ajustes",
+    "group_preferences": "Preferencias",
+    "group_workspace": "Espacio",
+    "group_data": "Datos y sincro",
+    "group_account": "Cuenta",
+    "no_login_title": "Sin inicio de sesión",
+    "no_login_help": "Este servidor funciona sin cuentas: todas las personas que lo abren trabajan con los mismos registros, en cada dispositivo. Quien lo administra puede activar el inicio de sesión en la configuración del servidor."
   },
   "units": {
     "title": "Unidades",
-    "help": "Elige cómo se muestran e introducen los pesos y las temperaturas. Tu elección se guarda con tu cuenta y se aplica en todos tus dispositivos.",
+    "help": "Elige cómo se muestran e introducen los pesos y las temperaturas. Tu elección se guarda en el servidor y se aplica en cada dispositivo que uses.",
     "weight": "Peso",
     "temperature": "Temperatura",
     "kg": "kilogramos",
@@ -319,7 +326,8 @@
     "undo": "Deshacer la última importación",
     "undo_help": "La importación del {date} creó {n} registros.",
     "undone": "Importación deshecha: {n} registros eliminados.",
-    "undone_kept": "Importación deshecha: {n} registros eliminados. Se conservaron {kept} porque desde entonces se les añadieron registros."
+    "undone_kept": "Importación deshecha: {n} registros eliminados. Se conservaron {kept} porque desde entonces se les añadieron registros.",
+    "server_help_no_login": "La copia completa de los registros que guarda el servidor, en el mismo formato que la copia completa. No contiene los cambios que algún dispositivo aún no ha enviado. Los scripts pueden obtenerla en /export (/export?photos=1 para el ZIP). Se permiten unas pocas descargas por hora."
   },
   "dashboard": {
     "welcome": "Bienvenido de nuevo",

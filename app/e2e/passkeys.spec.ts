@@ -53,7 +53,7 @@ test('a passkey is added in Settings and signs in; a closed prompt is not an err
   const account = await apiFor(server).signUp();
   const { context, page } = await device({ session: account, server });
   const authenticator = await addAuthenticator(context, page);
-  await page.goto('/settings');
+  await page.goto('/settings?tab=account');
   const card = passkeysCard(page);
   await expect(card.getByText('No passkeys yet.')).toBeVisible();
 
@@ -105,6 +105,7 @@ test('a passkey is added in Settings and signs in; a closed prompt is not an err
     await expectSynced(page);
     // Signed in as the account the passkey belongs to.
     await page.getByRole('navigation').getByRole('link', { name: 'Settings' }).click();
+    await page.getByRole('link', { name: 'Account', exact: true }).click();
     await expect(
       page
         .locator('section')
@@ -127,7 +128,7 @@ test('an account without a password confirms its deletion with a passkey', async
   const account = await api.signUp();
   const { context, page } = await device({ session: account, server });
   const authenticator = await addAuthenticator(context, page);
-  await page.goto('/settings');
+  await page.goto('/settings?tab=account');
   await enrol(page, 'Phone');
 
   // Accounts without a password come from a sign-in provider, which these

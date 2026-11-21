@@ -68,17 +68,24 @@
   "settings": {
     "title": "Settings",
     "language": "Language",
-    "language_help": "Choose the language for the app. Your choice is saved with your account and applies on all your devices.",
+    "language_help": "Choose the language for the app. Your choice is saved on the server and applies on every device you use.",
     "account": "Account",
     "user": "Signed in as",
     "logout": "Sign out",
     "copy": "Copy",
     "copied": "Copied",
-    "import_format": "File format"
+    "import_format": "File format",
+    "groups": "Settings sections",
+    "group_preferences": "Preferences",
+    "group_workspace": "Workspace",
+    "group_data": "Data & sync",
+    "group_account": "Account",
+    "no_login_title": "No sign-in",
+    "no_login_help": "This server runs without accounts: everyone who opens it works with the same records, on every device. Its operator can turn on sign-in in the server settings."
   },
   "units": {
     "title": "Units",
-    "help": "Choose how weights and temperatures are shown and entered. Your choice is saved with your account and applies on all your devices.",
+    "help": "Choose how weights and temperatures are shown and entered. Your choice is saved on the server and applies on every device you use.",
     "weight": "Weight",
     "temperature": "Temperature",
     "kg": "kilograms",
@@ -319,7 +326,8 @@
     "undo": "Undo last import",
     "undo_help": "The import of {date} created {n} records.",
     "undone": "Import undone: {n} records deleted.",
-    "undone_kept": "Import undone: {n} records deleted. {kept} were kept because records were added to them since."
+    "undone_kept": "Import undone: {n} records deleted. {kept} were kept because records were added to them since.",
+    "server_help_no_login": "The complete copy of the records that the server holds, in the same format as the full backup. Changes that a device has not uploaded yet are not in it. Scripts can fetch it from /export (/export?photos=1 for the ZIP). A few downloads per hour are allowed."
   },
   "dashboard": {
     "welcome": "Welcome back",

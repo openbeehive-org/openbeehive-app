@@ -30,7 +30,8 @@
 
   let online = $state(true);
   let started = $state(false);
-  let email = $state('local@openbeehive');
+  // Empty without a login (single-user server): there is no account to name.
+  let email = $state('');
   let isDemo = $state(false);
   let { children } = $props();
 
@@ -134,7 +135,7 @@
         // pushed rows (organization_id = "local") are returned again on Pull.
         if (!localStorage.getItem('obh.userId')) localStorage.setItem('obh.userId', 'local');
         if (!localStorage.getItem('obh.orgId')) localStorage.setItem('obh.orgId', 'local');
-        email = localStorage.getItem('obh.email') ?? 'local@openbeehive';
+        email = localStorage.getItem('obh.email') ?? '';
       }
 
       startSync(); // start background sync once a session (or single-user identity) is established
@@ -225,7 +226,7 @@
     >
       <span class="avatar" aria-hidden="true">{initial}</span>
       <span class="acc-info">
-        <strong>{email}</strong>
+        <strong>{email || $_('nav.settings')}</strong>
         <SyncChip passive />
       </span>
     </a>

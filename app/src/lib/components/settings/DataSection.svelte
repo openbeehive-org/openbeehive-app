@@ -35,8 +35,12 @@
   import { errorKey } from '#lib/errors.js';
   import './settings.css';
 
-  let { workspaceName = '', readOnly = false }: { workspaceName?: string; readOnly?: boolean } =
-    $props();
+  let {
+    workspaceName = '',
+    readOnly = false,
+    // False on a server without sign-in, where scripts need no API key.
+    apiKeys = true
+  }: { workspaceName?: string; readOnly?: boolean; apiKeys?: boolean } = $props();
 
   let busy = $state(false);
   let readiness = $state<Readiness | null>(null);
@@ -256,7 +260,7 @@
 
   {#if !readOnly}
     <h3 class="st-sub">{$_('data.server_title')}</h3>
-    <p class="st-help">{$_('data.server_help')}</p>
+    <p class="st-help">{$_(apiKeys ? 'data.server_help' : 'data.server_help_no_login')}</p>
     <label class="st-check">
       <input type="checkbox" bind:checked={serverPhotos} disabled={busy} />
       <span>{$_('data.include_photos')}</span>

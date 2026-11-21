@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DEFAULT_MAP_CONFIG, parseMapConfig } from './instance';
+import { DEFAULT_MAP_CONFIG, loginConfigured, parseMapConfig } from './instance';
 
 describe('parseMapConfig', () => {
   it('falls back to the OpenStreetMap defaults for a server without map settings', () => {
@@ -88,5 +88,16 @@ describe('getMapConfig', () => {
     expect((await getMapConfig()).enabled).toBe(true);
     online = true;
     expect((await getMapConfig()).enabled).toBe(false);
+  });
+});
+
+describe('loginConfigured', () => {
+  it('is false only when the server offers no way to sign in', () => {
+    expect(loginConfigured({})).toBe(false);
+    expect(loginConfigured({ oidc_providers: [], map: { enabled: true } })).toBe(false);
+    expect(loginConfigured({ password_auth: true })).toBe(true);
+    expect(loginConfigured({ oidc_providers: ['google'] })).toBe(true);
+    expect(loginConfigured({ webauthn: true })).toBe(true);
+    expect(loginConfigured({ demo: true })).toBe(true);
   });
 });

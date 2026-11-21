@@ -52,6 +52,11 @@ export function parseMapConfig(instance: unknown): MapConfig {
   };
 }
 
+/** Whether the server has any way to sign in; false: single-user, no login. */
+export function loginConfigured(i: InstanceInfo): boolean {
+  return !!(i.password_auth || i.oidc_providers?.length || i.webauthn || i.demo);
+}
+
 let pending: Promise<InstanceInfo | null> | undefined;
 
 /** The instance info, or null when the server cannot be reached. */

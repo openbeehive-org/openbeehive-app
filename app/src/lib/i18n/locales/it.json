@@ -68,17 +68,24 @@
   "settings": {
     "title": "Impostazioni",
     "language": "Lingua",
-    "language_help": "Scegli la lingua dell'app. La tua scelta viene salvata con il tuo account e vale su tutti i tuoi dispositivi.",
+    "language_help": "Scegli la lingua dell'app. La tua scelta viene salvata sul server e vale su ogni dispositivo che usi.",
     "account": "Account",
     "user": "Accesso effettuato come",
     "logout": "Esci",
     "copy": "Copia",
     "copied": "Copiato",
-    "import_format": "Formato del file"
+    "import_format": "Formato del file",
+    "groups": "Sezioni delle impostazioni",
+    "group_preferences": "Preferenze",
+    "group_workspace": "Spazio",
+    "group_data": "Dati e sincro",
+    "group_account": "Account",
+    "no_login_title": "Senza accesso",
+    "no_login_help": "Questo server funziona senza account: chiunque lo apra lavora con gli stessi record, su ogni dispositivo. Chi lo gestisce può attivare l’accesso nelle impostazioni del server."
   },
   "units": {
     "title": "Unità",
-    "help": "Scegli come vengono mostrati e inseriti pesi e temperature. La tua scelta viene salvata con il tuo account e vale su tutti i tuoi dispositivi.",
+    "help": "Scegli come vengono mostrati e inseriti pesi e temperature. La tua scelta viene salvata sul server e vale su ogni dispositivo che usi.",
     "weight": "Peso",
     "temperature": "Temperatura",
     "kg": "chilogrammi",
@@ -319,7 +326,8 @@
     "undo": "Annulla l’ultima importazione",
     "undo_help": "L’importazione del {date} ha creato {n} record.",
     "undone": "Importazione annullata: {n} record eliminati.",
-    "undone_kept": "Importazione annullata: {n} record eliminati. {kept} sono stati mantenuti perché nel frattempo vi sono stati aggiunti dei record."
+    "undone_kept": "Importazione annullata: {n} record eliminati. {kept} sono stati mantenuti perché nel frattempo vi sono stati aggiunti dei record.",
+    "server_help_no_login": "La copia completa dei record conservata dal server, nello stesso formato del backup completo. Non contiene le modifiche che un dispositivo non ha ancora inviato. Gli script possono ottenerla da /export (/export?photos=1 per lo ZIP). Sono consentiti pochi download all’ora."
   },
   "dashboard": {
     "welcome": "Bentornato",

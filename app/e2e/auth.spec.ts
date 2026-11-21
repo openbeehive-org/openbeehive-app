@@ -11,6 +11,7 @@ test('a wrong password is answered in the language of the app', async ({ api, de
   await page.getByRole('button', { name: 'Deutsch' }).click();
   await expect(page.getByRole('heading', { name: 'Einstellungen' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'de');
+  await page.getByRole('link', { name: 'Konto' }).click();
   await page.getByRole('button', { name: 'Abmelden', exact: true }).click();
   await page
     .getByRole('group', { name: 'Abmelden' })
@@ -74,7 +75,7 @@ test('a forgotten password is reset with a link from the instance admin', async 
   const admin = await device({
     session: { ...(await api.signIn(ADMIN.email, ADMIN.password)), email: ADMIN.email }
   });
-  await admin.page.goto('/settings');
+  await admin.page.goto('/settings?tab=account');
   const tool = admin.page
     .locator('section')
     .filter({ has: admin.page.getByRole('heading', { name: 'Reset a user’s password' }) });
@@ -156,7 +157,7 @@ test('an account cannot be deleted while it is the only admin of a shared worksp
     page.locator('section').filter({ has: page.getByRole('heading', { name: 'Delete account' }) });
 
   const ownerDevice = await device({ session: owner });
-  await ownerDevice.page.goto('/settings');
+  await ownerDevice.page.goto('/settings?tab=account');
   const blocked = deleteCard(ownerDevice.page);
   await expect(blocked).toContainText(
     'Not possible yet: you are the only admin of a workspace that has other members.'
@@ -169,7 +170,7 @@ test('an account cannot be deleted while it is the only admin of a shared worksp
   );
 
   const memberDevice = await device({ session: member });
-  await memberDevice.page.goto('/settings');
+  await memberDevice.page.goto('/settings?tab=account');
   const card = deleteCard(memberDevice.page);
   await expect(card).toContainText('Deleted with all apiaries, hives, records and photos');
   await expect(card).toContainText('Kept for the other members');

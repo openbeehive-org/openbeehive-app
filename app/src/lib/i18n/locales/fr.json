@@ -68,17 +68,24 @@
   "settings": {
     "title": "Paramètres",
     "language": "Langue",
-    "language_help": "Choisissez la langue de l'application. Votre choix est enregistré avec votre compte et s'applique sur tous vos appareils.",
+    "language_help": "Choisissez la langue de l'application. Votre choix est enregistré sur le serveur et s'applique sur chaque appareil que vous utilisez.",
     "account": "Compte",
     "user": "Connecté en tant que",
     "logout": "Se déconnecter",
     "copy": "Copier",
     "copied": "Copié",
-    "import_format": "Format du fichier"
+    "import_format": "Format du fichier",
+    "groups": "Sections des paramètres",
+    "group_preferences": "Préférences",
+    "group_workspace": "Espace",
+    "group_data": "Données et synchro",
+    "group_account": "Compte",
+    "no_login_title": "Sans connexion",
+    "no_login_help": "Ce serveur fonctionne sans comptes : toute personne qui l’ouvre travaille sur les mêmes enregistrements, sur chaque appareil. Son administrateur peut activer la connexion dans les réglages du serveur."
   },
   "units": {
     "title": "Unités",
-    "help": "Choisissez comment les poids et les températures sont affichés et saisis. Votre choix est enregistré avec votre compte et s'applique sur tous vos appareils.",
+    "help": "Choisissez comment les poids et les températures sont affichés et saisis. Votre choix est enregistré sur le serveur et s'applique sur chaque appareil que vous utilisez.",
     "weight": "Poids",
     "temperature": "Température",
     "kg": "kilogrammes",
@@ -319,7 +326,8 @@
     "undo": "Annuler le dernier import",
     "undo_help": "L’import du {date} a créé {n} enregistrements.",
     "undone": "Import annulé : {n} enregistrements supprimés.",
-    "undone_kept": "Import annulé : {n} enregistrements supprimés. {kept} ont été conservés car des enregistrements y ont été ajoutés depuis."
+    "undone_kept": "Import annulé : {n} enregistrements supprimés. {kept} ont été conservés car des enregistrements y ont été ajoutés depuis.",
+    "server_help_no_login": "La copie complète des enregistrements détenue par le serveur, dans le même format que la sauvegarde complète. Les modifications qu’un appareil n’a pas encore envoyées n’y sont pas. Les scripts peuvent la récupérer sur /export (/export?photos=1 pour le ZIP). Quelques téléchargements par heure sont autorisés."
   },
   "dashboard": {
     "welcome": "Bon retour",
