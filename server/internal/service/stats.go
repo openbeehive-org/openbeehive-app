@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strconv"
 	"time"
+	_ "time/tzdata" // IANA time zone names on hosts without a zone database
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
@@ -32,11 +35,17 @@ type dashboardQuery struct {
 	org, user string
 	now       time.Time
 	threshold int
+	// loc is the caller's time zone; calendar days start at its midnight.
+	loc *time.Location
 }
 
 func (s *StatsService) GetDashboard(ctx context.Context, req *wv1.DashboardRequest) (*wv1.DashboardResponse, error) {
 	id, _ := auth.FromContext(ctx)
-	q := dashboardQuery{db: s.w.db, org: id.OrgID, user: id.UserID, now: time.Now().UTC(), threshold: int(req.ThresholdDays)}
+	loc, err := callerZone(req.TimeZone)
+	if err != nil {
+		return nil, invalid(err.Error())
+	}
+	q := dashboardQuery{db: s.w.db, org: id.OrgID, user: id.UserID, now: time.Now().UTC(), threshold: int(req.ThresholdDays), loc: loc}
 	if q.threshold <= 0 {
 		q.threshold = defaultDueDays
 	}
@@ -129,16 +138,43 @@ func dashboardHoney(ctx context.Context, q dashboardQuery, res *wv1.DashboardRes
 	return nil
 }
 
-// calendarDaysSince counts whole calendar days (UTC) from d to now, never
-// fewer than 0: a visit on the previous day is 1 day ago at any hour. The
-// app counts the same way in local time and stores visits at local noon,
-// which falls on the same UTC date for offsets up to 11 hours.
-func calendarDaysSince(d, now time.Time) int {
-	day := func(t time.Time) time.Time {
-		y, m, dd := t.UTC().Date()
-		return time.Date(y, m, dd, 0, 0, 0, 0, time.UTC)
+// callerZone reads DashboardRequest.time_zone: empty (UTC), an IANA name,
+// or a fixed offset "+HH:MM" / "-HH:MM".
+func callerZone(name string) (*time.Location, error) {
+	if name == "" {
+		return time.UTC, nil
 	}
-	return max(0, int(day(now).Sub(day(d)).Hours()/24))
+	if len(name) == 6 && (name[0] == '+' || name[0] == '-') && name[3] == ':' {
+		h, errH := strconv.Atoi(name[1:3])
+		m, errM := strconv.Atoi(name[4:])
+		if errH == nil && errM == nil && h <= 14 && m < 60 {
+			secs := (h*60 + m) * 60
+			if name[0] == '-' {
+				secs = -secs
+			}
+			return time.FixedZone(name, secs), nil
+		}
+	} else if loc, err := time.LoadLocation(name); err == nil && name != "Local" {
+		return loc, nil
+	}
+	return nil, fmt.Errorf("time_zone must be an IANA time zone name such as Europe/Berlin or an offset such as +02:00, not %q", name)
+}
+
+// calendarDaysSince counts whole calendar days from d to now in loc, never
+// fewer than 0: a visit on the previous day is 1 day ago at any hour. This
+// is the app's rule: it counts in local time, stores visits at local noon,
+// and reads a value at exactly UTC midnight (older apps, imports) as that
+// date.
+func calendarDaysSince(d, now time.Time, loc *time.Location) int {
+	if loc == nil {
+		loc = time.UTC
+	}
+	date := func(y int, m time.Month, dd int) time.Time { return time.Date(y, m, dd, 0, 0, 0, 0, time.UTC) }
+	visit := date(d.In(loc).Date())
+	if u := d.UTC(); u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 && u.Nanosecond() == 0 {
+		visit = date(u.Date())
+	}
+	return max(0, int(date(now.In(loc).Date()).Sub(visit).Hours()/24))
 }
 
 // dashboardDue: days since the last visit per hive (never = -1), hives at or
@@ -167,7 +203,7 @@ func dashboardDue(ctx context.Context, q dashboardQuery, res *wv1.DashboardRespo
 	for _, h := range hives {
 		days := int32(-1)
 		if d, ok := lastByHive[rs(h["id"])]; ok {
-			days = i32(int64(calendarDaysSince(d, q.now)))
+			days = i32(int64(calendarDaysSince(d, q.now, q.loc)))
 			if days < i32(int64(q.threshold)) {
 				continue
 			}

@@ -9,6 +9,11 @@ import "openbeehive/v1/inspection.proto";
 // computes the same figures locally; these RPCs serve integrations.
 message DashboardRequest {
   int32 threshold_days = 1; // due-inspection threshold in days; 0 = 10
+  // The caller's time zone, which decides where a calendar day starts when
+  // days since the last visit are counted: an IANA name such as
+  // "Europe/Berlin", or a fixed offset from UTC such as "+14:00" or
+  // "-12:00". Empty means UTC.
+  string time_zone = 2;
 }
 message DashboardResponse {
   int32 apiaries = 1;
