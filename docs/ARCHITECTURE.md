@@ -143,6 +143,28 @@ sync feed.
 
 A backup is the database plus the blob directory or bucket.
 
+### Removing the 0.4.x compatibility (planned for 0.6)
+
+0.5.x serves 0.4.x apps (decision D3). In 0.6, `BEEHIVE_SYNC_MIN_PROTOCOL` defaults to 1, so apps
+that announce no protocol version get the `UpgradeRequired` failure, and the code that exists only for
+them goes:
+
+- the legacy feed: `legacyCols` and the reduced pull in `server/internal/service/sync_legacy.go`,
+  `syncClient.legacy()` and its callers (`sync_client.go`, `sync.go`, `sync_snapshot.go`), any
+  special handling of pushes from unversioned apps, and their tests (`sync_legacy_test.go`,
+  `app/src/lib/local/legacy.test.ts`);
+- the push-side conversion of inline photos in both directions: `photo_legacy.go` (inline adds and
+  removes on `inspection.photo_keys` / `hive.photo` to photo records, and photo records back to inline
+  copies), the inline filtering in `photo_feed.go`, the inline branches of `photo_sync.go`
+  (`legacyVisitPhotos`, `legacyHivePhoto`, `notifyLegacy`) and the `legacy_key` matching of the
+  inspection photo RPCs in `inspection.go`;
+- the 90-day retention of inline removes (`legacyRemoveRetention`, `eraseOldLegacyRemoves` in
+  `photo_sweep.go`).
+
+What stays is the one-time conversion at start-up (`photo_boot.go`, step `inline_photos` in
+`photo_migration`), so an install that skips 0.5 still converts its data; the `legacy_key` column
+may stay as its marker.
+
 ## Deployment
 
 One binary: `make build` builds the SPA, embeds it into `server/internal/web` and compiles
