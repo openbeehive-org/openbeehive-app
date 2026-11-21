@@ -176,11 +176,15 @@
 .auth-page .provider:hover {
   border-color: var(--accent);
 }
-.auth-page .provider.pk {
+/* A provider that is a button (passkey, continue without joining) looks
+   like the links beside it. */
+.auth-page button.provider {
   font: inherit;
   font-weight: 600;
   width: 100%;
   cursor: pointer;
+}
+.auth-page .provider.pk {
   margin-top: 2px;
 }
 .auth-page .provider.pk:disabled {
