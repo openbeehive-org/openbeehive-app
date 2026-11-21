@@ -348,7 +348,9 @@
     "step_visit_hint": "Ouvrez la ruche et notez ce que vous avez vu.",
     "step_done": "terminé",
     "due_none": "Aucune ruche pour l'instant — rien à prévoir.",
-    "today": "aujourd'hui"
+    "today": "aujourd'hui",
+    "due_help": "Ruches sans visite depuis {days} jours ou plus.",
+    "see_all_due": "Voir les {n} ruches à visiter"
   },
   "apiaries": {
     "title": "Ruchers",

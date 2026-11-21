@@ -348,7 +348,9 @@
     "step_visit_hint": "Open the hive and note what you saw.",
     "step_done": "done",
     "due_none": "No hives yet — nothing is due.",
-    "today": "today"
+    "today": "today",
+    "due_help": "Hives without a visit for {days} days or more.",
+    "see_all_due": "See all {n} due hives"
   },
   "apiaries": {
     "title": "Apiaries",

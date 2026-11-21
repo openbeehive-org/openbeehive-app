@@ -8,7 +8,7 @@ import "openbeehive/v1/inspection.proto";
 // Aggregated metrics, computed server-side from the tenant's rows. The app
 // computes the same figures locally; these RPCs serve integrations.
 message DashboardRequest {
-  int32 threshold_days = 1; // due-inspection threshold; 0 = 21
+  int32 threshold_days = 1; // due-inspection threshold in days; 0 = 10
 }
 message DashboardResponse {
   int32 apiaries = 1;

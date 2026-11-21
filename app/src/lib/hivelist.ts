@@ -92,6 +92,35 @@ function byNeglect(a: HiveOverview, b: HiveOverview, now: Date): number {
   return db - da;
 }
 
+// Search, filters and sort of the hive list live in the URL (?q=, ?status=,
+// ?apiary=, ?sort=), so they survive opening a hive and going back, and a
+// link can open the list sorted (the dashboard's "see all due hives").
+export type HiveListState = { query: string; status: string; apiary: string; sort: HiveSort };
+
+const SORTS: HiveSort[] = ['name', 'apiary', 'inspected'];
+
+/** The list state a URL describes; anything missing or unknown is the default. */
+export function listStateFromParams(p: Pick<URLSearchParams, 'get'>): HiveListState {
+  const sort = p.get('sort') as HiveSort;
+  return {
+    query: p.get('q') ?? '',
+    status: p.get('status') ?? '',
+    apiary: p.get('apiary') ?? '',
+    sort: SORTS.includes(sort) ? sort : 'name'
+  };
+}
+
+/** The query string ("" or "?…") for a list state; defaults are left out. */
+export function listStateToSearch(s: HiveListState): string {
+  const p = new URLSearchParams();
+  if (s.query) p.set('q', s.query);
+  if (s.status) p.set('status', s.status);
+  if (s.apiary) p.set('apiary', s.apiary);
+  if (s.sort !== 'name') p.set('sort', s.sort);
+  const q = p.toString();
+  return q ? `?${q}` : '';
+}
+
 /** A sorted copy of the rows. */
 export function sortHives<T extends HiveOverview>(
   rows: T[],
@@ -116,12 +145,29 @@ const GONE = new Set([4, 5]);
 
 export type DueHive = { id: string; name: string; apiary: string | null; days: number | null };
 
-/** The hives waiting longest for a visit (days = null: never visited). */
-export function dueHives(rows: HiveOverview[], now: Date = new Date(), limit = 5): DueHive[] {
+/**
+ * Days after the last visit from which a hive counts as due. In the season
+ * colonies are checked every 7 to 10 days (swarm control); the server's
+ * dashboard (GetDashboard) uses the same default.
+ */
+export const DUE_AFTER_DAYS = 10;
+
+/**
+ * The hives due for a visit, longest waiting first: never visited, or not
+ * for `afterDays` days or more (days = null: never visited).
+ */
+export function dueHives(
+  rows: HiveOverview[],
+  now: Date = new Date(),
+  afterDays = DUE_AFTER_DAYS
+): DueHive[] {
+  const due = (h: HiveOverview) => {
+    const days = daysSince(h.last_inspection, now);
+    return days === null || days >= afterDays;
+  };
   return rows
-    .filter((h) => !GONE.has(h.status ?? 0))
+    .filter((h) => !GONE.has(h.status ?? 0) && due(h))
     .sort((a, b) => byNeglect(a, b, now))
-    .slice(0, limit)
     .map((h) => ({
       id: h.id,
       name: h.name,

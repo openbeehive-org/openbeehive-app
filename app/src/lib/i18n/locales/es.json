@@ -348,7 +348,9 @@
     "step_visit_hint": "Abre la colmena y anota lo que has visto.",
     "step_done": "hecho",
     "due_none": "Aún no hay colmenas: nada pendiente.",
-    "today": "hoy"
+    "today": "hoy",
+    "due_help": "Colmenas sin revisión desde hace {days} días o más.",
+    "see_all_due": "Ver las {n} colmenas pendientes"
   },
   "apiaries": {
     "title": "Colmenares",

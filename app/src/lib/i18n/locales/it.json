@@ -348,7 +348,9 @@
     "step_visit_hint": "Apri l'arnia e annota ciò che hai visto.",
     "step_done": "fatto",
     "due_none": "Ancora nessuna arnia: niente in scadenza.",
-    "today": "oggi"
+    "today": "oggi",
+    "due_help": "Arnie senza visita da {days} giorni o più.",
+    "see_all_due": "Vedi tutte le {n} arnie da visitare"
   },
   "apiaries": {
     "title": "Apiari",

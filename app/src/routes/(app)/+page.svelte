@@ -11,7 +11,13 @@
   import type { ApiaryRow, TaskRow } from './rows.js';
   import { dataVersion, initialSyncPending } from '#lib/local/live.js';
   import { formatDate, todayLocal } from '#lib/dates.js';
-  import { dueHives, firstRunSteps, type DueHive, type FirstRunStep } from '#lib/hivelist.js';
+  import {
+    DUE_AFTER_DAYS,
+    dueHives,
+    firstRunSteps,
+    type DueHive,
+    type FirstRunStep
+  } from '#lib/hivelist.js';
   import { dueDay, isOverdue, splitTasks } from '#lib/tasklist.js';
   import { takeScanTarget } from '#lib/qr.js';
   import Skeleton from '#lib/components/Skeleton.svelte';
@@ -25,7 +31,10 @@
     open_tasks: 0,
     honey_kg_season: 0
   });
+  // The dashboard shows the first few; "see all" leads to the full list.
+  const DUE_SHOWN = 5;
   let due = $state<DueHive[]>([]);
+  let dueTotal = $state(0);
   let tasks = $state<{ id: string; title: string; day: string; overdue: boolean }[]>([]);
   let checklist = $state<{ steps: FirstRunStep[]; complete: boolean }>({
     steps: [],
@@ -59,9 +68,11 @@
       honey_kg_season: Number(honey?.kg ?? 0)
     };
 
-    // Hives sorted by how long since a person last inspected them (sensor
+    // Hives not visited for the due interval, longest first (sensor
     // readings do not count as a visit).
-    due = dueHives(hiveRows);
+    const allDue = dueHives(hiveRows);
+    due = allDue.slice(0, DUE_SHOWN);
+    dueTotal = allDue.length;
     const visited = hiveRows.filter((h) => h.last_inspection);
     const firstHiveId = hiveRows[0]?.id;
     checklist = firstRunSteps({
@@ -183,8 +194,11 @@
   </div>
 
   <div class="cols">
-    <section class="panel">
-      <h2>{$_('dashboard.due')}</h2>
+    <section class="panel" aria-labelledby="due-title">
+      <h2 id="due-title">{$_('dashboard.due')}</h2>
+      {#if loaded && stats.hives > 0}
+        <p class="hint">{$_('dashboard.due_help', { values: { days: DUE_AFTER_DAYS } })}</p>
+      {/if}
       {#if !loaded}
         <Skeleton n={3} height={44} />
       {:else if due.length === 0}
@@ -204,6 +218,11 @@
           </span>
         </a>
       {/each}
+      {#if dueTotal > due.length}
+        <a class="more" href="/hives?sort=inspected"
+          >{$_('dashboard.see_all_due', { values: { n: dueTotal } })} ›</a
+        >
+      {/if}
     </section>
 
     <section class="panel">
@@ -293,6 +312,19 @@
     color: var(--text-soft);
     font-size: 0.9rem;
     padding: 6px 0;
+  }
+  .hint {
+    color: var(--text-soft);
+    font-size: 0.85rem;
+    margin: -4px 0 8px;
+  }
+  .more {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--accent-text);
+    font-weight: 600;
+    text-decoration: none;
   }
 
   .start {

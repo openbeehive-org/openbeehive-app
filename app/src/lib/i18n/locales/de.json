@@ -348,7 +348,9 @@
     "step_visit_hint": "Öffne die Beute und notiere, was du gesehen hast.",
     "step_done": "erledigt",
     "due_none": "Noch keine Beuten – nichts fällig.",
-    "today": "heute"
+    "today": "heute",
+    "due_help": "Beuten ohne Durchsicht seit {days} Tagen oder länger.",
+    "see_all_due": "Alle {n} fälligen Beuten ansehen"
   },
   "apiaries": {
     "title": "Standorte",

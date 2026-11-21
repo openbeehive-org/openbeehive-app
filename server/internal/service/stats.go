@@ -21,7 +21,9 @@ type StatsService struct {
 
 func NewStatsService(w *Writer) *StatsService { return &StatsService{w: w} }
 
-const defaultDueDays = 21 // the app highlights hives unvisited for 21+ days
+// defaultDueDays is when a hive becomes due for a visit; the app's dashboard
+// uses the same interval (DUE_AFTER_DAYS in app/src/lib/hivelist.ts).
+const defaultDueDays = 10
 
 // dashboardQuery is what every dashboard figure is computed for: one
 // member of one tenant at one point in time.

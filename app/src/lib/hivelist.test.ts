@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   byName,
   daysSince,
+  DUE_AFTER_DAYS,
   dueHives,
   filterHives,
   firstRunSteps,
+  listStateFromParams,
+  listStateToSearch,
   naturalCompare,
   NO_APIARY,
   sortHives,
@@ -148,20 +151,30 @@ describe('sortHives', () => {
 describe('dueHives', () => {
   const now = new Date(2026, 5, 15, 9, 0);
 
-  it('lists the most neglected hives and skips lost and dissolved colonies', () => {
+  it('lists hives not visited for the due interval, longest first, without lost colonies', () => {
     const rows = [
       hive({ id: '1', name: 'Recent', last_inspection: '2026-06-14' }),
       hive({ id: '2', name: 'Never' }),
       hive({ id: '3', name: 'Old', last_inspection: '2026-04-01', apiary_name: null }),
       hive({ id: '4', name: 'Lost', status: 4 }),
-      hive({ id: '5', name: 'Dissolved', status: 5 })
+      hive({ id: '5', name: 'Dissolved', status: 5 }),
+      hive({ id: '6', name: 'Due today', last_inspection: '2026-06-05' })
     ];
+    expect(DUE_AFTER_DAYS).toBe(10);
     expect(dueHives(rows, now)).toEqual([
       { id: '2', name: 'Never', apiary: 'Orchard', days: null },
       { id: '3', name: 'Old', apiary: null, days: 75 },
-      { id: '1', name: 'Recent', apiary: 'Orchard', days: 1 }
+      { id: '6', name: 'Due today', apiary: 'Orchard', days: 10 }
     ]);
-    expect(dueHives(rows, now, 1).map((d) => d.name)).toEqual(['Never']);
+    expect(dueHives(rows, now, 30).map((d) => d.name)).toEqual(['Never', 'Old']);
+  });
+
+  it('leaves out a hive visited today, so everything can be up to date', () => {
+    const rows = [
+      hive({ id: '1', name: 'Today', last_inspection: '2026-06-15' }),
+      hive({ id: '2', name: 'Last week', last_inspection: '2026-06-08' })
+    ];
+    expect(dueHives(rows, now)).toEqual([]);
   });
 
   it('is empty without hives', () => {
@@ -219,5 +232,27 @@ describe('firstRunSteps', () => {
       done: ['hive', 'visit'],
       current: ['apiary']
     });
+  });
+});
+
+describe('hive list state in the URL', () => {
+  it('reads search, filters and sort, with defaults for anything missing or unknown', () => {
+    expect(
+      listStateFromParams(new URLSearchParams('q=Völker 2&status=1&apiary=a1&sort=inspected'))
+    ).toEqual({ query: 'Völker 2', status: '1', apiary: 'a1', sort: 'inspected' });
+    expect(listStateFromParams(new URLSearchParams('sort=bogus&new=1'))).toEqual({
+      query: '',
+      status: '',
+      apiary: '',
+      sort: 'name'
+    });
+  });
+
+  it('writes only what differs from the defaults and reads it back unchanged', () => {
+    const state = { query: 'a&b', status: '', apiary: NO_APIARY, sort: 'apiary' as const };
+    const search = listStateToSearch(state);
+    expect(search).toBe('?q=a%26b&apiary=-&sort=apiary');
+    expect(listStateFromParams(new URLSearchParams(search))).toEqual(state);
+    expect(listStateToSearch({ query: '', status: '', apiary: '', sort: 'name' })).toBe('');
   });
 });

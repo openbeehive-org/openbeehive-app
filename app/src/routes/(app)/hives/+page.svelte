@@ -1,12 +1,15 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
   import { apiaries, hives } from '#lib/local/repo.js';
   import { createHive } from '#lib/local/history.js';
   import type { ApiaryRow } from '../rows.js';
   import { dataVersion, initialSyncPending } from '#lib/local/live.js';
   import {
     filterHives,
+    listStateFromParams,
+    listStateToSearch,
     sortHives,
     NO_APIARY,
     type HiveOverview,
@@ -24,10 +27,24 @@
   let name = $state('');
   let apiaryId = $state('');
 
-  let query = $state('');
-  let status = $state('');
-  let apiary = $state('');
-  let sort = $state<HiveSort>('name');
+  // Search, filters and sort start from the URL and are written back to it
+  // (without a new history entry), so going back from a hive restores them.
+  const initial = listStateFromParams(page.url.searchParams);
+  let query = $state(initial.query);
+  let status = $state(initial.status);
+  let apiary = $state(initial.apiary);
+  let sort = $state<HiveSort>(initial.sort);
+  // A real (replacing) navigation, not shallow routing: SvelteKit then keeps
+  // the new URL in the history entry it returns to.
+  $effect(() => {
+    const search = listStateToSearch({ query, status, apiary, sort });
+    if (search === location.search) return;
+    void goto(`${location.pathname}${search}`, {
+      replaceState: true,
+      keepFocus: true,
+      noScroll: true
+    });
+  });
 
   const STATUSES = ['1', '2', '3', '4', '5'];
   const hasOrphans = $derived(rows.some((h) => h.apiary_name === null));
