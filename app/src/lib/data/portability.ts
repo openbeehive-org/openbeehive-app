@@ -230,9 +230,16 @@ export const stamp = () => todayLocal();
 
 // --- CSV ---
 
-function csvCell(v: unknown): string {
+// Spreadsheet programs run a cell that starts with = + - @ (or a tab or
+// carriage return before one) as a formula. Text that a user typed, or that
+// came in through sync, is kept as text by a leading apostrophe; numbers are
+// written as they are. The importer drops the apostrophe again.
+const FORMULA_START = /^[=+\-@\t\r]/;
+
+export function csvCell(v: unknown): string {
   if (v === null || v === undefined) return '';
-  const s = String(v);
+  let s = String(v);
+  if (typeof v === 'string' && FORMULA_START.test(s) && !Number.isFinite(Number(s))) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 

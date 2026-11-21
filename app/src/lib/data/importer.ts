@@ -472,7 +472,9 @@ export async function parseBeekeepingCSV(
   for (let r = 1; r < rows.length; r++) {
     const get = (f: string) => {
       const idx = Object.keys(colMap).find((k) => colMap[+k] === f);
-      return idx !== undefined ? (rows[r]?.[+idx]?.trim() ?? '') : '';
+      // A cell that an export protected from running as a formula ('=...).
+      const v = idx !== undefined ? (rows[r]?.[+idx]?.trim() ?? '') : '';
+      return /^'[=+\-@]/.test(v) ? v.slice(1) : v;
     };
     const hiveId = ensureHive(get('hive') || names.hive(r), hasApiary ? get('apiary') : null);
     const insp: Row = { hive_id: hiveId };

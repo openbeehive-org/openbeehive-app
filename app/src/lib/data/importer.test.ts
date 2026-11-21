@@ -274,6 +274,11 @@ describe('files the importer cannot read', () => {
     expect(parsed.data.apiary?.[0]?.name).toBe('Gärten');
   });
 
+  it('drops the apostrophe an export put before formula-like text', async () => {
+    const parsed = await readImportFile(new Blob(["Hive,Date,Notes\nH1,2026-05-01,'=2 supers"]));
+    expect(parsed.data.inspection?.[0]?.note).toBe('=2 supers');
+  });
+
   it('names made-up records in the UI language', async () => {
     const parsed = await readImportFile(new Blob(['Date,Notes\n2026-05-01,calm']), 'csv', {
       apiary: 'Importiert',
