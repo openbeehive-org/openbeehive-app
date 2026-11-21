@@ -6,7 +6,7 @@
 // an account setting: it stays per device (theme.ts).
 import { writable, type Readable } from 'svelte/store';
 import { compare, hlc } from './local/hlc';
-import { isTempUnit, isWeightUnit, localeUnits, type Units } from './units';
+import { defaultUnits, isTempUnit, isWeightUnit, type Units } from './units';
 
 export const SETTING_FIELDS = ['weight_unit', 'temp_unit', 'language'] as const;
 export type SettingField = (typeof SETTING_FIELDS)[number];
@@ -52,9 +52,20 @@ function browserLocale(): string | undefined {
   return typeof navigator === 'undefined' ? undefined : navigator.language;
 }
 
-/** The units to show: the device's choices, else the browser locale's. */
+// The language the app shows: the account's choice, else the one this
+// device last applied (lib/i18n), else none yet (the browser's).
+function appLanguage(c: Choices): string {
+  if (c.language?.v) return c.language.v;
+  try {
+    return localStorage.getItem('lang') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/** The units to show: the device's choices, else the defaults for the app's language. */
 export function unitsFrom(c: Choices, tag = browserLocale()): Units {
-  const d = localeUnits(tag);
+  const d = defaultUnits(appLanguage(c), tag);
   const weight = c.weight_unit?.v;
   const temp = c.temp_unit?.v;
   return {
@@ -69,7 +80,8 @@ export const units: Readable<Units> = { subscribe: unitStore.subscribe };
 
 function apply(field: SettingField, c: Choice) {
   storeChoice(field, c);
-  if (field !== 'language') unitStore.set(unitsFrom(loadChoices()));
+  // The language matters too: it sets the units until some are chosen.
+  unitStore.set(unitsFrom(loadChoices()));
 }
 
 const signedInUser = () => {

@@ -4,6 +4,7 @@ import {
   formatQuantity,
   fromMetric,
   localeUnits,
+  defaultUnits,
   METRIC,
   parseNumber,
   quantityField,
@@ -168,5 +169,21 @@ describe('localeUnits', () => {
     [undefined, METRIC]
   ])('%s', (tag, want) => {
     expect(localeUnits(tag)).toEqual(want);
+  });
+});
+
+describe('defaultUnits', () => {
+  it.each([
+    // App language, browser locale, expected
+    ['de', 'en-US', METRIC],
+    ['fr', 'en-US', METRIC],
+    ['en', 'en-US', IMPERIAL],
+    ['en', 'en-GB', METRIC],
+    ['en-US', 'de-DE', IMPERIAL],
+    ['es', 'es-US', IMPERIAL],
+    ['', 'en-US', IMPERIAL],
+    [undefined, 'de-DE', METRIC]
+  ])('app %s, browser %s', (app, browser, want) => {
+    expect(defaultUnits(app, browser)).toEqual(want);
   });
 });

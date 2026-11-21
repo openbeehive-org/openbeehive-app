@@ -43,6 +43,30 @@ export function localeUnits(tag: string | undefined): Units {
   };
 }
 
+const languageOf = (tag: string | undefined): string => {
+  try {
+    return tag ? new Intl.Locale(tag).language : '';
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * The units before the account chooses any: those of the app's language when
+ * it names a region ("en-US"); otherwise the browser's region, but only when
+ * the browser speaks the app's language. Someone reading the app in German on
+ * a phone set to American English gets metric units, not pounds.
+ */
+export function defaultUnits(
+  appLanguage: string | undefined,
+  browserTag: string | undefined
+): Units {
+  if (regionOf(appLanguage)) return localeUnits(appLanguage);
+  const lang = languageOf(appLanguage);
+  if (!lang || lang === languageOf(browserTag)) return localeUnits(browserTag);
+  return METRIC;
+}
+
 /** The unit symbol shown after a value: kg, lb, °C or °F. */
 export function unitSymbol(q: Quantity, u: Units): string {
   if (q === 'weight') return u.weight;

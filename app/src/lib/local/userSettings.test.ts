@@ -241,3 +241,18 @@ describe('decide', () => {
     expect(decide(local, record, 'u1', complete)).toBe(want);
   });
 });
+
+describe('units before any are chosen', () => {
+  it('follow the language the app shows, not a browser set to another one', () => {
+    const de = { v: 'de', s: '', u: '' };
+    expect(unitsFrom({ language: de }, 'en-US')).toEqual({ weight: 'kg', temp: 'c' });
+    expect(unitsFrom({}, 'en-US')).toEqual({ weight: 'lb', temp: 'f' });
+    localStorage.setItem('lang', 'it');
+    try {
+      expect(unitsFrom({}, 'en-US')).toEqual({ weight: 'kg', temp: 'c' });
+      expect(unitsFrom({ weight_unit: { v: 'lb', s: '', u: '' } }, 'en-US').weight).toBe('lb');
+    } finally {
+      localStorage.removeItem('lang');
+    }
+  });
+});
