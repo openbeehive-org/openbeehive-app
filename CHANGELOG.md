@@ -101,9 +101,10 @@ Details are in the
   set by the server, and database errors no longer reach API responses.
 - Hive and apiary names are escaped on QR labels and map popups.
 - Email addresses are unique regardless of upper and lower case.
-- Each account keeps its own local data per workspace on a shared device, so
-  the next person to sign in neither sees nor uploads the previous one's
-  unsent changes and personal tasks.
+- Each account keeps its own persistent local data per workspace on a shared
+  device, so the next person to sign in neither sees nor uploads the
+  previous one's unsent changes and personal tasks; an old store holding
+  personal tasks is adopted only by the account that left them.
 - With `BEEHIVE_DEMO=false` a demo account left from an earlier run is locked
   (no password, sessions, API keys or passkeys) instead of becoming a normal
   account with a public password.
@@ -155,7 +156,15 @@ Details are in the
   Windows-1252 is read.
 - Counts use plural forms in every language, the bottom bar uses short
   labels that fit at 360 px, and visit cards show outside climate.
-- The hive list keeps its search, filters and sort in the URL.
+- The hive list keeps its search, filters and sort in the URL; the Hives tab
+  opens the unfiltered list.
+- Photos of a refused or failed 0.4.x push leave no blobs behind; a retried
+  push replaces the blobs of its earlier attempt.
+- The dashboard highlights a due hive from the same 10 days that make it
+  due, and `GetDashboard` counts those days in calendar days like the app.
+- Save and Add are switched off on every record form in the demo.
+- Pre-release databases that ran migrations 0015 and 0017 under their
+  earlier names start again.
 
 ### Added
 
@@ -220,8 +229,9 @@ Details are in the
 - The demo says up front that it is read-only and its forms cannot be saved.
 - Inviting an existing member answers 409 `already_member`; inviting an
   address again replaces its open invite.
-- `update_mask` paths may be lowerCamelCase; an RPC request without
-  `Content-Type` gets a JSON error.
+- `update_mask` paths may be lowerCamelCase; an RPC request with a missing
+  or unsupported `Content-Type` gets a JSON error. Without login,
+  `/auth/me` answers `{"no_login": true}`.
 - Blobs that no photo knows are kept at least 30 days (or the change-log
   retention) and never removed at start; only photo keys are swept.
 
