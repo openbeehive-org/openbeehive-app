@@ -218,3 +218,34 @@ func TestSessionOfAnotherSecretIsRejected(t *testing.T) {
 	forged, _ := forger.Issue(Identity{UserID: u.userID, OrgID: u.orgID, Email: u.email, Role: "admin"})
 	wantError(t, f.call(t, http.MethodGet, "/auth/me", forged, nil), http.StatusUnauthorized, "not_signed_in")
 }
+
+// The account role is read from the database with the membership: a token
+// issued while the account was an admin carries no admin rights once the
+// account is demoted.
+func TestSessionRoleFollowsTheAccount(t *testing.T) {
+	f := newAPIFixture(t, loginConfig())
+	ctx := context.Background()
+	u := f.signup(t, "u@test.dev")
+	setRole := func(role string) {
+		t.Helper()
+		if _, err := f.store.DB().Exec(f.store.DB().Rebind(`UPDATE users SET role = ? WHERE id = ?`), role, u.userID); err != nil {
+			t.Fatal(err)
+		}
+		f.sessions.Invalidate()
+	}
+	setRole("admin")
+	admin, err := f.sessions.Issue(Identity{UserID: u.userID, OrgID: u.orgID, Role: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setRole("user")
+	if id, err := f.sessions.Verify(ctx, admin); err != nil || id.Role != "user" {
+		t.Fatalf("demoted admin: role %q, %v", id.Role, err)
+	}
+	// A demo session never becomes anything else.
+	setRole("admin")
+	demo, _ := f.sessions.Issue(Identity{UserID: u.userID, OrgID: u.orgID, Role: "demo"})
+	if id, err := f.sessions.Verify(ctx, demo); err != nil || id.Role != "demo" {
+		t.Fatalf("demo session: role %q, %v", id.Role, err)
+	}
+}

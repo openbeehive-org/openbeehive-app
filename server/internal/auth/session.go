@@ -48,8 +48,9 @@ const sessionStateTTL = 10 * time.Second
 const sessionStateMax = 10_000
 
 type sessionState struct {
-	validAfter int64 // users.sessions_valid_after
-	member     bool  // the account belongs to the workspace
+	validAfter int64  // users.sessions_valid_after
+	member     bool   // the account belongs to the workspace
+	role       string // users.role
 	fetched    time.Time
 }
 
@@ -186,7 +187,14 @@ func (s *SessionManager) verifyAccount(ctx context.Context, token string) (id Id
 	if c.IssuedAt < st.validAfter {
 		return Identity{}, false, errSessionRevoked
 	}
-	id = Identity{UserID: c.UserID, OrgID: c.OrgID, Email: c.Email, Role: c.Role}
+	// The account role comes from the database, not from the token, so an
+	// admin who is demoted loses the rights at once. A demo session stays
+	// one: that role is given at sign-in, it is not stored.
+	role := st.role
+	if c.Role == "demo" {
+		role = "demo"
+	}
+	id = Identity{UserID: c.UserID, OrgID: c.OrgID, Email: c.Email, Role: role}
 	if c.LoginAt > 0 {
 		id.LoginAt = time.UnixMilli(c.LoginAt)
 	}
@@ -213,7 +221,7 @@ func (s *SessionManager) lookupState(ctx context.Context, userID, orgID string) 
 		log.Printf("auth: session check: %v", err)
 		return sessionState{}, errSessionUnverifiable
 	}
-	st = sessionState{validAfter: u.SessionsValidAfter, fetched: now}
+	st = sessionState{validAfter: u.SessionsValidAfter, role: u.Role, fetched: now}
 	switch _, err := s.members.Get(ctx, orgID, userID); {
 	case err == nil:
 		st.member = true
