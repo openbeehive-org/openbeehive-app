@@ -209,7 +209,7 @@
       {#each due as f (f.id)}
         <a class="row" href={`/hives/${f.id}`}>
           <div><strong>{f.name}</strong><small>{f.apiary ?? ''}</small></div>
-          <span class="badge" class:warn={f.days === null || f.days >= 21}>
+          <span class="badge" class:warn={f.days === null || f.days >= DUE_AFTER_DAYS}>
             {f.days === null
               ? $_('dashboard.never')
               : f.days === 0
