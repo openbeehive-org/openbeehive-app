@@ -192,6 +192,11 @@
     return href === '/' ? p === '/' : p === href || p.startsWith(href + '/');
   }
   const current = (href: string) => (isActive(href) ? 'page' : undefined);
+
+  function skipToMain(e: MouseEvent) {
+    e.preventDefault();
+    document.getElementById('main')?.focus();
+  }
 </script>
 
 <!-- The main destinations, shared by the desktop sidebar and the mobile tab bar. -->
@@ -203,6 +208,9 @@
     </a>
   {/each}
 {/snippet}
+
+<!-- First stop for keyboard users: past the navigation to the page itself. -->
+<a class="skip" href="#main" onclick={skipToMain}>{$_('nav.skip')}</a>
 
 <div class="shell">
   <!-- Desktop sidebar -->
@@ -243,7 +251,7 @@
       <div class="offline-bar">{$_('app.offline_banner')}</div>
     {/if}
     <div class="sync-row"><SyncChip problemsHref="/settings#sync-problems" /></div>
-    <main class="content">
+    <main class="content" id="main" tabindex="-1">
       {@render children()}
     </main>
   </div>
@@ -261,6 +269,26 @@
 </nav>
 
 <style>
+  /* Hidden until it has keyboard focus. */
+  .skip {
+    position: absolute;
+    left: 8px;
+    top: -100px;
+    z-index: 100;
+    padding: 12px 16px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .skip:focus {
+    top: 8px;
+  }
+  .content:focus {
+    outline: none;
+  }
+
   /* ---- Mobile-first: single column above a fixed bottom nav ---- */
   .shell {
     min-height: 100vh;

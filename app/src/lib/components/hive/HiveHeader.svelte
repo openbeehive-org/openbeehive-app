@@ -1,6 +1,7 @@
 <script lang="ts">
   // Head of the hive page: picture, name, the two everyday actions and a
   // labelled menu for the rest (Delete last, set apart as dangerous).
+  import { focusOnOpen } from '#lib/focus.js';
   import { goto } from '$app/navigation';
   import { _ } from 'svelte-i18n';
   import {
@@ -196,6 +197,7 @@
 {#if panel === 'move'}
   <form
     class="hv-card hv-form"
+    use:focusOnOpen
     onsubmit={(e) => {
       e.preventDefault();
       doMove();
@@ -218,6 +220,7 @@
 {:else if panel === 'edit'}
   <form
     class="hv-card hv-form"
+    use:focusOnOpen
     onsubmit={(e) => {
       e.preventDefault();
       saveHive();

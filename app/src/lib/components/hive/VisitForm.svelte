@@ -1,6 +1,7 @@
 <script lang="ts">
   // The visit form, built for use at the hive: large controls, counts that
   // start empty, rarely used blocks folded away and Save always in reach.
+  import { focusOnOpen } from '#lib/focus.js';
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
   import { _, locale } from 'svelte-i18n';
@@ -178,6 +179,7 @@
 
 <form
   class="hv-card hv-form"
+  use:focusOnOpen
   onsubmit={(e) => {
     e.preventDefault();
     save();

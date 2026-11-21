@@ -1,5 +1,6 @@
 <script lang="ts">
   // Honey harvests of a hive: season total, record / correct / delete.
+  import { focusOnOpen } from '#lib/focus.js';
   import { get } from 'svelte/store';
   import { _, locale } from 'svelte-i18n';
   import { recordHarvest, editHarvest, deleteHarvest } from '#lib/local/history.js';
@@ -115,6 +116,7 @@
   {#if open}
     <form
       class="hv-card hv-form"
+      use:focusOnOpen
       onsubmit={(e) => {
         e.preventDefault();
         save();

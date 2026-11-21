@@ -15,7 +15,8 @@
     "tasks": "Tâches",
     "scan": "Scanner",
     "settings": "Paramètres",
-    "main": "Navigation principale"
+    "main": "Navigation principale",
+    "skip": "Aller au contenu"
   },
   "qr": {
     "print": "Imprimer",

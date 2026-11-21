@@ -1,5 +1,6 @@
 <script lang="ts">
   // Treatments of a hive: record / correct / delete, and the printable register.
+  import { focusOnOpen } from '#lib/focus.js';
   import { _, locale } from 'svelte-i18n';
   import { Pill, Printer } from '@lucide/svelte';
   import { recordTreatment, editTreatment, deleteTreatment } from '#lib/local/history.js';
@@ -125,6 +126,7 @@
   {#if open}
     <form
       class="hv-card hv-form"
+      use:focusOnOpen
       onsubmit={(e) => {
         e.preventDefault();
         save();

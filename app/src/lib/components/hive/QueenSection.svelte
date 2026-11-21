@@ -1,6 +1,7 @@
 <script lang="ts">
   // The hive's queen: set, replace (a real re-queening), correct her details
   // (no re-queening) or delete one recorded by mistake.
+  import { focusOnOpen } from '#lib/focus.js';
   import { _, locale } from 'svelte-i18n';
   import { markingForYear, MARKING_COLORS } from '#lib/local/repo.js';
   import { setQueen, editQueen, deleteQueen } from '#lib/local/history.js';
@@ -129,6 +130,7 @@
   {#if open}
     <form
       class="hv-card hv-form"
+      use:focusOnOpen
       onsubmit={(e) => {
         e.preventDefault();
         save();
