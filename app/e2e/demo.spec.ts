@@ -40,7 +40,7 @@ test('"Try the demo" opens the sample data; a refused change does not stay queue
   expect(await tryToAddTask(page, 'Change the demo')).toBe(403);
   // The refused upload is given up, not retried for ever.
   await expectSynced(page);
-  await expect(page.getByRole('button', { name: /Waiting to upload|Sync failed/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Changes waiting|Sync failed/ })).toHaveCount(0);
   await page.reload();
   await expectSynced(page);
 

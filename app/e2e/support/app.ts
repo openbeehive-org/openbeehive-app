@@ -10,6 +10,18 @@ export async function expectSynced(page: Page): Promise<void> {
 }
 
 /**
+ * Opens the sheet behind the status chip (whatever it says) and starts a
+ * sync from there; the sheet closes itself.
+ */
+export async function syncNowFromChip(page: Page): Promise<void> {
+  await page.locator('button[aria-controls="sync-sheet"]').click();
+  await page
+    .getByRole('dialog', { name: 'Sync status' })
+    .getByRole('button', { name: 'Sync now' })
+    .click();
+}
+
+/**
  * Accepts the app's confirm() questions and returns the list they are
  * collected in, so a test can assert what was asked.
  */

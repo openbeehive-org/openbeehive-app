@@ -1,5 +1,5 @@
 import { expect, test } from './support/fixtures';
-import { expectSynced } from './support/app';
+import { expectSynced, syncNowFromChip } from './support/app';
 
 test('a second tab shows a notice, takes over on request and loses no data', async ({
   api,
@@ -40,7 +40,7 @@ test('a second tab shows a notice, takes over on request and loses no data', asy
   await second.getByRole('button', { name: 'Save' }).click();
   await expect(second.getByRole('link', { name: /Added in the second tab/ })).toBeVisible();
   await context.unroute('**/openbeehive.v1.SyncService/Push');
-  await second.getByRole('button', { name: /^(Sync failed|Waiting to upload|Syncing)/ }).click();
+  await syncNowFromChip(second);
   await expectSynced(second);
   const hives = await as.rpc<{ hives?: { name: string }[] }>('HiveService/ListHives', {});
   expect(hives.hives?.map((h) => h.name).sort()).toEqual([

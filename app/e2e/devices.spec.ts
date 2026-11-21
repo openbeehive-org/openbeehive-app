@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './support/fixtures';
-import { expectSynced, syncedChip } from './support/app';
+import { expectSynced, syncNowFromChip } from './support/app';
 
 // On the apiaries page.
 async function addApiary(page: Page, name: string) {
@@ -33,8 +33,8 @@ test('a device that uploads after another one wrote still receives what it had n
   await expect(a.page.getByRole('link', { name: 'Written on B' })).toBeVisible();
   await expect(a.page.getByRole('link', { name: 'Written on A' })).toBeVisible();
 
-  // B asks for a sync by tapping the status chip.
-  await syncedChip(b.page).click();
+  // B asks for a sync from the status chip.
+  await syncNowFromChip(b.page);
   await expect(b.page.getByRole('link', { name: 'Written on A' })).toBeVisible();
   await expect(b.page.getByRole('link', { name: 'Written on B' })).toBeVisible();
 });
@@ -74,7 +74,7 @@ test('edits of different fields of one visit on two devices both survive', async
 
   await a.context.setOffline(false);
   await expectSynced(a.page);
-  await syncedChip(b.page).click();
+  await syncNowFromChip(b.page);
 
   for (const { page } of [a, b]) {
     const card = page
@@ -119,7 +119,7 @@ test('edits of different fields of one apiary on two devices both survive', asyn
 
   await a.context.setOffline(false);
   await expectSynced(a.page);
-  await syncedChip(b.page).click();
+  await syncNowFromChip(b.page);
 
   for (const { page } of [a, b]) {
     await expect(page.getByText('note from B')).toBeVisible();

@@ -1,5 +1,5 @@
 import { expect, test } from './support/fixtures';
-import { expectSynced, syncedChip } from './support/app';
+import { expectSynced, syncNowFromChip } from './support/app';
 
 const visitForm = (page: import('@playwright/test').Page, heading: string) =>
   page.locator('form').filter({ has: page.getByRole('heading', { name: heading }) });
@@ -72,7 +72,7 @@ test('an open form keeps its units when the account switches them on another dev
   await expectSynced(desk);
 
   // The device with the open form receives the change ...
-  await syncedChip(field).click();
+  await syncNowFromChip(field);
   await field.waitForFunction(
     () => JSON.parse(localStorage.getItem('obh.settings') ?? '{}').weight_unit?.v === 'lb',
     undefined,

@@ -1,5 +1,5 @@
 import { expect, test } from './support/fixtures';
-import { expectSynced, submitSignIn, syncedChip } from './support/app';
+import { expectSynced, submitSignIn, syncNowFromChip } from './support/app';
 import { ADMIN } from './support/server';
 
 test('a wrong password is answered in the language of the app', async ({ api, device }) => {
@@ -131,8 +131,8 @@ test('a member removed from the workspace they work in continues in another one'
   await expectSynced(page);
 
   await api.as(club).removeMember(club.orgId, member.userId);
-  // The app notices with its next sync; tapping the chip starts one now.
-  await syncedChip(page).click();
+  // The app notices with its next sync; the chip's sheet starts one now.
+  await syncNowFromChip(page);
 
   await expect(page.getByRole('alert')).toHaveText(
     'You are no longer a member of the workspace you were working in. You are now in another of your workspaces.'

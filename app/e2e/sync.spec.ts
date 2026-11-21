@@ -1,5 +1,5 @@
 import { expect, test } from './support/fixtures';
-import { expectSynced, syncedChip } from './support/app';
+import { expectSynced, syncNowFromChip } from './support/app';
 
 test('a new device starts from a snapshot of the workspace and ends synced', async ({
   api,
@@ -54,7 +54,7 @@ test('a new device starts from a snapshot of the workspace and ends synced', asy
   // A later sync continues from the stored position, without a second snapshot.
   const pulls = () => calls.filter((c) => c.method === 'Pull').length;
   const before = pulls();
-  await syncedChip(b.page).click();
+  await syncNowFromChip(b.page);
   await expect.poll(pulls).toBeGreaterThan(before);
   await expectSynced(b.page);
   expect(calls.filter((c) => c.method === 'Snapshot')).toHaveLength(1);

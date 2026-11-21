@@ -240,7 +240,7 @@
     {#if !online}
       <div class="offline-bar">{$_('app.offline_banner')}</div>
     {/if}
-    <div class="sync-row"><SyncChip problemsHref="/settings" /></div>
+    <div class="sync-row"><SyncChip problemsHref="/settings#sync-problems" /></div>
     <main class="content">
       {@render children()}
     </main>

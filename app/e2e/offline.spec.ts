@@ -39,7 +39,7 @@ test('opens from a cold start without a network, shows the records and takes a n
   await cold.getByLabel('Note').fill('Recorded without reception');
   await cold.getByRole('button', { name: 'Save' }).click();
   await expect(cold.getByText('Recorded without reception')).toBeVisible();
-  await expect(cold.getByRole('button', { name: /^Offline · \d+ waiting/ })).toBeVisible();
+  await expect(cold.getByRole('button', { name: /^Offline · changes waiting/ })).toBeVisible();
 
   // Back in range.
   await server.start();

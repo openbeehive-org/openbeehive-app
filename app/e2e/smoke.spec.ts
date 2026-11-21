@@ -162,8 +162,6 @@ test('hive record card: no serious accessibility problem', async ({ api, device 
 /**
  * Controls that are too small for a thumb at the hive: buttons under 44 px
  * tall and text fields under 16 px (below that, iOS zooms the page on focus).
- * The sync status chip is a status line that can also be tapped, not an
- * action of the page, and is left out.
  */
 function smallControls(page: Page): Promise<string[]> {
   return page.evaluate(() => {
@@ -178,7 +176,6 @@ function smallControls(page: Page): Promise<string[]> {
       const style = getComputedStyle(el);
       if (box.width === 0 || box.height === 0 || style.visibility === 'hidden') continue;
       if (el instanceof HTMLButtonElement) {
-        if (el.title.includes('Sync now')) continue;
         if (box.height < 44) found.push(`button "${label(el)}": ${box.height} px tall`);
         continue;
       }
