@@ -11,6 +11,7 @@ import (
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	"github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1/openbeehivev1connect"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage"
 )
 
 type InspectionService struct {
@@ -220,8 +221,21 @@ func (s *InspectionService) AddInspectionPhoto(ctx context.Context, req *wv1.Add
 	if photos.blobs == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, "photo storage is not configured")
 	}
+	// Decoded and stored before the write lock is taken (see prepareInline),
+	// once the inspection is known to exist; the transaction checks again.
+	found, err := queryMaps(ctx, s.w.db, `SELECT id FROM inspection WHERE id = ? AND organization_id = ? AND deleted = FALSE`,
+		req.InspectionId, id.OrgID)
+	if err != nil {
+		return nil, writeErr(err)
+	}
+	if len(found) == 0 {
+		return nil, writeErr(storage.ErrNotFound)
+	}
+	if ctx, err = photos.prepareInline(ctx, id.OrgID, []string{req.Photo}, 1); err != nil {
+		return nil, writeErr(err)
+	}
 	var out *wv1.Inspection
-	err := s.w.Run(ctx, id, func(t *txWriter) error {
+	err = s.w.Run(ctx, id, func(t *txWriter) error {
 		cur, err := t.row("inspection", req.InspectionId)
 		if err != nil {
 			return err

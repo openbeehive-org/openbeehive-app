@@ -392,6 +392,12 @@ func (s *SyncService) Push(
 	}
 	now := time.Now()
 	ctx = withPhotos(ctx, s.photos)
+	// Inline photos of 0.4.x apps are decoded and stored before the write
+	// lock is taken (see prepareInline).
+	ctx, err = s.photos.prepareInline(ctx, id.OrgID, inlineImages(req.Changes), maxThumbsPerPush)
+	if err != nil {
+		return nil, internalErr(err)
+	}
 
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {

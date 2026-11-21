@@ -191,21 +191,26 @@ func (p *Photos) createFromInline(ctx context.Context, tx *sqlx.Tx, cause *wv1.C
 	if p.blobs == nil {
 		return nil
 	}
-	data := decodeDataURL(inline, MaxPhotoBytes)
-	typ := sniffPhotoType(data)
-	if typ == "" {
-		return nil
+	img, ok := preparedFrom(ctx).take(inline)
+	if !ok {
+		// Not prepared (the start-up conversion): do the work here.
+		data := decodeDataURL(inline, MaxPhotoBytes)
+		img = preparedImage{id: uuid.NewString(), typ: sniffPhotoType(data), size: len(data)}
+		if img.typ == "" {
+			return nil
+		}
+		img.key = blob.PhotoKey(orgID, img.id)
+		img.thumb = makeThumb(data)
+		// Stored before the record exists: if the transaction fails, the
+		// sweep removes the blob as one without a record.
+		if err := p.blobs.Put(ctx, img.key, bytes.NewReader(data), int64(len(data)), img.typ); err != nil {
+			return err
+		}
 	}
-	id := uuid.NewString()
-	key := blob.PhotoKey(orgID, id)
-	// Stored before the record exists: if the transaction fails, the sweep
-	// removes the blob as one without a record.
-	if err := p.blobs.Put(ctx, key, bytes.NewReader(data), int64(len(data)), typ); err != nil {
-		return err
-	}
+	id, key, typ := img.id, img.key, img.typ
 	payload, err := json.Marshal(map[string]any{
 		"organization_id": orgID, "owner_entity": ownerEntity, "owner_id": ownerID,
-		"thumb": makeThumb(data), "content_type": typ, "size_bytes": len(data),
+		"thumb": img.thumb, "content_type": typ, "size_bytes": img.size,
 		"created_at": jsTime(created), "deleted": 0,
 	})
 	if err != nil {
@@ -219,7 +224,7 @@ func (p *Photos) createFromInline(ctx context.Context, tx *sqlx.Tx, cause *wv1.C
 	}
 	_, err = tx.ExecContext(ctx, tx.Rebind(
 		`UPDATE photo SET blob_key = ?, blob_type = ?, blob_size = ?, legacy_key = ? WHERE id = ?`),
-		key, typ, len(data), legacyKey(inline), id)
+		key, typ, img.size, legacyKey(inline), id)
 	return err
 }
 
