@@ -1,0 +1,197 @@
+{
+  "apiary": {
+    "cols": [
+      "address",
+      "created_at",
+      "deleted",
+      "lat",
+      "lng",
+      "name",
+      "note",
+      "organization_id",
+      "updated_at"
+    ],
+    "set_cols": []
+  },
+  "event": {
+    "cols": [
+      "amount_kg",
+      "apiary_id",
+      "author_id",
+      "date",
+      "deleted",
+      "detail",
+      "hive_id",
+      "organization_id",
+      "queen_id",
+      "ref_entity",
+      "ref_id",
+      "scope_id",
+      "title",
+      "type"
+    ],
+    "set_cols": []
+  },
+  "harvest": {
+    "cols": [
+      "amended_at",
+      "amount_kg",
+      "apiary_id",
+      "batch_number",
+      "best_before",
+      "date",
+      "deleted",
+      "hive_id",
+      "note",
+      "organization_id",
+      "queen_id",
+      "variety",
+      "water_content"
+    ],
+    "set_cols": []
+  },
+  "hive": {
+    "cols": [
+      "apiary_id",
+      "boxes",
+      "colony_origin",
+      "created_at",
+      "deleted",
+      "name",
+      "note",
+      "organization_id",
+      "photo",
+      "qr_code",
+      "status",
+      "type",
+      "updated_at"
+    ],
+    "set_cols": []
+  },
+  "inspection": {
+    "cols": [
+      "brood_frames",
+      "calmness",
+      "covered_larva",
+      "created_at",
+      "date",
+      "deleted",
+      "drone_frame_cut",
+      "eggs_seen",
+      "fed_kg",
+      "frames",
+      "frames_added",
+      "frames_removed",
+      "hive_id",
+      "honey_kg",
+      "humidity_hive",
+      "humidity_outside",
+      "note",
+      "organization_id",
+      "photo_keys",
+      "queen_cells",
+      "queen_seen",
+      "source",
+      "stores",
+      "super_added",
+      "temp_hive",
+      "temp_outside",
+      "temperament",
+      "varroa",
+      "weather",
+      "weight_kg",
+      "youngest_larva"
+    ],
+    "set_cols": [
+      "photo_keys"
+    ]
+  },
+  "photo": {
+    "cols": [
+      "content_type",
+      "created_at",
+      "deleted",
+      "organization_id",
+      "owner_entity",
+      "owner_id",
+      "size_bytes",
+      "thumb"
+    ],
+    "set_cols": []
+  },
+  "placement": {
+    "cols": [
+      "apiary_id",
+      "deleted",
+      "end_at",
+      "hive_id",
+      "organization_id",
+      "start_at"
+    ],
+    "set_cols": []
+  },
+  "queen": {
+    "cols": [
+      "active",
+      "breeder_number",
+      "created_at",
+      "deleted",
+      "hive_id",
+      "introduced_at",
+      "marking",
+      "note",
+      "organization_id",
+      "origin",
+      "replaced_at",
+      "updated_at",
+      "year"
+    ],
+    "set_cols": []
+  },
+  "task": {
+    "cols": [
+      "apiary_id",
+      "assigned_to",
+      "created_at",
+      "deleted",
+      "done",
+      "due_at",
+      "hive_id",
+      "note",
+      "organization_id",
+      "priority",
+      "recurrence",
+      "title"
+    ],
+    "set_cols": []
+  },
+  "treatment": {
+    "cols": [
+      "active_ingredient",
+      "amended_at",
+      "apiary_id",
+      "batch_number",
+      "date",
+      "deleted",
+      "dose",
+      "hive_id",
+      "method",
+      "note",
+      "organization_id",
+      "product",
+      "queen_id",
+      "reason",
+      "withdrawal_until"
+    ],
+    "set_cols": []
+  },
+  "user_settings": {
+    "cols": [
+      "deleted",
+      "language",
+      "temp_unit",
+      "weight_unit"
+    ],
+    "set_cols": []
+  }
+}
