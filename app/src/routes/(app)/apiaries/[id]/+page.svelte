@@ -135,7 +135,7 @@
       deleteBlocked = true;
       return;
     }
-    await goto('/apiaries', { replaceState: true });
+    await goto('/apiaries', { replace: true });
   }
   async function addHive() {
     if (!hiveName.trim()) return;

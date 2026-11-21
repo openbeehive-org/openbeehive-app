@@ -21,7 +21,7 @@
   // Opens the hive if this device has it.
   async function open(): Promise<boolean> {
     if (!(await hives.get(id))) return false;
-    await goto(`/hives/${id}`, { replaceState: true });
+    await goto(`/hives/${id}`, { replace: true });
     return true;
   }
 

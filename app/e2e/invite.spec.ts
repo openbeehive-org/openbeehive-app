@@ -16,6 +16,8 @@ test('an invite names its workspace and says why the wrong account cannot join',
   await page.goto(`/login?invite=${token}`);
   await expect(page.getByText('invited to the workspace “Bee Club”')).toBeVisible();
   await expect(page.getByText('f…@b….org')).toBeVisible();
+  // The token is read, then taken out of the address bar.
+  await expect(page).not.toHaveURL(/invite=/);
 
   await page.getByRole('button', { name: /Already have an account/ }).click();
   await submitSignIn(page, stranger.email, stranger.password);

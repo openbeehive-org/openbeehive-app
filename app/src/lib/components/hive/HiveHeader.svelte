@@ -100,7 +100,7 @@
     const back = hive.apiary_id;
     try {
       await hives.remove(hive.id, hive.apiary_id);
-      await goto(back ? `/apiaries/${back}` : '/hives', { replaceState: true });
+      await goto(back ? `/apiaries/${back}` : '/hives', { replace: true });
     } finally {
       deleting = false;
     }
