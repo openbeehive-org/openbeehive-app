@@ -179,10 +179,20 @@ func TestRPCWithoutContentTypeIsExplained(t *testing.T) {
 		t.Fatalf("no Content-Type: %d %q", rec.Code, rec.Body.String())
 	}
 	req = httptest.NewRequest(http.MethodPost, openbeehivev1connect.SyncServicePushProcedure, strings.NewReader(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "text/plain")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("JSON request: %d %q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusUnsupportedMediaType || !strings.Contains(rec.Body.String(), "not supported") ||
+		rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("wrong Content-Type: %d %q", rec.Code, rec.Body.String())
+	}
+	for _, ct := range []string{"application/json", "application/json; charset=utf-8", "Application/JSON"} {
+		req = httptest.NewRequest(http.MethodPost, openbeehivev1connect.SyncServicePushProcedure, strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", ct)
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("JSON request (%s): %d %q", ct, rec.Code, rec.Body.String())
+		}
 	}
 }
