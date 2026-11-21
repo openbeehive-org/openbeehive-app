@@ -50,6 +50,13 @@ func (t *TenantAPI) Routes(rt *Router) {
 	rt.Get("/auth/invite", t.inviteInfo)
 }
 
+// NoLoginMeHandler answers GET /auth/me on an instance without sign-in. There
+// is no account: the answer names none and says so, which the app reads as
+// "single user", and the app's request for it does not fail.
+func NoLoginMeHandler(w http.ResponseWriter, _ *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]any{"no_login": true, "tenants": []any{}})
+}
+
 // InstanceHandler serves GET /auth/instance: the onboarding state, every
 // enabled sign-in method and the map settings, so the app renders exactly
 // what this server offers. It is public, and also mounted when no login is

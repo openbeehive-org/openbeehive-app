@@ -230,6 +230,7 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 	if !cfg.LoginEnabled() {
 		// Self-host single-user mode: no auth configured -> inject a fixed
 		// local identity so the offline-first app works without login.
+		rt.Get("/auth/me", auth.NoLoginMeHandler)
 		mux.Handle(service.PhotoPathPrefix, photos.Handler(
 			func(*http.Request) (auth.Identity, int) { return auth.LocalUser, 0 }, rt.SameSite))
 		mux.Handle(service.ExportPath, service.NewExporter(store.DB(), blobs).Handler(

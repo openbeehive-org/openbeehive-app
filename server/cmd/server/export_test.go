@@ -92,3 +92,17 @@ func TestExportWithoutLogin(t *testing.T) {
 		t.Errorf("cross-site export: %d", res.status)
 	}
 }
+
+// Without login, /auth/me answers that there is no account instead of 404,
+// so the app's request for it on every load does not fail.
+func TestMeWithoutLogin(t *testing.T) {
+	w := newWired(t, &config.Config{Profile: "selfhost", PublicBaseURL: "http://localhost:8080"})
+	res := w.do(http.MethodGet, "/auth/me", nil)
+	if res.status != http.StatusOK {
+		t.Fatalf("/auth/me: %d %s", res.status, res.body)
+	}
+	body := res.json(t)
+	if body["no_login"] != true || body["user_id"] != nil {
+		t.Errorf("/auth/me body: %s", res.body)
+	}
+}
