@@ -1,6 +1,7 @@
 <script lang="ts">
   // Opened from a reset link (/reset-password?token=...): choose a new
   // password. The link works once and for an hour.
+  import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { page } from '$app/state';
   import {
@@ -11,9 +12,11 @@
     type ResetCompleteState
   } from '#lib/account.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
+  import { hideUrlSecret } from '#lib/url-secret.js';
   import '#lib/components/auth/auth.css';
 
   const token = $derived(page.url.searchParams.get('token') ?? '');
+  onMount(() => hideUrlSecret('token'));
   let view = $state<ResetCompleteState>('form');
   let password = $state('');
   let repeat = $state('');

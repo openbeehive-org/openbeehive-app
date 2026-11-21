@@ -86,6 +86,8 @@ test('a forgotten password is reset with a link from the instance admin', async 
 
   await user.page.goto(link);
   await expect(user.page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible();
+  // The token leaves the address bar (and the history) once the page has it.
+  await expect(user.page).toHaveURL(/\/reset-password$/);
   await user.page.getByLabel('New password', { exact: true }).fill('a-brand-new-password');
   await user.page.getByLabel('Repeat the new password').fill('a-brand-new-password');
   await user.page.getByRole('button', { name: 'Save new password' }).click();
@@ -188,4 +190,24 @@ test('an account cannot be deleted while it is the only admin of a shared worksp
   await expect(
     deleteCard(ownerDevice.page).getByRole('button', { name: 'Delete my account…' })
   ).toBeVisible();
+});
+
+test('an invite link leaves the address bar once read, and still works', async ({
+  api,
+  device
+}) => {
+  const owner = await api.signUp();
+  const email = `${Date.now()}-invited@e2e.test`;
+  const invite = await api.as(owner).invite(owner.orgId, email);
+
+  const { page } = await device();
+  await page.goto(`/login?invite=${invite}`);
+  await expect(page.getByText(/been invited/)).toBeVisible();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill('e2e-password-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expectSynced(page);
+  const me = await page.evaluate(() => localStorage.getItem('obh.orgId'));
+  expect(me).toBe(owner.orgId);
 });

@@ -7,6 +7,7 @@
   import { authErrorKey, GENERIC_AUTH_ERROR, NETWORK_AUTH_ERROR } from '#lib/auth-errors.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
   import { fetchInstance } from '#lib/instance.js';
+  import { hideUrlSecret } from '#lib/url-secret.js';
   import { resetMode, type ResetMode } from '#lib/account.js';
   import '#lib/components/auth/auth.css';
   import {
@@ -60,6 +61,7 @@
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   onMount(async () => {
+    hideUrlSecret('invite');
     const j = await fetchInstance();
     // Server unreachable (offline): the app itself still opens from the device.
     if (!j) {
