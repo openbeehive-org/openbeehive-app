@@ -171,7 +171,7 @@
     "invite_only_banner": "This instance is invite-only. Registration is disabled — sign in with an existing account or use your invite link.",
     "invited_banner": "You've been invited. Create your account below — or sign in if you already have one.",
     "passkey_signin": "Sign in with a passkey",
-    "demo_hint": "No account needed: explore with sample data. It resets every hour.",
+    "demo_hint": "No account needed: look around with sample data. The demo is read-only, so changes are not saved.",
     "err_invalid_credentials": "Wrong email or password.",
     "err_unverified": "Please confirm your email address first. Check your inbox for the link.",
     "err_invite_only": "This instance is invite-only. Ask for an invite to create an account.",
@@ -210,7 +210,8 @@
     "continue_without_joining": "Continue without joining"
   },
   "demo": {
-    "banner": "You're exploring the Openbeehive demo — data resets every hour."
+    "banner": "You're exploring the Openbeehive demo. It is read-only: nothing you change is saved.",
+    "form_note": "This is the read-only demo: this form cannot be saved."
   },
   "tenant": {
     "title": "Workspaces",

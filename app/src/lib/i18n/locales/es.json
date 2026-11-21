@@ -171,7 +171,7 @@
     "invite_only_banner": "Esta instancia es solo por invitación. El registro está desactivado: inicia sesión con una cuenta existente o usa tu enlace de invitación.",
     "invited_banner": "Has recibido una invitación. Crea tu cuenta abajo, o inicia sesión si ya tienes una.",
     "passkey_signin": "Iniciar sesión con passkey",
-    "demo_hint": "Sin cuenta: explora la aplicación con datos de ejemplo. Se reinician cada hora.",
+    "demo_hint": "Sin cuenta: echa un vistazo con datos de ejemplo. La demo es de solo lectura, los cambios no se guardan.",
     "err_invalid_credentials": "Correo electrónico o contraseña incorrectos.",
     "err_unverified": "Confirma primero tu dirección de correo. Encontrarás el enlace en tu bandeja de entrada.",
     "err_invite_only": "Esta instancia es solo por invitación. Pide una invitación para crear una cuenta.",
@@ -210,7 +210,8 @@
     "continue_without_joining": "Continuar sin unirse"
   },
   "demo": {
-    "banner": "Estás explorando la demo de Openbeehive: los datos se reinician cada hora."
+    "banner": "Estás explorando la demo de Openbeehive. Es de solo lectura: nada de lo que cambies se guarda.",
+    "form_note": "Esta es la demo de solo lectura: este formulario no se puede guardar."
   },
   "tenant": {
     "title": "Espacios",

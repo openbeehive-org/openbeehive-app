@@ -9,10 +9,12 @@ async function enterDemo(page: Page) {
   await page.goto('/');
   await expect(page).toHaveURL(/\/login$/);
   await expect(
-    page.getByText('No account needed: explore with sample data. It resets every hour.')
+    page.getByText(
+      'No account needed: look around with sample data. The demo is read-only, so changes are not saved.'
+    )
   ).toBeVisible();
   await page.getByRole('button', { name: 'Try the demo' }).click();
-  await expect(page.getByText(/exploring the Openbeehive demo/)).toBeVisible();
+  await expect(page.getByText(/exploring the Openbeehive demo\. It is read-only/)).toBeVisible();
   await expectSynced(page);
 }
 
@@ -67,4 +69,19 @@ test('the demo says clearly that a change was refused', async ({ startServer, de
   await expect(page.getByRole('alert').filter({ hasText: /demo/i })).toBeVisible({ timeout: 5000 });
   await expect(page.getByText('Change the demo')).toHaveCount(0);
   await expectSynced(page);
+});
+
+// Forms say up front that the demo cannot save them, and Save is off.
+test('in the demo, the visit form cannot be saved and says so', async ({ startServer, device }) => {
+  test.slow();
+  const server = await startServer(DEMO_ON);
+  const { page } = await device({ server });
+  await enterDemo(page);
+  await page.getByRole('navigation').getByRole('link', { name: 'Hives' }).click();
+  await page.getByRole('listitem').first().getByRole('link').click();
+  await page.getByRole('button', { name: 'Record visit' }).first().click();
+  await expect(
+    page.getByText('This is the read-only demo: this form cannot be saved.').first()
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
 });

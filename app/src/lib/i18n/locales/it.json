@@ -171,7 +171,7 @@
     "invite_only_banner": "Questa istanza è solo su invito. La registrazione è disattivata: accedi con un account esistente o usa il tuo link di invito.",
     "invited_banner": "Hai ricevuto un invito. Crea il tuo account qui sotto, oppure accedi se ne hai già uno.",
     "passkey_signin": "Accedi con passkey",
-    "demo_hint": "Senza account: esplora l'app con dati di esempio. Vengono reimpostati ogni ora.",
+    "demo_hint": "Senza account: dai un’occhiata con dati di esempio. La demo è di sola lettura, le modifiche non vengono salvate.",
     "err_invalid_credentials": "E-mail o password errate.",
     "err_unverified": "Conferma prima il tuo indirizzo e-mail. Trovi il link nella tua casella di posta.",
     "err_invite_only": "Questa istanza è solo su invito. Chiedi un invito per creare un account.",
@@ -210,7 +210,8 @@
     "continue_without_joining": "Continua senza unirti"
   },
   "demo": {
-    "banner": "Stai esplorando la demo di Openbeehive: i dati si reimpostano ogni ora."
+    "banner": "Stai esplorando la demo di Openbeehive. È di sola lettura: nulla di ciò che modifichi viene salvato.",
+    "form_note": "Questa è la demo di sola lettura: questo modulo non può essere salvato."
   },
   "tenant": {
     "title": "Spazi",

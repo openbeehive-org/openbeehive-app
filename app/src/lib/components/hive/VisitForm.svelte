@@ -14,6 +14,7 @@
   import { createSaver } from './saver.js';
   import { changedFrom, storedDate } from './forms.js';
   import FormFooter from './FormFooter.svelte';
+  import DemoNote from '../DemoNote.svelte';
   import Stepper from './Stepper.svelte';
   import Segmented from './Segmented.svelte';
   import Photos, { attachVisitPhotos } from './Photos.svelte';
@@ -192,6 +193,7 @@
       </button>
     {/if}
   </div>
+  <DemoNote />
 
   <div class="hv-grid2">
     <label class="hv-field">

@@ -171,7 +171,7 @@
     "invite_only_banner": "Diese Instanz ist nur mit Einladung nutzbar. Die Registrierung ist deaktiviert – melde dich mit einem bestehenden Konto an oder nutze deinen Einladungslink.",
     "invited_banner": "Du wurdest eingeladen. Erstelle unten dein Konto – oder melde dich an, wenn du schon eines hast.",
     "passkey_signin": "Mit Passkey anmelden",
-    "demo_hint": "Kein Konto nötig: Sieh dich mit Beispieldaten um. Sie werden stündlich zurückgesetzt.",
+    "demo_hint": "Kein Konto nötig: Sieh dich mit Beispieldaten um. Die Demo ist schreibgeschützt, Änderungen werden nicht gespeichert.",
     "err_invalid_credentials": "E-Mail oder Passwort ist falsch.",
     "err_unverified": "Bitte bestätige zuerst deine E-Mail-Adresse. Den Link findest du in deinem Postfach.",
     "err_invite_only": "Diese Instanz ist nur mit Einladung nutzbar. Bitte um eine Einladung, um ein Konto zu erstellen.",
@@ -210,7 +210,8 @@
     "continue_without_joining": "Ohne Beitritt weiter"
   },
   "demo": {
-    "banner": "Du erkundest die Openbeehive-Demo – die Daten werden stündlich zurückgesetzt."
+    "banner": "Du erkundest die Openbeehive-Demo. Sie ist schreibgeschützt: Was du änderst, wird nicht gespeichert.",
+    "form_note": "Dies ist die schreibgeschützte Demo: Dieses Formular kann nicht gespeichert werden."
   },
   "tenant": {
     "title": "Arbeitsbereiche",

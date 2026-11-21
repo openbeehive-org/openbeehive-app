@@ -17,6 +17,7 @@
   import { fetchInstance } from '#lib/instance.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
   import { get } from 'svelte/store';
+  import { demoSession } from '#lib/demo.js';
 
   const api = (import.meta.env.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
   async function fetchJSON(path: string, opts: RequestInit = {}) {
@@ -120,6 +121,7 @@
           email = me.email;
         }
         isDemo = !!me.is_demo;
+        demoSession.set(isDemo);
         // The local store belongs to one account in one workspace: a page may
         // have opened it for the previous one, so start over with the right one.
         const o = openedFor();

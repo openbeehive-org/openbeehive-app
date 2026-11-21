@@ -171,7 +171,7 @@
     "invite_only_banner": "Cette instance est accessible sur invitation uniquement. Les inscriptions sont désactivées — connectez-vous avec un compte existant ou utilisez votre lien d'invitation.",
     "invited_banner": "Vous avez reçu une invitation. Créez votre compte ci-dessous — ou connectez-vous si vous en avez déjà un.",
     "passkey_signin": "Se connecter avec une passkey",
-    "demo_hint": "Sans compte : explorez l'application avec des données d'exemple. Elles sont réinitialisées chaque heure.",
+    "demo_hint": "Sans compte : découvrez l'application avec des données d'exemple. La démo est en lecture seule, les modifications ne sont pas enregistrées.",
     "err_invalid_credentials": "E-mail ou mot de passe incorrect.",
     "err_unverified": "Veuillez d'abord confirmer votre adresse e-mail. Le lien se trouve dans votre boîte de réception.",
     "err_invite_only": "Cette instance est accessible sur invitation uniquement. Demandez une invitation pour créer un compte.",
@@ -210,7 +210,8 @@
     "continue_without_joining": "Continuer sans rejoindre"
   },
   "demo": {
-    "banner": "Vous explorez la démo d'Openbeehive — les données sont réinitialisées chaque heure."
+    "banner": "Vous explorez la démo d'Openbeehive. Elle est en lecture seule : rien de ce que vous modifiez n'est enregistré.",
+    "form_note": "Ceci est la démo en lecture seule : ce formulaire ne peut pas être enregistré."
   },
   "tenant": {
     "title": "Espaces",
