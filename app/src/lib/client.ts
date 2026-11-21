@@ -14,7 +14,7 @@ import { version as appVersion } from '../../package.json';
 // self-host binary), so same-origin is correct without a build-time override.
 // Falls back to localhost only for non-browser/dev contexts.
 const API_URL =
-  import.meta.env.BEEHIVE_API_URL ?? (browser ? window.location.origin : 'http://localhost:8080');
+  import.meta.env.BEEHIVE_API_URL || (browser ? window.location.origin : 'http://localhost:8080');
 
 const authInterceptor: Interceptor = (next) => async (req) => {
   if (browser) {

@@ -17,8 +17,9 @@ import { PhotoTransfers, type Unavailable, type UploadState } from './transfer';
 
 export type { PhotoRow, PhotoOwner, Unavailable, UploadState };
 
+// An empty BEEHIVE_API_URL means "same origin", like an unset one.
 const API_URL =
-  import.meta.env.BEEHIVE_API_URL ??
+  import.meta.env.BEEHIVE_API_URL ||
   (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8080');
 
 const workspace = () => localStorage.getItem('obh.orgId') ?? 'local';
