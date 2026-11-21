@@ -105,3 +105,24 @@ test('in the demo, the visit form cannot be saved and says so', async ({ startSe
     page.getByText('This is the read-only demo: this form cannot be saved.')
   ).toBeVisible();
 });
+
+// Actions that change data at once (deletes, the hive picture, photo
+// removal) are off in the demo instead of being refused and undone.
+test('in the demo, delete and photo actions are off', async ({ startServer, device }) => {
+  test.slow();
+  const server = await startServer(DEMO_ON);
+  const { page } = await device({ server });
+  await enterDemo(page);
+  await page.getByRole('navigation').getByRole('link', { name: 'Hives' }).click();
+  await page.getByRole('listitem').first().getByRole('link').click();
+  await page.getByRole('button', { name: 'More' }).click();
+  await expect(page.getByRole('button', { name: 'Delete hive' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  const recordDeletes = page.getByRole('button', { name: /^Delete: / });
+  expect(await recordDeletes.count()).toBeGreaterThan(0);
+  for (const button of await recordDeletes.all()) await expect(button).toBeDisabled();
+
+  await page.getByRole('navigation').getByRole('link', { name: 'Apiaries' }).click();
+  await page.getByRole('main').getByRole('link').first().click();
+  await expect(page.getByRole('button', { name: 'Delete apiary' })).toBeDisabled();
+});

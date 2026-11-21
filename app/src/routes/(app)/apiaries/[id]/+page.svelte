@@ -217,6 +217,7 @@
         >
         <button
           class="icon danger"
+          disabled={$demoSession}
           onclick={del}
           title={$_('apiaries.delete')}
           aria-label={$_('apiaries.delete')}><Trash2 size={18} aria-hidden="true" /></button
@@ -406,9 +407,13 @@
     cursor: pointer;
     color: var(--text);
   }
-  .icon.danger:hover {
+  .icon.danger:hover:not(:disabled) {
     border-color: var(--danger);
     color: var(--danger);
+  }
+  .icon:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .card {

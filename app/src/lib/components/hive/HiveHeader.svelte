@@ -15,6 +15,7 @@
     Trash2
   } from '@lucide/svelte';
   import { hives } from '#lib/local/repo.js';
+  import { demoSession } from '#lib/demo.js';
   import { moveHive, updateHive } from '#lib/local/history.js';
   import type { ApiaryRow, HiveRow } from '../../../routes/(app)/rows.js';
   import QrLabel from '#lib/components/QrLabel.svelte';
@@ -183,7 +184,7 @@
             </button>
           </li>
           <li class="danger">
-            <button type="button" onclick={delHive}>
+            <button type="button" disabled={$demoSession} onclick={delHive}>
               <Trash2 size={18} aria-hidden="true" />
               {$_('hives.delete')}
             </button>
@@ -312,8 +313,12 @@
     cursor: pointer;
   }
   .menu a:hover,
-  .menu button:hover {
+  .menu button:hover:not(:disabled) {
     background: var(--bg);
+  }
+  .menu button:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .menu a:focus-visible,
   .menu button:focus-visible {

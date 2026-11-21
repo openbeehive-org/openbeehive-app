@@ -14,6 +14,7 @@
     type PhotoRow,
     type Unavailable
   } from '#lib/photos/index.js';
+  import { demoSession } from '#lib/demo.js';
   import './hive.css';
 
   let {
@@ -241,7 +242,7 @@
         </button>
       {:else}
         {#if onreplace}
-          <button type="button" class="hv-btn ghost" onclick={replace}>
+          <button type="button" class="hv-btn ghost" disabled={$demoSession} onclick={replace}>
             <ImageUp size={18} aria-hidden="true" />
             {$_('photo.replace')}
           </button>
@@ -250,6 +251,7 @@
           type="button"
           class="hv-btn danger"
           bind:this={deleteButton}
+          disabled={$demoSession}
           onclick={() => ask(true)}
         >
           <Trash2 size={18} aria-hidden="true" />

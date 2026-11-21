@@ -23,6 +23,7 @@
   import { dataVersion } from '#lib/local/live.js';
   import { deletePhoto, setHivePicture, uploadStates, type PhotoRow } from '#lib/photos/index.js';
   import PhotoViewer from './PhotoViewer.svelte';
+  import { demoSession } from '#lib/demo.js';
   import './hive.css';
 
   type HiveRef = { id: string; name: string };
@@ -135,7 +136,12 @@
 {#if kind === 'hive' && hive}
   <!-- A real button, so it is reachable by keyboard: it opens the picture,
        or the file picker while there is none. -->
-  <button type="button" class="avatar" onclick={() => (picture ? viewer?.open(0) : input?.click())}>
+  <button
+    type="button"
+    class="avatar"
+    disabled={!picture && $demoSession}
+    onclick={() => (picture ? viewer?.open(0) : input?.click())}
+  >
     {#if picture?.thumb}
       <img src={picture.thumb} alt={describe(0)} />
     {:else}
@@ -166,6 +172,7 @@
           type="button"
           class="rm"
           aria-label={$_('photo.delete_n', { values: { n: idx + 1 } })}
+          disabled={$demoSession}
           onclick={() => removeStored(ph, idx + 1)}>×</button
         >
       </span>
@@ -181,7 +188,12 @@
         >
       </span>
     {/each}
-    <button type="button" class="addphoto" disabled={busy} onclick={() => input?.click()}>
+    <button
+      type="button"
+      class="addphoto"
+      disabled={busy || $demoSession}
+      onclick={() => input?.click()}
+    >
       <Camera size={18} aria-hidden="true" />
       {busy ? $_('photo.preparing') : $_('insp.add_photo')}
     </button>
@@ -251,6 +263,12 @@
     border-radius: 7px;
     padding: 1px 4px;
     line-height: 1.2;
+  }
+  .avatar:disabled,
+  .addphoto:disabled,
+  .rm:disabled {
+    cursor: default;
+    opacity: 0.6;
   }
   .avatar:focus-visible,
   .addphoto:focus-visible,

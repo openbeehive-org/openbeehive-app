@@ -207,6 +207,10 @@
 .hv-link.danger {
   color: var(--danger);
 }
+.hv-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .hv-link.soft {
   color: var(--text-soft);
   font-weight: 600;

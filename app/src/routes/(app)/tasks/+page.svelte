@@ -156,6 +156,7 @@
       <button
         class="check"
         class:on={t.done}
+        disabled={$demoSession}
         onclick={() => toggle(t)}
         aria-pressed={!!t.done}
         aria-label={$_(t.done ? 'tasks.mark_open' : 'tasks.mark_done', {
@@ -184,6 +185,7 @@
       >
       <button
         class="iconbtn danger"
+        disabled={$demoSession}
         onclick={() => del(t)}
         title={$_('common.delete')}
         aria-label={$_('tasks.delete_named', { values: { title: t.title } })}
@@ -426,8 +428,13 @@
   .iconbtn.danger {
     margin-left: 8px;
   }
-  .iconbtn.danger:hover {
+  .iconbtn.danger:hover:not(:disabled) {
     color: var(--danger);
+  }
+  .iconbtn:disabled,
+  .check:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
   .toggle {
     display: flex;
