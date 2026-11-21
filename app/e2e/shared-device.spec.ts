@@ -68,3 +68,37 @@ test('two people on one device in one workspace never upload or see each other�
   await expect(page.getByText('Alice’s own reminder')).toBeVisible();
   await expect.poll(listed).toContain('Written by Alice offline');
 });
+
+test('the second account of a workspace on one device keeps its data on the device', async ({
+  api,
+  device
+}) => {
+  const alice = await api.signUp();
+  const bobAccount = await api.signUp();
+  const invite = await api.as(alice).invite(alice.orgId, bobAccount.email);
+  const bob = await api.as(bobAccount).acceptInvite(invite);
+
+  const { context, page } = await device({ session: alice });
+  await page.goto('/tasks');
+  await expectSynced(page);
+
+  // Bob signs in after Alice in the same tab: the app opens his own store
+  // after looking at hers.
+  await signInAs(page, bob);
+  await page.goto('/tasks');
+  await expectSynced(page);
+  const banner = page.getByText(/is not saving data on this device/);
+  await expect(banner).toHaveCount(0);
+
+  // What he writes while nothing reaches the server survives a reload, so
+  // it is stored on the device and not in memory.
+  await context.route('**/openbeehive.v1.SyncService/Push', (route) =>
+    route.abort('internetdisconnected')
+  );
+  await page.getByLabel('New task').fill('Bob’s unsent reminder');
+  await page.getByRole('button', { name: 'Add' }).click();
+  await expect(page.getByText('Bob’s unsent reminder')).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('Bob’s unsent reminder')).toBeVisible();
+  await expect(banner).toHaveCount(0);
+});

@@ -33,32 +33,51 @@ let pool: SAHPoolUtil | null = null;
 // OPFS files), so reserve plenty.
 const MIN_POOL_CAPACITY = 24;
 
+// The SQLite module and the OPFS pool are set up once per worker. A second
+// module instance would install a second pool, which cannot take the access
+// handles the first one holds (NoModificationAllowedError); that happens
+// whenever the main thread opens a second file, as when another account of
+// the same workspace signs in (lib/local/owner.ts).
+let sqlite3Promise: ReturnType<typeof sqlite3InitModule> | null = null;
+
+async function installPool(sqlite3: Awaited<ReturnType<typeof sqlite3InitModule>>) {
+  // The pool takes EXCLUSIVE access handles, so a page refresh (or a tab
+  // taking the database over) can race the previous worker still holding
+  // them: retry briefly before giving up.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < openAttempts; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
+    try {
+      // Without forceReinitIfPreviouslyFailed (missing from the typings) a
+      // retry would only get the cached failure of the first attempt.
+      const options = {
+        name: 'openbeehive',
+        initialCapacity: MIN_POOL_CAPACITY,
+        forceReinitIfPreviouslyFailed: true
+      };
+      const p = await sqlite3.installOpfsSAHPoolVfs(options);
+      // initialCapacity only applies when the pool is first created; a pool
+      // that already exists on the device keeps its old (possibly smaller)
+      // capacity. Grow it explicitly so upgraded installs get the slots too.
+      await p.reserveMinimumCapacity(MIN_POOL_CAPACITY);
+      return p;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  console.warn('OPFS unavailable, using a non-persistent in-memory store:', lastErr);
+  return null;
+}
+
 async function getDb() {
   if (!dbPromise) {
     dbPromise = (async () => {
-      const sqlite3 = await sqlite3InitModule();
+      sqlite3Promise ??= sqlite3InitModule();
+      const sqlite3 = await sqlite3Promise;
       // Persistent: OPFS SAHPool VFS (no SharedArrayBuffer / cross-origin
-      // isolation required, works behind any reverse proxy). The pool takes
-      // EXCLUSIVE access handles, so a page refresh (or a tab taking the
-      // database over) can race the previous worker still holding them:
-      // retry briefly before falling back.
-      let lastErr: unknown;
-      for (let attempt = 0; attempt < openAttempts; attempt++) {
-        if (attempt > 0) await new Promise((r) => setTimeout(r, 300));
-        try {
-          pool = await sqlite3.installOpfsSAHPoolVfs({
-            name: 'openbeehive',
-            initialCapacity: MIN_POOL_CAPACITY
-          });
-          // initialCapacity only applies when the pool is first created; a pool
-          // that already exists on the device keeps its old (possibly smaller)
-          // capacity. Grow it explicitly so upgraded installs get the slots too.
-          await pool.reserveMinimumCapacity(MIN_POOL_CAPACITY);
-          return new pool.OpfsSAHPoolDb('/' + dbName);
-        } catch (err) {
-          lastErr = err;
-        }
-      }
+      // isolation required, works behind any reverse proxy).
+      pool ??= await installPool(sqlite3);
+      if (pool) return new pool.OpfsSAHPoolDb('/' + dbName);
       // OPFS stays unavailable in some environments (notably Firefox Private
       // Browsing and browsers/settings that block storage) where
       // navigator.storage.getDirectory() throws a SecurityError. Fall back to
@@ -67,7 +86,6 @@ async function getDb() {
       // shows a banner for as long as that is the case (see db.ts). A second
       // tab does not end up here: the tab lock keeps it from opening the
       // database at all (tablock.ts).
-      console.warn('OPFS unavailable, using a non-persistent in-memory store:', lastErr);
       (self as unknown as Worker).postMessage({ volatile: true });
       return new sqlite3.oo1.DB(':memory:', 'c');
     })();
