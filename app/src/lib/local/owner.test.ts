@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { makeLocalDB } from '../../tests/localdb';
 import type { LocalDB } from './db';
-import { accountStoreKey, mayUse, openOwnStore, otherAccountIn, OWNER_KEY } from './owner';
+import {
+  accountStoreKey,
+  mayUse,
+  openOwnStore,
+  otherAccountIn,
+  OWNER_KEY,
+  unattributedPersonal
+} from './owner';
 
 const ORG = 'org-1';
 
@@ -73,6 +80,34 @@ describe('one local store per account and workspace', () => {
     expect(await openOwnStore(d.open, ORG, 'alice', true)).toBe(ORG);
   });
 
+  it("does not hand an old store with someone's personal tasks to the next account", async () => {
+    const d = device();
+    const old = await d.open(ORG);
+    await old.exec(
+      `INSERT INTO task (id, title, apiary_id) VALUES ('t1', 'Alice’s reminder', NULL)`
+    );
+
+    expect(await openOwnStore(d.open, ORG, 'bob', true)).toBe(accountStoreKey(ORG, 'bob'));
+    expect(await owner(old)).toBeUndefined();
+    expect(await d.stores.get(accountStoreKey(ORG, 'bob'))!.all(`SELECT * FROM task`)).toEqual([]);
+  });
+
+  it('lets the account that left traces in an old store with personal tasks keep it', async () => {
+    const d = device();
+    const old = await d.open(ORG);
+    await old.exec(`INSERT INTO task (id, title, apiary_id) VALUES ('t1', 'reminder', '')`);
+    await queue(old, 'alice');
+    expect(await openOwnStore(d.open, ORG, 'alice', true)).toBe(ORG);
+    expect(await owner(old)).toBe('alice');
+  });
+
+  it('keeps an old store with personal tasks for the single-user identity', async () => {
+    const d = device();
+    const old = await d.open(ORG);
+    await old.exec(`INSERT INTO task (id, title, apiary_id) VALUES ('t1', 'reminder', NULL)`);
+    expect(await openOwnStore(d.open, ORG, 'local', false)).toBe(ORG);
+  });
+
   it('does not let a guessed identity claim a store', async () => {
     const db = await makeLocalDB();
     expect(await mayUse(db, 'local', false)).toBe(true);
@@ -98,5 +133,18 @@ describe('otherAccountIn', () => {
     await queue(db, 'local');
     await queue(db, '');
     expect(await otherAccountIn(db, 'bob')).toBe('');
+  });
+});
+
+describe('unattributedPersonal', () => {
+  it('reports personal tasks only while nothing in the store is the account’s', async () => {
+    const db = await makeLocalDB();
+    expect(await unattributedPersonal(db, 'bob')).toBe(false);
+    await db.exec(`INSERT INTO task (id, apiary_id) VALUES ('shared', 'apiary-1')`);
+    expect(await unattributedPersonal(db, 'bob')).toBe(false);
+    await db.exec(`INSERT INTO task (id, apiary_id) VALUES ('personal', NULL)`);
+    expect(await unattributedPersonal(db, 'bob')).toBe(true);
+    await db.exec(`INSERT INTO user_settings (id) VALUES ('bob')`);
+    expect(await unattributedPersonal(db, 'bob')).toBe(false);
   });
 });

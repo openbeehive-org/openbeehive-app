@@ -15,7 +15,10 @@
 // workspace alone. Such a store belongs to whoever opens it first, unless it
 // holds traces of another account (changes they queued, their settings, their
 // personal events): then it is recorded as theirs and the account at hand
-// gets a store of its own. Every store records its owner in sync_meta.
+// gets a store of its own. Personal tasks do not name their account, so a
+// store holding some is taken over only by an account that left traces of its
+// own in it; anyone else gets a store of their own and the old one stays
+// unclaimed. Every store records its owner in sync_meta.
 import type { LocalDB } from './db';
 
 /** The sync_meta key that names the account a local store belongs to. */
@@ -57,6 +60,25 @@ export async function otherAccountIn(db: LocalDB, user: string): Promise<string>
   return row?.u ?? '';
 }
 
+/**
+ * Whether the store holds personal tasks (tasks without an apiary) that
+ * cannot be told apart from another account's: there are some, and nothing
+ * in the store is traceably `user`'s.
+ */
+export async function unattributedPersonal(db: LocalDB, user: string): Promise<boolean> {
+  const tasks = await db.get(`SELECT 1 AS x FROM task WHERE COALESCE(apiary_id, '') = '' LIMIT 1`);
+  if (!tasks) return false;
+  const mine = await db.get(
+    `SELECT 1 AS x FROM outbox WHERE author_id = ?
+     UNION ALL SELECT 1 FROM outbox_failed WHERE author_id = ?
+     UNION ALL SELECT 1 FROM user_settings WHERE id = ?
+     UNION ALL SELECT 1 FROM event WHERE scope_id = ?
+     LIMIT 1`,
+    [user, user, user, 'user:' + user]
+  );
+  return !mine;
+}
+
 async function ownerOf(db: LocalDB): Promise<string> {
   const row = await db.get<{ v: string }>(`SELECT v FROM sync_meta WHERE k = ?`, [OWNER_KEY]);
   return row?.v ?? '';
@@ -85,6 +107,9 @@ export async function mayUse(db: LocalDB, user: string, confirmed: boolean): Pro
     await setOwner(db, other);
     return false;
   }
+  // Someone's personal tasks, perhaps not this account's: leave the store to
+  // whoever can show it is theirs.
+  if (!NOT_A_PERSON.includes(user) && (await unattributedPersonal(db, user))) return false;
   if (confirmed) await setOwner(db, user);
   return true;
 }
