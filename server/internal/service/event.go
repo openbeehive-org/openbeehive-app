@@ -24,8 +24,11 @@ func (s *EventService) ListEvents(ctx context.Context, req *wv1.ListEventsReques
 	if limit > 1000 {
 		limit = 1000
 	}
-	q := `SELECT * FROM event WHERE organization_id = ? AND deleted = FALSE`
-	args := []any{id.OrgID}
+	// Personal events (scope "user:<id>") are their owner's alone, as in
+	// Pull, Snapshot and the export.
+	q := `SELECT * FROM event WHERE organization_id = ? AND deleted = FALSE
+		AND (COALESCE(scope_id, '') NOT LIKE 'user:%' OR scope_id = ?)`
+	args := []any{id.OrgID, personalScope(id.UserID)}
 	for col, v := range map[string]string{"apiary_id": req.ApiaryId, "hive_id": req.HiveId, "queen_id": req.QueenId} {
 		if v != "" {
 			q += ` AND ` + col + ` = ?`

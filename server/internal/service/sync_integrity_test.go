@@ -265,3 +265,23 @@ func TestRestoreUnderARunningServerIsDetected(t *testing.T) {
 		})
 	}
 }
+
+// Personal events are their owner's alone, in ListEvents as in Pull.
+func TestListEventsLeavesOutOthersPersonalEvents(t *testing.T) {
+	f := newAPIFixture(t)
+	if err := push(f.sync, identityCtx("user-a", "org-a"),
+		change("event", "ev-mine", "user:user-a", `{"scope_id":"user:user-a","type":1,"date":"2026-07-11","deleted":0}`),
+		change("event", "ev-shared", "apiary-a", `{"scope_id":"apiary-a","apiary_id":"apiary-a","type":1,"date":"2026-07-11","deleted":0}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	for user, want := range map[string]int{"user-a": 2, "user-a2": 1} {
+		res, err := f.event.ListEvents(identityCtx(user, "org-a"), &wv1.ListEventsRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Events) != want {
+			t.Fatalf("%s lists %d events, want %d", user, len(res.Events), want)
+		}
+	}
+}
