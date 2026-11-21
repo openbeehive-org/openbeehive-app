@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect/v2"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/openbeehive-org/openbeehive-app/server/internal/auth"
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
@@ -32,6 +34,18 @@ var inspectionCols = []string{
 // inspectionUpdatable lists the fields UpdateInspection may change.
 var inspectionUpdatable = append([]string{"date"}, inspectionCols...)
 
+// maxInspectionAhead is how far in the future an inspection date may lie:
+// a day covers every time zone, a later date is a typo.
+const maxInspectionAhead = 24 * time.Hour
+
+// checkInspectionDate refuses a date more than maxInspectionAhead ahead.
+func checkInspectionDate(date *timestamppb.Timestamp) error {
+	if date != nil && date.AsTime().After(time.Now().Add(maxInspectionAhead)) {
+		return invalid("date: an inspection cannot be more than a day in the future")
+	}
+	return nil
+}
+
 // sourceSensor marks an automated reading (InspectionSource); such rows are
 // measurements, not visits.
 const sourceSensor = int32(wv1.InspectionSource_INSPECTION_SOURCE_SENSOR)
@@ -44,6 +58,9 @@ func (s *InspectionService) CreateInspection(ctx context.Context, req *wv1.Creat
 	m := req
 	if m.HiveId == "" {
 		return nil, invalid("hive_id is required")
+	}
+	if err := checkInspectionDate(m.Date); err != nil {
+		return nil, err
 	}
 	fields, err := createPayload(m.ProtoReflect(), inspectionCols)
 	if err != nil {
@@ -123,6 +140,11 @@ func (s *InspectionService) UpdateInspection(ctx context.Context, req *wv1.Updat
 	}
 	if err := requireValue(fields, "date"); err != nil {
 		return nil, err
+	}
+	if _, ok := fields["date"]; ok {
+		if err := checkInspectionDate(p.Date); err != nil {
+			return nil, err
+		}
 	}
 	var out *wv1.Inspection
 	err = s.w.Run(ctx, id, func(t *txWriter) error {

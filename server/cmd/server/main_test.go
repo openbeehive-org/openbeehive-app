@@ -161,3 +161,28 @@ func TestCORSModeIsLogged(t *testing.T) {
 		t.Errorf("any origin: %q", got)
 	}
 }
+
+// An RPC request without a Content-Type gets an error that says so, not an
+// empty 415.
+func TestRPCWithoutContentTypeIsExplained(t *testing.T) {
+	server := connect.NewServer()
+	openbeehivev1connect.RegisterSyncServiceHandler(server, acceptingSync{})
+	mux := http.NewServeMux()
+	mountRPC(mux, server)
+	h := requireRPCContentType(mux)
+
+	req := httptest.NewRequest(http.MethodPost, openbeehivev1connect.SyncServicePushProcedure, strings.NewReader(`{}`))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType || !strings.Contains(rec.Body.String(), "Content-Type") ||
+		rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("no Content-Type: %d %q", rec.Code, rec.Body.String())
+	}
+	req = httptest.NewRequest(http.MethodPost, openbeehivev1connect.SyncServicePushProcedure, strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("JSON request: %d %q", rec.Code, rec.Body.String())
+	}
+}

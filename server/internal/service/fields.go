@@ -44,16 +44,25 @@ func createPayload(m protoreflect.Message, cols []string) (map[string]any, error
 // rejected.
 func updatePayload(m protoreflect.Message, mask *fieldmaskpb.FieldMask, updatable []string) (map[string]any, error) {
 	masked := len(mask.GetPaths()) > 0
+	// The JSON form of a mask names fields in lowerCamelCase, the binary
+	// form in snake_case; a path is accepted in either spelling.
+	paths := make([]string, 0, len(mask.GetPaths()))
 	for _, p := range mask.GetPaths() {
-		if !slices.Contains(updatable, p) {
+		col := snakeCase(p)
+		if !slices.Contains(updatable, col) {
+			names := make([]string, len(updatable))
+			for i, u := range updatable {
+				names[i] = jsonName(m, u)
+			}
 			return nil, invalid("update_mask: " + strconv.Quote(p) + " cannot be updated (updatable: " +
-				strings.Join(updatable, ", ") + ")")
+				strings.Join(names, ", ") + ")")
 		}
+		paths = append(paths, col)
 	}
 	fields := map[string]any{}
 	for _, c := range updatable {
 		fd := m.Descriptor().Fields().ByName(protoreflect.Name(c))
-		if (masked && !slices.Contains(mask.GetPaths(), c)) || (!masked && !m.Has(fd)) {
+		if (masked && !slices.Contains(paths, c)) || (!masked && !m.Has(fd)) {
 			continue
 		}
 		v, err := payloadValue(fd, m)
@@ -66,6 +75,30 @@ func updatePayload(m protoreflect.Message, mask *fieldmaskpb.FieldMask, updatabl
 		return nil, invalid("no fields to update")
 	}
 	return fields, nil
+}
+
+// snakeCase turns a lowerCamelCase field path into snake_case; a path
+// without capitals is returned as it is.
+func snakeCase(path string) string {
+	var b strings.Builder
+	for _, r := range path {
+		if r >= 'A' && r <= 'Z' {
+			b.WriteByte('_')
+			r += 'a' - 'A'
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// jsonName names a field as "snake_case (lowerCamelCase)" when the two
+// spellings differ.
+func jsonName(m protoreflect.Message, field string) string {
+	fd := m.Descriptor().Fields().ByName(protoreflect.Name(field))
+	if fd == nil || fd.JSONName() == field {
+		return field
+	}
+	return field + " (" + fd.JSONName() + ")"
 }
 
 // payloadValue converts one field to the form sync payloads use: booleans

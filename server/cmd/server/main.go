@@ -127,7 +127,7 @@ func corsMode(cfg *config.Config) string {
 // on every response, the Host check of single-user mode, CORS for the
 // configured origins, and no timeouts for streaming RPCs.
 func harden(cfg *config.Config, mux http.Handler) http.Handler {
-	handler := web.NoDeadline(streamingProcedures())(mux)
+	handler := web.NoDeadline(streamingProcedures())(requireRPCContentType(mux))
 
 	// Same-origin unless origins are configured: without the CORS layer no
 	// other site can read responses or send non-simple requests.

@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect/v2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
@@ -334,4 +335,47 @@ func TestUpdateWinsOverADeviceStampAheadOfTheServer(t *testing.T) {
 	if err != nil || got.Apiary.Name != "From the API" {
 		t.Fatalf("stored name: %v, %+v", err, got)
 	}
+}
+
+// A mask path may be spelled as in the JSON API (lowerCamelCase) or as in
+// the proto (snake_case); a refused path is answered with both spellings.
+func TestUpdateMaskAcceptsBothSpellings(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	cr, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{HiveId: "hive-a", Date: day(2026, 5, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, err := f.insp.UpdateInspection(ctx, &wv1.UpdateInspectionRequest{
+		Inspection: &wv1.Inspection{Id: cr.Inspection.Id, BroodFrames: proto.Int32(5), WeightKg: proto.Float64(40.5)},
+		UpdateMask: mask("broodFrames", "weight_kg"),
+	})
+	if err != nil || up.Inspection.GetBroodFrames() != 5 || up.Inspection.GetWeightKg() != 40.5 {
+		t.Fatalf("camelCase mask: %+v, %v", up.GetInspection(), err)
+	}
+	_, err = f.insp.UpdateInspection(ctx, &wv1.UpdateInspectionRequest{
+		Inspection: &wv1.Inspection{Id: cr.Inspection.Id}, UpdateMask: mask("photoKeys"),
+	})
+	wantCode(t, err, connect.CodeInvalidArgument)
+	if msg := err.Error(); !strings.Contains(msg, "brood_frames (broodFrames)") {
+		t.Fatalf("error must name both spellings: %s", msg)
+	}
+}
+
+// An inspection date more than a day ahead is a typo and refused.
+func TestInspectionDateFarAheadIsRefused(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := identityCtx("user-a", "org-a")
+	ahead := timestamppb.New(time.Now().Add(72 * time.Hour))
+	_, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{HiveId: "hive-a", Date: ahead})
+	wantCode(t, err, connect.CodeInvalidArgument)
+	// Later today in another time zone is fine.
+	cr, err := f.insp.CreateInspection(ctx, &wv1.CreateInspectionRequest{HiveId: "hive-a", Date: timestamppb.New(time.Now().Add(12 * time.Hour))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.insp.UpdateInspection(ctx, &wv1.UpdateInspectionRequest{
+		Inspection: &wv1.Inspection{Id: cr.Inspection.Id, Date: ahead},
+	})
+	wantCode(t, err, connect.CodeInvalidArgument)
 }
