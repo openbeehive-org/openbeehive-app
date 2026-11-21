@@ -231,7 +231,7 @@ func (s *InspectionService) AddInspectionPhoto(ctx context.Context, req *wv1.Add
 	if len(found) == 0 {
 		return nil, writeErr(storage.ErrNotFound)
 	}
-	ctx, release, err := photos.prepareInline(ctx, id.OrgID, []string{req.Photo}, 1)
+	ctx, release, err := photos.prepareInline(ctx, id.OrgID, []inlineImage{{ownerInspection, req.InspectionId, req.Photo}}, 1)
 	if err != nil {
 		return nil, writeErr(err)
 	}

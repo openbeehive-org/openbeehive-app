@@ -6,6 +6,7 @@ import (
 	"time"
 
 	wv1 "github.com/openbeehive-org/openbeehive-app/server/internal/gen/openbeehive/v1"
+	"github.com/openbeehive-org/openbeehive-app/server/internal/storage/blob"
 	wsync "github.com/openbeehive-org/openbeehive-app/server/internal/sync"
 )
 
@@ -71,30 +72,87 @@ func TestRefusedInlineChangeLeavesNoBlob(t *testing.T) {
 	}
 }
 
-// Prepared blobs are keyed by workspace and content: preparing the same
-// images twice yields the same keys, and two copies of one image in a
-// request get different keys.
-func TestPreparedBlobKeysFollowContent(t *testing.T) {
+// A photo converted from a 0.4.x Push stores its image under its record's
+// key, so after a restored database lost the row and a device sent the
+// record again, the sweep gives the image back.
+func TestRestoredConvertedPhotoAdoptsBlob(t *testing.T) {
+	f := newPhotoFixture(t)
+	visit := f.newVisit(t)
+	if err := push(f.sync, ctxA, legacyAdd(visit, inlineJPEG(t, 5))); err != nil {
+		t.Fatal(err)
+	}
+	p := f.livePhotosOf(t, visit)[0]
+	if _, err := f.db.Exec(f.db.Rebind(`DELETE FROM photo WHERE id = ?`), p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := push(f.sync, ctxA, change("photo", p.ID, "apiary-a", photoPayload(t, ownerInspection, visit))); err != nil {
+		t.Fatal(err)
+	}
+	f.photos.Sweep(t.Context())
+	if got := f.photo(t, p.ID); got.BlobKey != p.BlobKey {
+		t.Errorf("blob_key after re-send and sweep = %q, want %q", got.BlobKey, p.BlobKey)
+	}
+}
+
+// An image that already has a photo record in the workspace is not decoded
+// again when another visit adds it: the new record takes the thumbnail of
+// the existing one and gets a blob of its own.
+func TestKnownImageReusesThumbnail(t *testing.T) {
+	f := newPhotoFixture(t)
+	img := inlineJPEG(t, 8)
+	first := f.newVisit(t)
+	if err := push(f.sync, ctxA, legacyAdd(first, img)); err != nil {
+		t.Fatal(err)
+	}
+	decodes := 0
+	orig := makeThumb
+	makeThumb = func(data []byte) string { decodes++; return orig(data) }
+	t.Cleanup(func() { makeThumb = orig })
+	second := f.newVisit(t)
+	if err := push(f.sync, ctxA, legacyAdd(second, img)); err != nil {
+		t.Fatal(err)
+	}
+	a, b := f.livePhotosOf(t, first), f.livePhotosOf(t, second)
+	if len(a) != 1 || len(b) != 1 {
+		t.Fatalf("photos = %d and %d, want 1 each", len(a), len(b))
+	}
+	if decodes != 0 {
+		t.Errorf("image decoded %d times, want 0", decodes)
+	}
+	if b[0].Thumb == "" || b[0].Thumb != a[0].Thumb {
+		t.Errorf("second photo's thumbnail differs from the first's")
+	}
+	if b[0].BlobKey == a[0].BlobKey || b[0].BlobKey != blob.PhotoKey("org-a", b[0].ID) {
+		t.Errorf("second photo's blob key %q, want its own record key", b[0].BlobKey)
+	}
+	if keys := f.blobKeys(t); len(keys) != 2 {
+		t.Errorf("blobs = %v, want 2", keys)
+	}
+}
+
+// Prepared blobs are keyed by fresh record ids: two copies of one image,
+// or the same image in two workspaces, never share a key.
+func TestPreparedBlobKeysAreRecordKeys(t *testing.T) {
 	f := newPhotoFixture(t)
 	img := inlineJPEG(t, 5)
 	keysOf := func(org string) []string {
-		ctx, release, err := f.photos.prepareInline(t.Context(), org, []string{img, img}, 2)
+		ctx, release, err := f.photos.prepareInline(t.Context(), org, []inlineImage{{ownerInspection, "v1", img}, {ownerInspection, "v1", img}}, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer release()
 		var keys []string
 		for _, p := range preparedFrom(ctx)[legacyKey(img)] {
+			if p.key != blob.PhotoKey(org, p.id) {
+				t.Errorf("key %q is not the record key of %q", p.key, p.id)
+			}
 			keys = append(keys, p.key)
 		}
 		return keys
 	}
-	first, again, other := keysOf("org-a"), keysOf("org-a"), keysOf("org-b")
+	first, other := keysOf("org-a"), keysOf("org-b")
 	if len(first) != 2 || first[0] == first[1] {
 		t.Fatalf("keys of two copies = %v, want two different keys", first)
-	}
-	if fmt.Sprint(first) != fmt.Sprint(again) {
-		t.Errorf("keys changed between attempts: %v then %v", first, again)
 	}
 	if first[0] == other[0] {
 		t.Errorf("two workspaces share the key %q", first[0])
@@ -109,11 +167,11 @@ func TestPreparedBlobKeysFollowContent(t *testing.T) {
 func TestReleaseKeepsBlobHeldByAnotherRequest(t *testing.T) {
 	f := newPhotoFixture(t)
 	img := inlineJPEG(t, 6)
-	_, releaseA, err := f.photos.prepareInline(t.Context(), "org-a", []string{img}, 1)
+	_, releaseA, err := f.photos.prepareInline(t.Context(), "org-a", []inlineImage{{ownerInspection, "v1", img}}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, releaseB, err := f.photos.prepareInline(t.Context(), "org-a", []string{img}, 1)
+	_, releaseB, err := f.photos.prepareInline(t.Context(), "org-a", []inlineImage{{ownerInspection, "v1", img}}, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

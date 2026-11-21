@@ -191,25 +191,22 @@ func (p *Photos) createFromInline(ctx context.Context, tx *sqlx.Tx, cause *wv1.C
 	if p.blobs == nil {
 		return nil
 	}
-	img, ok := preparedFrom(ctx).take(inline)
-	if ok {
-		// Another request carrying the same image may have recorded the
-		// prepared blob first.
-		inUse, err := blobInUse(ctx, tx, orgID, img.key)
-		if err != nil {
-			return err
-		}
-		ok = !inUse
-	}
+	prepared := preparedFrom(ctx)
+	img, ok := prepared.take(inline)
 	if !ok {
-		// Not prepared (the start-up conversion): do the work here.
+		// Not prepared (the start-up conversion): do the work here. A
+		// request prepares every image it carries; should one still get
+		// here, it is stored without a thumbnail rather than decoded while
+		// the write lock is held.
 		data := decodeDataURL(inline, MaxPhotoBytes)
 		img = preparedImage{id: uuid.NewString(), typ: sniffPhotoType(data), size: len(data)}
 		if img.typ == "" {
 			return nil
 		}
 		img.key = blob.PhotoKey(orgID, img.id)
-		img.thumb = makeThumb(data)
+		if prepared == nil {
+			img.thumb = makeThumb(data)
+		}
 		// Stored before the record exists: if the transaction fails, the
 		// sweep removes the blob as one without a record.
 		if err := p.blobs.Put(ctx, img.key, bytes.NewReader(data), int64(len(data)), img.typ); err != nil {

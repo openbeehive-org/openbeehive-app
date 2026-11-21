@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -42,11 +41,14 @@ const (
 	maxThumbsPerPush = 16
 )
 
-// makeThumb returns a small JPEG data URL of the image, or "" when the
+// makeThumb is thumbnail; tests count its calls.
+var makeThumb = thumbnail
+
+// thumbnail returns a small JPEG data URL of the image, or "" when the
 // image cannot be decoded here (damaged or oversized input). Devices
 // make their own thumbnails; this is for images that reach the server
 // without one: inline photos of 0.4.x apps and photos added through the API.
-func makeThumb(data []byte) string {
+func thumbnail(data []byte) string {
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
 		return ""
@@ -107,12 +109,21 @@ func shrink(src image.Image, edge int) *image.RGBA {
 // carrying them, which holds the global write lock. Decoding an image and
 // writing its blob are slow, so both happen before: prepareInline does the
 // work for every inline image of a request first, and createFromInline only
-// records what was prepared. When the request is over, the release function
-// prepareInline returns deletes every prepared blob that no photo record
-// uses: the change carrying it was refused, was a replay, or the request
-// failed. A prepared blob's key is derived from the workspace and the image
-// content, so a 0.4.x app that retries a failed Push replaces the blobs of
-// its earlier attempt instead of adding new ones.
+// records what was prepared.
+//
+// A prepared blob is stored under the key of the photo record it is meant
+// for (blob.PhotoKey of a fresh record id), like every other photo blob.
+// That keeps one blob per record, keeps workspaces apart, and lets the
+// sweep give the blob back to its record when a restored database lost the
+// row and a device sends the record again. When the request is over, the
+// release function deletes every prepared blob that no record uses: the
+// change carrying it was refused or was a replay, or the request failed.
+// A retried Push therefore leaves nothing behind from earlier attempts.
+//
+// An image its record already shows as a live photo (a replay) is not
+// prepared at all. An image that has a photo record elsewhere in the
+// workspace (the same image added to another visit) is not decoded again:
+// its prepared copy takes the existing record's thumbnail.
 
 // preparedImage is an inline image whose blob is already stored.
 type preparedImage struct {
@@ -141,45 +152,51 @@ func (m preparedImages) take(inline string) (preparedImage, bool) {
 	return list[0], true
 }
 
+// inlineImage is an inline image and the record (hive or inspection) whose
+// change carries it.
+type inlineImage struct{ owner, ownerID, data string }
+
 // prepareInline stores the blobs of the given inline images and makes their
-// thumbnails, at most maxThumbs of them, and returns a context that hands
-// them to createFromInline. Values that are not JPEG, PNG or WebP images
-// are skipped; createFromInline leaves those alone anyway. The caller must
-// call release once the transaction that records the photos has committed
-// or rolled back.
-func (p *Photos) prepareInline(ctx context.Context, orgID string, inlines []string, maxThumbs int) (_ context.Context, release func(), _ error) {
+// thumbnails, decoding at most maxThumbs images, and returns a context that
+// hands them to createFromInline. Values that are not JPEG, PNG or WebP
+// images are skipped; createFromInline leaves those alone anyway. The
+// caller must call release once the transaction that records the photos
+// has committed or rolled back.
+func (p *Photos) prepareInline(ctx context.Context, orgID string, inlines []inlineImage, maxThumbs int) (_ context.Context, release func(), _ error) {
 	release = func() {}
-	if p == nil || p.blobs == nil || len(inlines) == 0 {
+	if p == nil || p.blobs == nil {
 		return ctx, release, nil
 	}
-	known, err := p.knownImages(ctx, orgID, inlines)
+	out := preparedImages{}
+	ctx = context.WithValue(ctx, preparedKey{}, out)
+	if len(inlines) == 0 {
+		return ctx, release, nil
+	}
+	thumbs, shown, err := p.knownImages(ctx, orgID, inlines)
 	if err != nil {
 		return ctx, release, err
 	}
-	out := preparedImages{}
-	thumbs := map[string]string{}
+	decoded := 0
 	var keys []string
 	release = func() { p.releasePrepared(context.WithoutCancel(ctx), orgID, keys) }
-	for _, inline := range inlines {
-		k := legacyKey(inline)
-		if known[k] {
-			continue // a replay, or seen before: converted under the lock if at all
+	for _, in := range inlines {
+		k := legacyKey(in.data)
+		if shown[in.owner+"/"+in.ownerID+"/"+k] {
+			continue // a replay: nothing to convert
 		}
-		data := decodeDataURL(inline, MaxPhotoBytes)
+		data := decodeDataURL(in.data, MaxPhotoBytes)
 		typ := sniffPhotoType(data)
 		if typ == "" {
 			continue
 		}
-		thumb, made := thumbs[k]
-		if !made && len(thumbs) < maxThumbs {
+		thumb, have := thumbs[k]
+		if !have && decoded < maxThumbs {
+			decoded++
 			thumb = makeThumb(data)
 			thumbs[k] = thumb
 		}
-		// The n-th copy of an image in a request gets its own blob, so two
-		// records never share one.
 		img := preparedImage{id: uuid.NewString(), typ: typ, thumb: thumb, size: len(data)}
-		img.key = blob.PhotoKey(orgID, fmt.Sprintf("inline:%s:%d", k, len(out[k])))
-		p.hold(img.key)
+		img.key = blob.PhotoKey(orgID, img.id)
 		keys = append(keys, img.key)
 		if err := p.blobs.Put(ctx, img.key, bytes.NewReader(data), int64(len(data)), typ); err != nil {
 			release()
@@ -187,42 +204,18 @@ func (p *Photos) prepareInline(ctx context.Context, orgID string, inlines []stri
 		}
 		out[k] = append(out[k], img)
 	}
-	return context.WithValue(ctx, preparedKey{}, out), release, nil
+	return ctx, release, nil
 }
 
-// hold marks a prepared blob as in use by a running request.
-func (p *Photos) hold(key string) {
-	p.inflightMu.Lock()
-	defer p.inflightMu.Unlock()
-	if p.inflight == nil {
-		p.inflight = map[string]int{}
-	}
-	p.inflight[key]++
-}
-
-// releasePrepared ends a request's hold on its prepared blobs and deletes
-// those that neither a photo record nor another running request uses. Two
-// requests carrying the same image prepare the same key; the lock keeps one
-// from deleting the blob after the other has stored it.
+// releasePrepared deletes the prepared blobs that no photo record uses.
+// Their keys are fresh record ids, so no other request can use them.
 func (p *Photos) releasePrepared(ctx context.Context, orgID string, keys []string) {
 	if len(keys) == 0 {
 		return
 	}
-	p.inflightMu.Lock()
-	defer p.inflightMu.Unlock()
-	var free []string
-	for _, k := range keys {
-		if p.inflight[k]--; p.inflight[k] <= 0 {
-			delete(p.inflight, k)
-			free = append(free, k)
-		}
-	}
-	if len(free) == 0 {
-		return
-	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	q, args, err := sqlx.In(`SELECT blob_key FROM photo WHERE organization_id = ? AND blob_key IN (?)`, orgID, free)
+	q, args, err := sqlx.In(`SELECT blob_key FROM photo WHERE organization_id = ? AND blob_key IN (?)`, orgID, keys)
 	var used []string
 	if err == nil {
 		err = p.db.SelectContext(ctx, &used, p.db.Rebind(q), args...)
@@ -231,7 +224,7 @@ func (p *Photos) releasePrepared(ctx context.Context, orgID string, keys []strin
 		log.Printf("photos: unused prepared blobs are left to the sweep: %v", err)
 		return
 	}
-	for _, k := range free {
+	for _, k := range keys {
 		if slices.Contains(used, k) {
 			continue
 		}
@@ -241,41 +234,42 @@ func (p *Photos) releasePrepared(ctx context.Context, orgID string, keys []strin
 	}
 }
 
-// blobInUse reports whether a photo record already stores its image under
-// key. A prepared blob is used for one record only.
-func blobInUse(ctx context.Context, tx *sqlx.Tx, orgID, key string) (bool, error) {
-	var n int
-	err := tx.GetContext(ctx, &n, tx.Rebind(`SELECT COUNT(*) FROM photo WHERE organization_id = ? AND blob_key = ?`), orgID, key)
-	return n > 0, err
-}
-
-// knownImages reports which of the inline images already have a photo
-// record in the workspace, live or deleted. A 0.4.x app sends the same
-// changes again whenever a Push of it failed; those need no new blob.
-func (p *Photos) knownImages(ctx context.Context, orgID string, inlines []string) (map[string]bool, error) {
+// knownImages looks up the live photo records in the workspace made from
+// the given images. It returns, per legacyKey, a thumbnail one of them
+// has, and the set of "owner/ownerID/legacyKey" they belong to.
+func (p *Photos) knownImages(ctx context.Context, orgID string, inlines []inlineImage) (thumbs map[string]string, shown map[string]bool, _ error) {
 	keys := make([]string, 0, len(inlines))
-	for _, inline := range inlines {
-		keys = append(keys, legacyKey(inline))
+	for _, in := range inlines {
+		keys = append(keys, legacyKey(in.data))
 	}
-	q, args, err := sqlx.In(`SELECT legacy_key FROM photo WHERE organization_id = ? AND legacy_key IN (?)`, orgID, keys)
+	q, args, err := sqlx.In(`SELECT owner_entity, owner_id, legacy_key, thumb FROM photo
+		WHERE organization_id = ? AND deleted = FALSE AND legacy_key IN (?)`, orgID, keys)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var found []string
+	var found []struct {
+		Owner   string `db:"owner_entity"`
+		OwnerID string `db:"owner_id"`
+		Key     string `db:"legacy_key"`
+		Thumb   string `db:"thumb"`
+	}
 	if err := p.db.SelectContext(ctx, &found, p.db.Rebind(q), args...); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	known := make(map[string]bool, len(found))
-	for _, k := range found {
-		known[k] = true
+	thumbs, shown = map[string]string{}, map[string]bool{}
+	for _, f := range found {
+		shown[f.Owner+"/"+f.OwnerID+"/"+f.Key] = true
+		if f.Thumb != "" {
+			thumbs[f.Key] = f.Thumb
+		}
 	}
-	return known, nil
+	return thumbs, shown, nil
 }
 
 // inlineImages lists the inline images the changes of a Push carry: the
 // added elements of inspection.photo_keys and the values of hive.photo.
-func inlineImages(changes []*wv1.Change) []string {
-	var out []string
+func inlineImages(changes []*wv1.Change) []inlineImage {
+	var out []inlineImage
 	for _, ch := range changes {
 		if ch.Op != wv1.ChangeOp_CHANGE_OP_UPSERT || !bytes.Contains([]byte(ch.PayloadJson), []byte(`"data:`)) {
 			continue
@@ -291,11 +285,11 @@ func inlineImages(changes []*wv1.Change) []string {
 		}
 		switch {
 		case ch.Entity == "hive" && p.Photo != nil && isDataURL(*p.Photo):
-			out = append(out, *p.Photo)
+			out = append(out, inlineImage{ownerHive, ch.EntityId, *p.Photo})
 		case ch.Entity == "inspection" && p.PhotoKeys != nil:
 			for _, e := range p.PhotoKeys.Add {
 				if isDataURL(e) {
-					out = append(out, e)
+					out = append(out, inlineImage{ownerInspection, ch.EntityId, e})
 				}
 			}
 		}
