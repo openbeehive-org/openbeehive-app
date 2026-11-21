@@ -58,7 +58,7 @@
     <p class="hv-muted">{$_('hives.not_found')}</p>
   {:else}
     <h1>{$_('insp.log')}</h1>
-    <p class="hv-sub">{hive.name} · {visits.length} {$_('stats.visits')}</p>
+    <p class="hv-sub">{hive.name} · {$_('stats.visits', { values: { n: visits.length } })}</p>
 
     {#if sensorCount}
       <label class="hv-check toggle">

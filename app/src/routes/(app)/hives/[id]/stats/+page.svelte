@@ -203,8 +203,8 @@
     <p class="hv-sub">
       {dotted(
         hive.name,
-        `${visits.length} ${$_('stats.visits')}`,
-        sensorCount ? `${sensorCount} ${$_('stats.sensor_readings')}` : ''
+        $_('stats.visits', { values: { n: visits.length } }),
+        sensorCount ? $_('stats.sensor_readings', { values: { n: sensorCount } }) : ''
       )}
     </p>
 
@@ -271,7 +271,9 @@
           titles={honeyView.titles}
           label={`${$_('harvest.title')}: ${withUnit(honeyView.total, 'weight')}`}
         />
-        <div class="mm"><span>{honeyView.vals.length} {$_('stats.harvests')}</span></div>
+        <div class="mm">
+          <span>{$_('stats.harvests', { values: { n: honeyView.vals.length } })}</span>
+        </div>
       </section>
     {/if}
 

@@ -98,11 +98,36 @@ describe('counts in every language', () => {
     expect(t('en', 'data.failed_note', { n: 3 })).toMatch(/^3 changes were refused/);
     expect(t('de', 'stats.points', { n: 2 })).toBe('2 Werte');
     expect(t('de', 'stats.points', { n: 1 })).toBe('1 Wert');
+    expect(t('en', 'stats.harvests', { n: 1 })).toBe('1 harvest');
+    expect(t('en', 'stats.harvests', { n: 4 })).toBe('4 harvests');
+    expect(t('de', 'stats.harvests', { n: 1 })).toBe('1 Ernte');
+    expect(t('fr', 'stats.visits', { n: 2 })).toBe('2 visites');
+    expect(t('es', 'stats.visits', { n: 1 })).toBe('1 visita');
+    expect(t('it', 'stats.harvests', { n: 1 })).toBe('1 raccolto');
     expect(t('de', 'dashboard.days_ago', { days: 1 })).toBe('vor 1 Tag');
     expect(t('de', 'dashboard.days_ago', { days: 5 })).toBe('vor 5 Tagen');
     expect(t('en', 'data.undone_kept', { n: 1, kept: 2 })).toBe(
       'Import undone: 1 record deleted. 2 were kept because records were added to them since.'
     );
+  });
+
+  it('gives every count message a plural form in every language', () => {
+    // A message that names a count ({n}) with a noun after it needs plural
+    // forms; ordinal or label uses ("Photo {n} of {total}") do not.
+    const counts = [
+      'stats.visits',
+      'stats.harvests',
+      'stats.points',
+      'data.failed_note',
+      'data.pending_note'
+    ];
+    for (const lang of Object.keys(LOCALES) as Lang[]) {
+      for (const key of counts) {
+        expect(t(lang, key, { n: 1 }), `${lang} ${key}`).not.toBe(
+          t(lang, key, { n: 2 }).replace('2', '1')
+        );
+      }
+    }
   });
 
   it('shows no count in the chip while offline', () => {
