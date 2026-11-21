@@ -3,6 +3,7 @@ import { makeLocalDB } from '../../tests/localdb';
 import type { LocalDB } from './db';
 import {
   accountStoreKey,
+  discardUnclaimed,
   mayUse,
   openOwnStore,
   otherAccountIn,
@@ -114,6 +115,64 @@ describe('one local store per account and workspace', () => {
     expect(await owner(db)).toBeUndefined();
     expect(await mayUse(db, 'alice', true)).toBe(true);
     expect(await owner(db)).toBe('alice');
+  });
+});
+
+describe('an unclaimed old store', () => {
+  async function oldStoreWithPersonalTask(d: ReturnType<typeof device>) {
+    const old = await d.open(ORG);
+    await old.exec(`INSERT INTO task (id, title, apiary_id) VALUES ('t1', 'reminder', NULL)`);
+    return old;
+  }
+
+  it('is reported when it holds nothing unsent', async () => {
+    const d = device();
+    await oldStoreWithPersonalTask(d);
+    const found: string[] = [];
+    const key = await openOwnStore(d.open, ORG, 'bob', true, (k) => found.push(k));
+    expect(key).toBe(accountStoreKey(ORG, 'bob'));
+    expect(found).toEqual([ORG]);
+  });
+
+  it('is not reported while it holds queued or failed changes', async () => {
+    for (const table of ['outbox', 'outbox_failed']) {
+      const d = device();
+      const old = await oldStoreWithPersonalTask(d);
+      await old.exec(
+        `INSERT INTO ${table} (id, entity, entity_id, scope_id, op, payload, hlc, author_id)
+         VALUES ('c1', 'task', 't1', 'apiary-1', 1, '{}', 'h', 'local')`
+      );
+      const found: string[] = [];
+      expect(await openOwnStore(d.open, ORG, 'bob', true, (k) => found.push(k))).toBe(
+        accountStoreKey(ORG, 'bob')
+      );
+      expect(found).toEqual([]);
+    }
+  });
+
+  it("is not reported when it is another account's or for a guessed identity", async () => {
+    const d = device();
+    const old = await oldStoreWithPersonalTask(d);
+    await old.exec(`INSERT INTO user_settings (id) VALUES ('alice')`);
+    const found: string[] = [];
+    await openOwnStore(d.open, ORG, 'bob', true, (k) => found.push(k));
+    expect(await owner(old)).toBe('alice');
+
+    const d2 = device();
+    await oldStoreWithPersonalTask(d2);
+    await openOwnStore(d2.open, ORG, 'local', false, (k) => found.push(k));
+    expect(found).toEqual([]);
+  });
+
+  it('is removed only when no photo of it waits for upload', async () => {
+    const removed: string[] = [];
+    const remove = async (k: string) => {
+      removed.push(k);
+    };
+    expect(await discardUnclaimed(ORG, { photosPending: async () => true, remove })).toBe(false);
+    expect(removed).toEqual([]);
+    expect(await discardUnclaimed(ORG, { photosPending: async () => false, remove })).toBe(true);
+    expect(removed).toEqual([ORG]);
   });
 });
 

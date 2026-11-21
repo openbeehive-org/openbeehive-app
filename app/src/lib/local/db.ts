@@ -22,9 +22,10 @@ export interface LocalDB {
 import DbWorker from './db.worker?worker';
 import { migrateLocal } from './schema';
 import { get } from 'svelte/store';
-import { storageState } from './live';
+import { initialSyncPending, storageState } from './live';
 import { claimTab, takeoverRequested } from './tablock';
-import { openOwnStore } from './owner';
+import { discardUnclaimed, openOwnStore } from './owner';
+import { openFileStore, removeFileStore } from '../photos/files';
 import { CodedError } from '../errors';
 
 const elsewhere = () => new CodedError('db_elsewhere', 'local database is open in another tab');
@@ -33,7 +34,7 @@ const API = (import.meta.env?.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 
 // Worker reply: a query result, or an unsolicited volatile-store notice.
 type Reply = { id?: number; ok?: boolean; rows?: unknown; error?: string; volatile?: boolean };
-type Method = 'open' | 'exec' | 'all' | 'batch' | 'wipe';
+type Method = 'open' | 'exec' | 'all' | 'batch' | 'wipe' | 'drop';
 
 let dbPromise: Promise<LocalDB> | null = null;
 // Set once the database is open; see wipeLocalDB.
@@ -156,20 +157,60 @@ async function init(): Promise<LocalDB> {
   const org = localStorage.getItem('obh.orgId') || 'local';
   const { user, confirmed } = await whoIsSignedIn();
   opened = { org, user };
+  let unclaimed = '';
   storeKey = await openOwnStore(
     async (key) => {
       // After a takeover the previous tab's worker may still be letting go
       // of its file handles; give the open a little longer before giving up.
-      await call('open', { name: `openbeehive-${key}.sqlite3`, attempts: stolen ? 12 : 3 });
+      await call('open', { name: storeFile(key), attempts: stolen ? 12 : 3 });
       await migrateLocal(impl);
       return impl;
     },
     org,
     user,
-    confirmed
+    confirmed,
+    (key) => (unclaimed = key)
   );
   wipe = () => call('wipe');
+  if (unclaimed)
+    discardAfterFirstSync(impl, unclaimed, (key) => call('drop', { name: storeFile(key) }));
   return impl;
+}
+
+const storeFile = (key: string) => `openbeehive-${key}.sqlite3`;
+
+// Removes an unclaimed store (owner.ts) once the open store has completed a
+// sync with the server, checking again every minute until it has.
+function discardAfterFirstSync(db: LocalDB, key: string, drop: (key: string) => Promise<unknown>) {
+  const synced = async () =>
+    !!(await db.get(
+      `SELECT 1 AS x FROM sync_meta WHERE (k = 'cursor' AND v <> '') OR (k = 'last_sync' AND v <> '')`
+    ));
+  // One connection to the old photo store: deleting it waits for open ones.
+  const files = openFileStore(key);
+  const photosPending = async () => (await files.list()).some((m) => m.state === 'pending');
+  const remove = async (k: string) => {
+    await drop(k);
+    await removeFileStore(k, files);
+  };
+  let started = false;
+  const attempt = async () => {
+    try {
+      if (!(await synced())) {
+        setTimeout(() => void attempt(), 60_000);
+        return;
+      }
+      await discardUnclaimed(key, { photosPending, remove });
+    } catch (err) {
+      console.warn('old local store kept:', err);
+    }
+  };
+  const stop = initialSyncPending.subscribe((pending) => {
+    if (pending || started) return;
+    started = true;
+    queueMicrotask(() => stop());
+    void attempt();
+  });
 }
 
 // The account the store is opened for. Normally a sign-in left it on the

@@ -19,6 +19,11 @@
 // store holding some is taken over only by an account that left traces of its
 // own in it; anyone else gets a store of their own and the old one stays
 // unclaimed. Every store records its owner in sync_meta.
+//
+// An unclaimed store that holds nothing unsent (no queued or failed changes,
+// no photo waiting for upload) only repeats what the server has. Once the
+// account's own store has finished its first sync, it is removed from the
+// device (see discardUnclaimed); a store with anything unsent is kept.
 import type { LocalDB } from './db';
 
 /** The sync_meta key that names the account a local store belongs to. */
@@ -114,21 +119,52 @@ export async function mayUse(db: LocalDB, user: string, confirmed: boolean): Pro
   return true;
 }
 
+/** Whether the store holds changes that never reached the server. */
+export async function unsentIn(db: LocalDB): Promise<boolean> {
+  const row = await db.get(
+    `SELECT 1 AS x FROM outbox UNION ALL SELECT 1 FROM outbox_failed LIMIT 1`
+  );
+  return !!row;
+}
+
 /**
  * Opens the store `user` works with in workspace `org` and returns its key.
  * `open` closes whatever store was open before and opens (or creates) the
- * one with the given key.
+ * one with the given key. When the workspace's old store is passed over but
+ * belongs to nobody and holds no unsent changes, `unclaimed` is told its key.
  */
 export async function openOwnStore(
   open: (key: string) => Promise<LocalDB>,
   org: string,
   user: string,
-  confirmed: boolean
+  confirmed: boolean,
+  unclaimed?: (key: string) => void
 ): Promise<string> {
   const shared = workspaceStoreKey(org);
-  if (await mayUse(await open(shared), user, confirmed)) return shared;
+  const old = await open(shared);
+  if (await mayUse(old, user, confirmed)) return shared;
+  if (confirmed && !(await ownerOf(old)) && !(await unsentIn(old))) unclaimed?.(shared);
   const own = accountStoreKey(org, user);
   const db = await open(own);
   if (confirmed && !(await ownerOf(db))) await setOwner(db, user);
   return own;
+}
+
+/**
+ * Removes an unclaimed store (see openOwnStore) from the device, unless a
+ * photo of it still waits for upload. Call it once the account's own store
+ * has finished its first sync. Reports whether the store was removed.
+ */
+export async function discardUnclaimed(
+  key: string,
+  device: {
+    /** Whether the store's photo images include one not yet uploaded. */
+    photosPending: (key: string) => Promise<boolean>;
+    /** Deletes the store's database file and its photo images. */
+    remove: (key: string) => Promise<void>;
+  }
+): Promise<boolean> {
+  if (await device.photosPending(key)) return false;
+  await device.remove(key);
+  return true;
 }
