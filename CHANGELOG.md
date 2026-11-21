@@ -42,13 +42,18 @@ Details are in the
   `docker-compose.demo.yml` publishes on `127.0.0.1` unless `BEEHIVE_BIND`
   is set.
 - **Photos move to blob storage.** The first start converts photos stored
-  inline in the database before it serves requests; with many photos this
-  takes a few minutes. `/files/` is gone and `BEEHIVE_BLOB_PUBLIC_URL` is
+  inline in the database before it listens, so health checks fail until it
+  is done; with many photos this takes a few minutes (the Compose files
+  allow ten). `/files/` is gone and `BEEHIVE_BLOB_PUBLIC_URL` is
   ignored. A backup is now the database plus the blobs, and a restore means:
   stop, restore both together, start.
-- **Database migrations** rebuild the visits table and the change-log index;
-  on MariaDB the tables change to a binary collation. A failed migration on
-  MariaDB cannot be rolled back, so the backup is the way back.
+- **Blob directory.** With SQLite, `BEEHIVE_BLOB_DIR` must not contain the
+  database file, or the server does not start; give the blobs a directory of
+  their own.
+- **Database migrations** take longer on a large database. SQLite rebuilds
+  the visits table; PostgreSQL and MariaDB change tables in place, and
+  MariaDB switches to a binary collation. A migration that stops part-way
+  continues at the next start.
 - **Change log.** Entries older than `BEEHIVE_CHANGELOG_RETENTION_DAYS`
   (default 180) are removed daily, for the first time 180 days after the
   upgrade at the earliest.
@@ -73,7 +78,9 @@ Details are in the
   the apiary has hives. The endpoints under `/auth/` and `/tenants/` accept
   only their documented method (otherwise 405) and need
   `Content-Type: application/json` when they take a body (otherwise 415);
-  `/tenants/delete` needs `org_id`.
+  `/tenants/delete` needs `org_id`. `GetDashboard` counts a hive as due
+  after 10 days instead of 21, and inspection dates more than a day ahead
+  are refused.
 - **Run exactly one server instance** per database. `BEEHIVE_NODE_ID` now
   defaults to a random id; remove it unless you set it on purpose.
 
@@ -94,6 +101,24 @@ Details are in the
   set by the server, and database errors no longer reach API responses.
 - Hive and apiary names are escaped on QR labels and map popups.
 - Email addresses are unique regardless of upper and lower case.
+- Each account keeps its own local data per workspace on a shared device, so
+  the next person to sign in neither sees nor uploads the previous one's
+  unsent changes and personal tasks.
+- With `BEEHIVE_DEMO=false` a demo account left from an earlier run is locked
+  (no password, sessions, API keys or passkeys) instead of becoming a normal
+  account with a public password.
+- A changed account role applies without waiting for the session to
+  expire, and a live `Subscribe` stream ends when its member is removed or
+  the session is revoked.
+- Rows written in a member's personal scope stay personal, ids starting with
+  `user:` are refused, `ListEvents` shows personal events only to their
+  owner, and an event's author is the user who created it.
+- Inline photos that would take too much memory to decode get no thumbnail
+  and are decoded outside the write lock, and the server clock no longer
+  follows stamps beyond the 10-minute limit.
+- CSV exports neutralise text that a spreadsheet would run as a formula,
+  ZIP imports stop at 512 MiB unpacked, and reset and invite tokens are
+  taken out of the address bar once read.
 
 ### Fixed
 
@@ -117,6 +142,20 @@ Details are in the
   exactly on SQLite, Postgres and MariaDB.
 - A change refused because the account is read-only (the demo) is undone on
   screen with a message instead of lingering on the device.
+- A received change that the app cannot apply no longer stops every later
+  pull; it is listed under "Sync problems" as "could not be applied".
+- The sign-in page says why an invite cannot be used (other address,
+  expired, revoked) instead of continuing into an empty workspace.
+- Default units follow the app's language before any are chosen.
+- The printed report works under the Content-Security-Policy, is translated
+  and uses the chosen units.
+- Same-day visits are listed in the order they were recorded; CSV re-import
+  and honey per year use the local calendar day.
+- Import, ZIP and save errors are shown in the UI language; a CSV saved in
+  Windows-1252 is read.
+- Counts use plural forms in every language, the bottom bar uses short
+  labels that fit at 360 px, and visit cards show outside climate.
+- The hive list keeps its search, filters and sort in the URL.
 
 ### Added
 
@@ -150,6 +189,16 @@ Details are in the
   browser, and a "Try the demo" button on the sign-in page.
 - MariaDB and Postgres are tested next to SQLite (`make test-db`), and a
   browser test suite runs with `make e2e`.
+- The sync chip opens a status sheet with the last sync, changes and photos
+  waiting to upload, refused changes and "Sync now".
+- The workspace-wide treatment register (whole workspace, one apiary or one
+  year) under Settings, and a Reason column in every register.
+- The sign-in page names the workspace and masked address of an invite
+  (`GET /auth/invite`).
+- A skip link to the content, and opened forms take the focus.
+- The start-up log names stored field stamps from the future and points to
+  their repair, warns once about `X-Forwarded-For` without
+  `BEEHIVE_TRUST_PROXY_HEADERS`, and states the CORS mode.
 
 ### Changed
 
@@ -165,6 +214,16 @@ Details are in the
   sign-in page with an error instead of answering with JSON.
 - The change log is compacted daily; a device that was away longer than the
   retention loads the current data instead.
+- Settings is split into Preferences, Workspace, Data & sync and Account.
+- A hive is due for inspection 10 days after its last visit, in the app and
+  in `GetDashboard`.
+- The demo says up front that it is read-only and its forms cannot be saved.
+- Inviting an existing member answers 409 `already_member`; inviting an
+  address again replaces its open invite.
+- `update_mask` paths may be lowerCamelCase; an RPC request without
+  `Content-Type` gets a JSON error.
+- Blobs that no photo knows are kept at least 30 days (or the change-log
+  retention) and never removed at start; only photo keys are swept.
 
 ### Removed
 
