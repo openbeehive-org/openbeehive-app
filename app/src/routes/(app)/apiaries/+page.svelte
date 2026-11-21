@@ -10,6 +10,8 @@
   import LocationPicker from '#lib/components/LocationPicker.svelte';
   import Skeleton from '#lib/components/Skeleton.svelte';
   import Syncing from '#lib/components/Syncing.svelte';
+  import DemoNote from '#lib/components/DemoNote.svelte';
+  import { demoSession } from '#lib/demo.js';
 
   let rows = $state<ApiaryRow[]>([]);
   let counts = $state<Record<string, number>>({});
@@ -97,11 +99,12 @@
           {$_('common.save_failed', { values: { msg: $_(saveError) } })}
         </p>
       {/if}
+      <DemoNote />
       <div class="actions">
         <button type="button" class="ghost" onclick={() => (showForm = false)}
           >{$_('common.cancel')}</button
         >
-        <button type="submit" class="primary" disabled={!name.trim() || saving}>
+        <button type="submit" class="primary" disabled={!name.trim() || saving || $demoSession}>
           {saving ? $_('common.saving') : $_('common.save')}
         </button>
       </div>

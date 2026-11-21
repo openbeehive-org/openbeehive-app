@@ -18,6 +18,8 @@
   import HiveCard from '#lib/components/HiveCard.svelte';
   import Skeleton from '#lib/components/Skeleton.svelte';
   import Syncing from '#lib/components/Syncing.svelte';
+  import DemoNote from '#lib/components/DemoNote.svelte';
+  import { demoSession } from '#lib/demo.js';
 
   let rows = $state<HiveOverview[]>([]);
   let apiaryList = $state<ApiaryRow[]>([]);
@@ -107,11 +109,14 @@
           {#each apiaryList as a}<option value={a.id}>{a.name}</option>{/each}
         </select>
       </label>
+      <DemoNote />
       <div class="actions">
         <button type="button" class="ghost" onclick={() => (showForm = false)}
           >{$_('common.cancel')}</button
         >
-        <button type="submit" class="primary" disabled={!name.trim()}>{$_('common.save')}</button>
+        <button type="submit" class="primary" disabled={!name.trim() || $demoSession}
+          >{$_('common.save')}</button
+        >
       </div>
     </form>
   {/if}

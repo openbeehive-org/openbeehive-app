@@ -20,6 +20,8 @@
   import LocationPicker from '#lib/components/LocationPicker.svelte';
   import QrSheet from '#lib/components/QrSheet.svelte';
   import Skeleton from '#lib/components/Skeleton.svelte';
+  import DemoNote from '#lib/components/DemoNote.svelte';
+  import { demoSession } from '#lib/demo.js';
 
   const id = $derived(page.params.id ?? '');
   let apiary = $state<ApiaryRow | null>(null);
@@ -266,12 +268,14 @@
           <p class="error" role="alert">{$_('apiaries.location_unavailable')}</p>
         {/if}
         <LocationPicker bind:lat={eLat} bind:lng={eLng} bind:address={eAddress} />
+        <DemoNote />
         <div class="actions">
           <button type="button" class="ghost" onclick={() => (editing = false)}
             >{$_('common.cancel')}</button
           >
 
-          <button type="submit" class="primary" disabled={!eName.trim()}>{$_('common.save')}</button
+          <button type="submit" class="primary" disabled={!eName.trim() || $demoSession}
+            >{$_('common.save')}</button
           >
         </div>
       </form>
@@ -313,12 +317,13 @@
           <span>{$_('hives.name')}</span>
           <input bind:value={hiveName} placeholder={$_('hives.name_ph')} />
         </label>
+        <DemoNote />
         <div class="actions">
           <button type="button" class="ghost" onclick={() => (addingHive = false)}
             >{$_('common.cancel')}</button
           >
 
-          <button type="submit" class="primary" disabled={!hiveName.trim()}
+          <button type="submit" class="primary" disabled={!hiveName.trim() || $demoSession}
             >{$_('common.save')}</button
           >
         </div>

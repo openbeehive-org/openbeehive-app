@@ -18,12 +18,16 @@ async function enterDemo(page: Page) {
   await expectSynced(page);
 }
 
-/** On the tasks page: tries to add a task and returns the server's answer to the upload. */
+/**
+ * On the tasks page: adds a task although Add is off in the demo (as a change
+ * made some other way would be) and returns the server's answer to the upload.
+ */
 async function tryToAddTask(page: Page, title: string) {
   await page.getByRole('navigation').getByRole('link', { name: 'Tasks' }).click();
   const upload = page.waitForResponse((r) => r.url().endsWith('/openbeehive.v1.SyncService/Push'));
   await page.getByLabel('New task').fill(title);
-  await page.getByRole('button', { name: 'Add' }).click();
+  await expect(page.getByRole('button', { name: 'Add' })).toBeDisabled();
+  await page.locator('form.adder').evaluate((form: HTMLFormElement) => form.requestSubmit());
   return (await upload).status();
 }
 
@@ -84,4 +88,20 @@ test('in the demo, the visit form cannot be saved and says so', async ({ startSe
     page.getByText('This is the read-only demo: this form cannot be saved.').first()
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+
+  // So are the forms for a new apiary, a new hive and a task.
+  await page.getByRole('navigation').getByRole('link', { name: 'Apiaries' }).click();
+  await page.getByRole('button', { name: '+ New' }).click();
+  await page.getByLabel('Name').fill('Not saved');
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await page.getByRole('navigation').getByRole('link', { name: 'Hives' }).click();
+  await page.getByRole('button', { name: '+ New' }).click();
+  await page.getByRole('textbox', { name: 'Name' }).fill('Not saved');
+  await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await page.getByRole('navigation').getByRole('link', { name: 'Tasks' }).click();
+  await page.getByLabel('New task').fill('Not saved');
+  await expect(page.getByRole('button', { name: 'Add' })).toBeDisabled();
+  await expect(
+    page.getByText('This is the read-only demo: this form cannot be saved.')
+  ).toBeVisible();
 });

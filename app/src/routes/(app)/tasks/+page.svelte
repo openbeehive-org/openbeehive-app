@@ -10,6 +10,8 @@
   import { dueDay, isOverdue, splitTasks } from '#lib/tasklist.js';
   import Skeleton from '#lib/components/Skeleton.svelte';
   import Syncing from '#lib/components/Syncing.svelte';
+  import DemoNote from '#lib/components/DemoNote.svelte';
+  import { demoSession } from '#lib/demo.js';
 
   let rows = $state<TaskRow[]>([]);
   let loaded = $state(false);
@@ -145,7 +147,7 @@
           <button class="ghost" type="button" onclick={() => (editId = null)}
             >{$_('common.cancel')}</button
           >
-          <button class="primary" type="submit" disabled={!eTitle.trim()}
+          <button class="primary" type="submit" disabled={!eTitle.trim() || $demoSession}
             >{$_('common.save')}</button
           >
         </div>
@@ -194,6 +196,7 @@
 <div class="page">
   <header><h1>{$_('tasks.title')}</h1></header>
 
+  <DemoNote />
   <form
     class="adder"
     onsubmit={(e) => {
@@ -209,7 +212,9 @@
       <span>{$_('tasks.due')}</span>
       <input type="date" bind:value={due} />
     </label>
-    <button class="primary" type="submit" disabled={!title.trim()}>{$_('tasks.add')}</button>
+    <button class="primary" type="submit" disabled={!title.trim() || $demoSession}
+      >{$_('tasks.add')}</button
+    >
   </form>
 
   {#if !loaded}
