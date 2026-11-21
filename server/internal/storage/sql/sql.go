@@ -17,7 +17,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -204,20 +203,48 @@ func (s *Store) migrateUpTo(ctx context.Context, last string) error {
 		if last != "" && name > last {
 			break
 		}
-		var dummy string
-		err := s.db.GetContext(ctx, &dummy,
-			s.db.Rebind(`SELECT version FROM schema_migrations WHERE version = ?`), name)
-		if err == nil {
-			continue // already applied
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
+		done, err := s.migrationApplied(ctx, name)
+		if err != nil {
 			return err
+		}
+		if done {
+			continue
 		}
 		if err := s.runMigration(ctx, name); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// migrationAliases maps a migration file to the name it was recorded under
+// before it was split into one file per dialect. A database that ran the
+// file under its old name has applied it.
+var migrationAliases = map[string]string{
+	"0015_sync_tenant_scope.mysql.sql":    "0015_sync_tenant_scope.sql",
+	"0015_sync_tenant_scope.postgres.sql": "0015_sync_tenant_scope.sql",
+	"0015_sync_tenant_scope.sqlite.sql":   "0015_sync_tenant_scope.sql",
+	"0017_record_semantics.mysql.sql":     "0017_record_semantics.sql",
+	"0017_record_semantics.postgres.sql":  "0017_record_semantics.sql",
+	"0017_record_semantics.sqlite.sql":    "0017_record_semantics.sql",
+}
+
+// migrationApplied reports whether the migration is recorded as applied,
+// under its name or the name it had before.
+func (s *Store) migrationApplied(ctx context.Context, name string) (bool, error) {
+	names := []string{name}
+	if old, ok := migrationAliases[name]; ok {
+		names = append(names, old)
+	}
+	q, args, err := sqlx.In(`SELECT version FROM schema_migrations WHERE version IN (?)`, names)
+	if err != nil {
+		return false, err
+	}
+	var found []string
+	if err := s.db.SelectContext(ctx, &found, s.db.Rebind(q), args...); err != nil {
+		return false, err
+	}
+	return len(found) > 0, nil
 }
 
 // migrationNames lists the embedded migration files in the order they apply.
