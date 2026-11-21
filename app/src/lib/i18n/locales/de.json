@@ -261,6 +261,8 @@
     "import_btn": "Datei wählen…",
     "imported": "Importiert: {created} neu, {updated} überschrieben, {restored} wiederhergestellt.",
     "import_failed": "Import fehlgeschlagen: {msg}",
+    "import_default_apiary": "Importiert",
+    "import_default_hive": "Beute {n}",
     "mode_auto": "Automatisch erkennen",
     "mode_json": "Openbeehive-Backup (JSON oder ZIP)",
     "mode_beexml": "BeeXML",
@@ -759,5 +761,20 @@
     "upload_waiting": "Wartet auf den Upload",
     "upload_failing": "Upload fehlgeschlagen, neuer Versuch folgt",
     "upload_blocked": "Nur auf diesem Gerät: Upload nicht möglich"
+  },
+  "errors": {
+    "generic": "Etwas ist schiefgelaufen. Versuche es noch einmal; wenn es wieder passiert, lade die Seite neu.",
+    "not_found": "Dieser Eintrag existiert nicht mehr. Vielleicht wurde er auf einem anderen Gerät gelöscht.",
+    "db_elsewhere": "Openbeehive ist in einem anderen Tab geöffnet. Schließe es dort oder mach dort weiter.",
+    "import_unknown_file": "Diese Datei kann nicht importiert werden. Wähle ein Openbeehive-Backup (JSON oder ZIP), eine BeeXML-Datei oder eine CSV-Datei.",
+    "import_no_export": "Das Archiv enthält kein Openbeehive-Backup.",
+    "import_bad_json": "Die Datei ist kein gültiges JSON.",
+    "import_not_export": "Die Datei ist kein Openbeehive-Backup.",
+    "import_bad_xml": "Die Datei ist kein gültiges XML.",
+    "import_csv_empty": "Die CSV-Datei hat unter der Kopfzeile keine Zeilen.",
+    "import_csv_unknown": "Die CSV-Datei wurde nicht erkannt: Sie braucht mindestens eine Spalte für Beute oder Datum.",
+    "zip_damaged": "Das ZIP-Archiv ist beschädigt.",
+    "zip_unsupported": "Das ZIP-Archiv ist verschlüsselt oder so komprimiert, dass die App es nicht lesen kann.",
+    "zip_too_large": "Das ZIP-Archiv enthält entpackt mehr Daten, als die App importieren kann."
   }
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorKey } from '#lib/errors.js';
   import { _ } from 'svelte-i18n';
   import { page } from '$app/state';
   import { MapPin } from '@lucide/svelte';
@@ -48,7 +49,7 @@
       showForm = false;
       await load();
     } catch (e) {
-      saveError = (e as Error)?.message ?? String(e);
+      saveError = errorKey(e);
     } finally {
       saving = false;
     }
@@ -92,7 +93,9 @@
       </label>
       <LocationPicker bind:lat bind:lng bind:address />
       {#if saveError}
-        <p class="error" role="alert">{$_('common.save_failed', { values: { msg: saveError } })}</p>
+        <p class="error" role="alert">
+          {$_('common.save_failed', { values: { msg: $_(saveError) } })}
+        </p>
       {/if}
       <div class="actions">
         <button type="button" class="ghost" onclick={() => (showForm = false)}

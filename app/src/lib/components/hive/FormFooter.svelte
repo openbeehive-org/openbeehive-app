@@ -13,7 +13,7 @@
 </script>
 
 {#if error}
-  <p class="hv-err" role="alert">{$_('common.save_failed', { values: { msg: error } })}</p>
+  <p class="hv-err" role="alert">{$_('common.save_failed', { values: { msg: $_(error) } })}</p>
 {/if}
 <div class="hv-actions">
   <button type="button" class="hv-btn ghost" onclick={oncancel} disabled={busy}

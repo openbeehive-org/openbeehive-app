@@ -261,6 +261,8 @@
     "import_btn": "Choose file…",
     "imported": "Imported: {created} new, {updated} overwritten, {restored} restored.",
     "import_failed": "Import failed: {msg}",
+    "import_default_apiary": "Imported",
+    "import_default_hive": "Hive {n}",
     "mode_auto": "Auto-detect",
     "mode_json": "Openbeehive backup (JSON or ZIP)",
     "mode_beexml": "BeeXML",
@@ -759,5 +761,20 @@
     "upload_waiting": "Waiting to upload",
     "upload_failing": "Upload failed, trying again",
     "upload_blocked": "Kept on this device only: it cannot be uploaded"
+  },
+  "errors": {
+    "generic": "Something went wrong. Try again; if it keeps happening, reload the page.",
+    "not_found": "This record no longer exists. It may have been deleted on another device.",
+    "db_elsewhere": "Openbeehive is open in another tab. Close it there or continue there.",
+    "import_unknown_file": "This file cannot be imported. Choose an Openbeehive backup (JSON or ZIP), a BeeXML file or a CSV file.",
+    "import_no_export": "The archive contains no Openbeehive backup.",
+    "import_bad_json": "The file is not valid JSON.",
+    "import_not_export": "The file is not an Openbeehive backup.",
+    "import_bad_xml": "The file is not valid XML.",
+    "import_csv_empty": "The CSV file has no rows below its header.",
+    "import_csv_unknown": "The CSV file was not recognised: it needs at least a hive or a date column.",
+    "zip_damaged": "The ZIP archive is damaged.",
+    "zip_unsupported": "The ZIP archive uses encryption or compression the app cannot read.",
+    "zip_too_large": "The ZIP archive unpacks to more data than the app can import."
   }
 }

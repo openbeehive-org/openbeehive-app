@@ -1,6 +1,8 @@
 // Guards a form's save against double taps: while one save runs, further
-// calls are dropped and `busy` lets the form disable its button.
+// calls are dropped and `busy` lets the form disable its button. `error` is
+// the translation key of what went wrong.
 import { writable } from 'svelte/store';
+import { errorKey } from '#lib/errors.js';
 
 export function createSaver() {
   const busy = writable(false);
@@ -17,7 +19,7 @@ export function createSaver() {
       await fn();
       return true;
     } catch (e) {
-      error.set(String((e as Error)?.message ?? e));
+      error.set(errorKey(e));
       return false;
     } finally {
       running = false;

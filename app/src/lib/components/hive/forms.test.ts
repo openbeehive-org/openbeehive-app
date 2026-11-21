@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { fromDateInput, toDateInput } from '#lib/dates.js';
 import { changedFrom, dotted, storedDate } from './forms';
 import { createSaver } from './saver';
+import { CodedError } from '#lib/errors.js';
 import { deleteWithUndo } from './deleting';
 import { get } from 'svelte/store';
 
@@ -48,8 +49,13 @@ describe('createSaver', () => {
         throw new Error('disk full');
       })
     ).toBe(false);
-    expect(get(saver.error)).toBe('disk full');
+    // Shown as a sentence in the UI language, not the raw message.
+    expect(get(saver.error)).toBe('errors.generic');
     expect(get(saver.busy)).toBe(false);
+    await saver.run(async () => {
+      throw new CodedError('not_found', 'visit not found');
+    });
+    expect(get(saver.error)).toBe('errors.not_found');
 
     expect(await saver.run(async () => {})).toBe(true);
     expect(get(saver.error)).toBe('');

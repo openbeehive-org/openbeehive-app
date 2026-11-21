@@ -24,6 +24,7 @@ import {
   type ImageSink
 } from './importer';
 import { readZip } from './unzip';
+import type { CodedError } from '../errors';
 import { fromDateInput } from '../dates';
 import { buildZip } from './zip';
 
@@ -236,9 +237,50 @@ describe('JSON import from another workspace', () => {
     expect((await planImport(parsed)).foreign).toBe(false);
   });
 
-  it('rejects files that are not exports', () => {
-    expect(() => parseExportDocument('{"hello": 1}', new Map())).toThrow(/not an Openbeehive/);
-    expect(() => parseExportDocument('nope', new Map())).toThrow(/not valid JSON/);
+  it('rejects files that are not exports, each with its own message', () => {
+    const code = (f: () => unknown) => {
+      try {
+        f();
+      } catch (e) {
+        return (e as CodedError).code;
+      }
+    };
+    expect(code(() => parseExportDocument('{"hello": 1}', new Map()))).toBe('import_not_export');
+    expect(code(() => parseExportDocument('nope', new Map()))).toBe('import_bad_json');
+  });
+});
+
+describe('files the importer cannot read', () => {
+  const codeOf = (p: Promise<unknown>) =>
+    p.then(
+      () => '',
+      (e: CodedError) => e.code
+    );
+
+  it('tells a binary file from an unrecognised CSV', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+    expect(await codeOf(readImportFile(new Blob([png])))).toBe('import_unknown_file');
+    const csv = new Blob(['Colour,Size\nred,3']);
+    expect(await codeOf(readImportFile(csv))).toBe('import_csv_unknown');
+  });
+
+  it('reads a CSV saved in Windows-1252', async () => {
+    const latin = new Uint8Array([
+      ...new TextEncoder().encode('Apiary,Hive,Date\nG'),
+      0xe4,
+      ...new TextEncoder().encode('rten,1,2026-05-01')
+    ]);
+    const parsed = await readImportFile(new Blob([latin]));
+    expect(parsed.data.apiary?.[0]?.name).toBe('Gärten');
+  });
+
+  it('names made-up records in the UI language', async () => {
+    const parsed = await readImportFile(new Blob(['Date,Notes\n2026-05-01,calm']), 'csv', {
+      apiary: 'Importiert',
+      hive: (n) => `Beute ${n}`
+    });
+    expect(parsed.data.apiary?.map((a) => a.name)).toEqual(['Importiert']);
+    expect(parsed.data.hive?.map((h) => h.name)).toEqual(['Beute 1']);
   });
 });
 

@@ -261,6 +261,8 @@
     "import_btn": "Choisir un fichier…",
     "imported": "Importé : {created} nouveaux, {updated} écrasés, {restored} restaurés.",
     "import_failed": "Échec de l'import : {msg}",
+    "import_default_apiary": "Importé",
+    "import_default_hive": "Ruche {n}",
     "mode_auto": "Détection automatique",
     "mode_json": "Sauvegarde Openbeehive (JSON ou ZIP)",
     "mode_beexml": "BeeXML",
@@ -759,5 +761,20 @@
     "upload_waiting": "En attente d'envoi",
     "upload_failing": "Envoi échoué, nouvel essai à venir",
     "upload_blocked": "Seulement sur cet appareil : envoi impossible"
+  },
+  "errors": {
+    "generic": "Une erreur s'est produite. Réessayez ; si cela se reproduit, rechargez la page.",
+    "not_found": "Cet enregistrement n'existe plus. Il a peut-être été supprimé sur un autre appareil.",
+    "db_elsewhere": "Openbeehive est ouvert dans un autre onglet. Fermez-le ou continuez là-bas.",
+    "import_unknown_file": "Ce fichier ne peut pas être importé. Choisissez une sauvegarde Openbeehive (JSON ou ZIP), un fichier BeeXML ou un fichier CSV.",
+    "import_no_export": "L'archive ne contient aucune sauvegarde Openbeehive.",
+    "import_bad_json": "Le fichier n'est pas un JSON valide.",
+    "import_not_export": "Le fichier n'est pas une sauvegarde Openbeehive.",
+    "import_bad_xml": "Le fichier n'est pas un XML valide.",
+    "import_csv_empty": "Le fichier CSV n'a aucune ligne sous son en-tête.",
+    "import_csv_unknown": "Le fichier CSV n'a pas été reconnu : il lui faut au moins une colonne ruche ou date.",
+    "zip_damaged": "L'archive ZIP est endommagée.",
+    "zip_unsupported": "L'archive ZIP utilise un chiffrement ou une compression que l'application ne sait pas lire.",
+    "zip_too_large": "L'archive ZIP décompressée contient plus de données que l'application ne peut importer."
   }
 }

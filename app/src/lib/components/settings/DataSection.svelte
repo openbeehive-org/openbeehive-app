@@ -32,6 +32,7 @@
   import { formatDate } from '#lib/dates.js';
   import { syncStatus } from '#lib/local/sync.js';
   import TreatmentRegisterSection from './TreatmentRegisterSection.svelte';
+  import { errorKey } from '#lib/errors.js';
   import './settings.css';
 
   let { workspaceName = '', readOnly = false }: { workspaceName?: string; readOnly?: boolean } =
@@ -52,7 +53,7 @@
   let undo = $state<{ at: string; created: number } | null>(null);
 
   const ready = $derived(readiness?.ready ?? false);
-  const errText = (e: unknown) => String((e as Error)?.message ?? e);
+  const errText = (e: unknown) => $_(errorKey(e));
 
   async function refresh() {
     readiness = await exportReadiness().catch(() => null);
@@ -143,7 +144,10 @@
     await run(async () => {
       if (!readiness?.ready) return say($_('data.not_synced'), true);
       try {
-        parsed = await readImportFile(file, importMode);
+        parsed = await readImportFile(file, importMode, {
+          apiary: $_('data.import_default_apiary'),
+          hive: (n) => $_('data.import_default_hive', { values: { n } })
+        });
         await replan();
       } catch (e) {
         parsed = null;

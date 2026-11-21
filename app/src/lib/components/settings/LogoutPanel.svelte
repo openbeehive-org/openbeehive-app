@@ -4,6 +4,7 @@
   import { _ } from 'svelte-i18n';
   import { apiOrigin, authHeaders, clearSession, logoutWarning } from '#lib/account.js';
   import { removeDeviceData } from '#lib/device-data.js';
+  import { CodedError, errorKey } from '#lib/errors.js';
   import { unsentCount } from '#lib/local/sync.js';
   import './settings.css';
 
@@ -13,11 +14,12 @@
   let unsent = $state(0);
   let removeData = $state(false);
   let busy = $state(false);
-  let failed = $state(false);
+  // Translation key of why the data could not be removed, or ''.
+  let failed = $state('');
   const warning = $derived(logoutWarning(unsent, removeData));
 
   async function ask() {
-    failed = false;
+    failed = '';
     removeData = false;
     unsent = 0;
     open = true;
@@ -27,13 +29,13 @@
   async function signOut() {
     if (busy) return;
     busy = true;
-    failed = false;
+    failed = '';
     if (removeData) {
       try {
         await removeDeviceData(orgId);
-      } catch {
+      } catch (e) {
         // Stay signed in: the user asked for the data to be gone first.
-        failed = true;
+        failed = e instanceof CodedError ? errorKey(e) : 'account.logout_remove_failed';
         busy = false;
         return;
       }
@@ -67,7 +69,7 @@
         <small>{$_('account.logout_remove_data_help')}</small></span
       >
     </label>
-    {#if failed}<p class="st-msg err" role="alert">{$_('account.logout_remove_failed')}</p>{/if}
+    {#if failed}<p class="st-msg err" role="alert">{$_(failed)}</p>{/if}
     <div class="st-row">
       <button
         type="button"

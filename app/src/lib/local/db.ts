@@ -25,6 +25,9 @@ import { get } from 'svelte/store';
 import { storageState } from './live';
 import { claimTab, takeoverRequested } from './tablock';
 import { openOwnStore } from './owner';
+import { CodedError } from '../errors';
+
+const elsewhere = () => new CodedError('db_elsewhere', 'local database is open in another tab');
 
 const API = (import.meta.env?.BEEHIVE_API_URL ?? '').replace(/\/$/, '');
 
@@ -54,10 +57,11 @@ export async function localStoreKey(): Promise<string> {
 /**
  * Deletes the open workspace's database from this device, including changes
  * that were never uploaded. The connection is closed by it: leave or reload
- * the page afterwards. Does nothing while another tab owns the database.
+ * the page afterwards. Fails while another tab owns the database: nothing is
+ * removed then, and the user has to be told.
  */
 export async function wipeLocalDB(): Promise<void> {
-  if (get(storageState) === 'elsewhere') return;
+  if (get(storageState) === 'elsewhere') throw elsewhere();
   await getDB();
   await wipe?.();
 }
@@ -86,7 +90,7 @@ async function init(): Promise<LocalDB> {
   const release = () => {
     worker?.terminate();
     worker = null;
-    for (const p of pending.values()) p.reject(new Error('local database is open in another tab'));
+    for (const p of pending.values()) p.reject(elsewhere());
     pending.clear();
     storageState.set('elsewhere');
   };
@@ -122,7 +126,7 @@ async function init(): Promise<LocalDB> {
   function call(method: Method, msg: Record<string, unknown> = {}): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!worker) {
-        reject(new Error('local database is open in another tab'));
+        reject(elsewhere());
         return;
       }
       const id = ++seq;

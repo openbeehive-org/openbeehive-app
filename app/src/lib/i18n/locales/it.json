@@ -261,6 +261,8 @@
     "import_btn": "Scegli file…",
     "imported": "Importato: {created} nuovi, {updated} sovrascritti, {restored} ripristinati.",
     "import_failed": "Importazione non riuscita: {msg}",
+    "import_default_apiary": "Importato",
+    "import_default_hive": "Arnia {n}",
     "mode_auto": "Rilevamento automatico",
     "mode_json": "Backup Openbeehive (JSON o ZIP)",
     "mode_beexml": "BeeXML",
@@ -759,5 +761,20 @@
     "upload_waiting": "In attesa di caricamento",
     "upload_failing": "Caricamento non riuscito, nuovo tentativo in arrivo",
     "upload_blocked": "Solo su questo dispositivo: caricamento non possibile"
+  },
+  "errors": {
+    "generic": "Qualcosa è andato storto. Riprova; se succede ancora, ricarica la pagina.",
+    "not_found": "Questo record non esiste più. Forse è stato eliminato su un altro dispositivo.",
+    "db_elsewhere": "Openbeehive è aperto in un'altra scheda. Chiudila o continua lì.",
+    "import_unknown_file": "Questo file non può essere importato. Scegli un backup di Openbeehive (JSON o ZIP), un file BeeXML o un file CSV.",
+    "import_no_export": "L'archivio non contiene alcun backup di Openbeehive.",
+    "import_bad_json": "Il file non è un JSON valido.",
+    "import_not_export": "Il file non è un backup di Openbeehive.",
+    "import_bad_xml": "Il file non è un XML valido.",
+    "import_csv_empty": "Il file CSV non ha righe sotto l'intestazione.",
+    "import_csv_unknown": "Il file CSV non è stato riconosciuto: serve almeno una colonna arnia o data.",
+    "zip_damaged": "L'archivio ZIP è danneggiato.",
+    "zip_unsupported": "L'archivio ZIP usa una cifratura o una compressione che l'app non sa leggere.",
+    "zip_too_large": "L'archivio ZIP decompresso contiene più dati di quanti l'app possa importare."
   }
 }

@@ -5,6 +5,7 @@
   import { goto } from '$app/navigation';
   import { startSync, syncStatus } from '#lib/local/sync.js';
   import { openedFor } from '#lib/local/db.js';
+  import { errorKey } from '#lib/errors.js';
   import { dataVersion, initialSyncPending, readOnlyRefusals } from '#lib/local/live.js';
   import { reconcile } from '#lib/local/userSettings.js';
   import { recoverSession, takeNotice, takeResume } from '#lib/account.js';
@@ -46,9 +47,7 @@
     // die silently (the classic symptom: a button that "does nothing"). Show
     // the error, so the user knows the action did not stick.
     const onRejection = (e: PromiseRejectionEvent) => {
-      const msg = String(
-        (e.reason as Error)?.message ?? e.reason ?? 'unhandled promise rejection without a message'
-      );
+      const msg = get(_)(errorKey(e.reason));
       toast(get(_)('common.save_failed', { values: { msg } }));
     };
     addEventListener('unhandledrejection', onRejection);

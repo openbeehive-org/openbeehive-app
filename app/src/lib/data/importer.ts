@@ -15,6 +15,7 @@
 //      other change. What it created is remembered so that undoLastImport
 //      can delete exactly that again, also offline.
 import { getDB } from '../local/db';
+import { CodedError, type ErrorCode } from '../errors';
 import { toDateInput } from '../dates';
 import { unit } from '../local/write';
 import { columnsOf, toScalar } from '../local/tables';
@@ -94,18 +95,48 @@ const MAX_THUMB_CHARS = 48 * 1024;
 // ---------------------------------------------------------------------------
 // 1. Reading files
 
-export class ImportFormatError extends Error {
-  constructor(message: string) {
-    super(message);
+/** A file the importer cannot read; `code` names the message to show. */
+export class ImportFormatError extends CodedError {
+  constructor(code: ErrorCode, message: string) {
+    super(code, message);
     this.name = 'ImportFormatError';
   }
 }
 
+/** Names for records a CSV import has to make up, in the UI language. */
+export type ImportNames = { apiary: string; hive: (row: number) => string };
+const ENGLISH_NAMES: ImportNames = { apiary: 'Imported', hive: (n) => `Hive ${n}` };
+
+// A text file has no NUL bytes and hardly any other control characters;
+// anything else (an image, a PDF, an office document) is not something the
+// importer reads. Text that is not valid UTF-8 is read as Windows-1252, the
+// encoding spreadsheet programs often save CSV files in.
+function textOf(bytes: Uint8Array): string | null {
+  let control = 0;
+  for (const b of bytes) {
+    if (b === 0) return null;
+    if (b < 9 || (b > 13 && b < 32)) control++;
+  }
+  if (control > bytes.length / 100) return null;
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    text = new TextDecoder('windows-1252').decode(bytes);
+  }
+  return text.replace(/^\uFEFF/, '');
+}
+
 /** Turns a picked file into a dataset. Nothing is written. */
-export async function readImportFile(file: Blob, mode: ImportMode = 'auto'): Promise<ParsedImport> {
+export async function readImportFile(
+  file: Blob,
+  mode: ImportMode = 'auto',
+  names: ImportNames = ENGLISH_NAMES
+): Promise<ParsedImport> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (looksLikeZip(bytes)) return parseArchive(bytes);
-  const text = new TextDecoder().decode(bytes).replace(/^\uFEFF/, '');
+  const text = textOf(bytes);
+  if (text === null) throw new ImportFormatError('import_unknown_file', 'not a text file');
   const name = (file as File).name?.toLowerCase() ?? '';
   const ext = name.split('.').pop() ?? '';
   let m = mode;
@@ -116,7 +147,7 @@ export async function readImportFile(file: Blob, mode: ImportMode = 'auto'): Pro
   }
   if (m === 'json') return parseExportDocument(text, new Map());
   if (m === 'beexml') return parseBeeXML(text);
-  return parseBeekeepingCSV(text);
+  return parseBeekeepingCSV(text, names);
 }
 
 /** An export ZIP: the document plus photos/<id>.<ext>. */
@@ -125,7 +156,8 @@ export async function parseArchive(bytes: Uint8Array): Promise<ParsedImport> {
   const docName = files.has(EXPORT_DOCUMENT)
     ? EXPORT_DOCUMENT
     : [...files.keys()].find((n) => n.endsWith('.json') && !n.includes('/'));
-  if (!docName) throw new ImportFormatError('The archive contains no Openbeehive export.');
+  if (!docName)
+    throw new ImportFormatError('import_no_export', 'The archive contains no Openbeehive export.');
   const images = new Map<string, Blob>();
   for (const [name, data] of files) {
     if (!name.startsWith(PHOTO_DIR)) continue;
@@ -159,12 +191,12 @@ export function parseExportDocument(text: string, images: Map<string, Blob>): Pa
   try {
     doc = JSON.parse(text);
   } catch {
-    throw new ImportFormatError('The file is not valid JSON.');
+    throw new ImportFormatError('import_bad_json', 'The file is not valid JSON.');
   }
   const obj = isObject(doc) ? doc : null;
   const data = obj && isObject(obj.data) ? obj.data : obj;
   if (!data || !TABLES.some((t) => Array.isArray(data[t]))) {
-    throw new ImportFormatError('The file is not an Openbeehive export.');
+    throw new ImportFormatError('import_not_export', 'The file is not an Openbeehive export.');
   }
   const clean: Dataset = {};
   for (const t of TABLES) {
@@ -197,7 +229,8 @@ const num = (s: string) => (s === '' || s == null ? null : Number(s));
 
 export function parseBeeXML(text: string): ParsedImport {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
-  if (doc.querySelector('parsererror')) throw new ImportFormatError('Invalid XML.');
+  if (doc.querySelector('parsererror'))
+    throw new ImportFormatError('import_bad_xml', 'Invalid XML.');
   const t = (el: Element | null, tag: string) =>
     el?.querySelector(':scope > ' + tag)?.textContent?.trim() ?? '';
   const data = {
@@ -365,13 +398,17 @@ function sameVisit(file: Row, row: Row): boolean {
  * that is already recorded is not recorded again, so importing the same
  * file twice changes nothing.
  */
-export async function parseBeekeepingCSV(text: string): Promise<ParsedImport> {
+export async function parseBeekeepingCSV(
+  text: string,
+  names: ImportNames = ENGLISH_NAMES
+): Promise<ParsedImport> {
   const rows = parseCSV(text);
-  if (rows.length < 2) throw new ImportFormatError('CSV has no data rows.');
+  if (rows.length < 2) throw new ImportFormatError('import_csv_empty', 'CSV has no data rows.');
   const colMap = resolveHeaders(rows[0]!);
   const fields = Object.values(colMap);
   if (!fields.includes('hive') && !fields.includes('date'))
     throw new ImportFormatError(
+      'import_csv_unknown',
       'Could not recognise this CSV. Expected at least a hive or date column.'
     );
 
@@ -394,7 +431,7 @@ export async function parseBeekeepingCSV(text: string): Promise<ParsedImport> {
   const hives = await db.all<Row>(
     `SELECT id, name, apiary_id FROM hive WHERE deleted = 0 ORDER BY created_at, id`
   );
-  const DEFAULT_APIARY = 'Imported';
+  const DEFAULT_APIARY = names.apiary;
 
   const ensureApiary = (name: string): string => {
     name = name.trim() || DEFAULT_APIARY;
@@ -437,7 +474,7 @@ export async function parseBeekeepingCSV(text: string): Promise<ParsedImport> {
       const idx = Object.keys(colMap).find((k) => colMap[+k] === f);
       return idx !== undefined ? (rows[r]?.[+idx]?.trim() ?? '') : '';
     };
-    const hiveId = ensureHive(get('hive') || 'Hive ' + r, hasApiary ? get('apiary') : null);
+    const hiveId = ensureHive(get('hive') || names.hive(r), hasApiary ? get('apiary') : null);
     const insp: Row = { hive_id: hiveId };
     let any = false;
     for (const f of TEXT_FIELDS) {

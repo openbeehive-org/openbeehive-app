@@ -5,6 +5,7 @@
 
 import { getDB } from './db';
 import { toDateInput } from '../dates';
+import { CodedError } from '../errors';
 import { markingForYear, InspectionSource, type InspectionInput } from './repo';
 import { unit, type Unit } from './write';
 
@@ -457,7 +458,7 @@ async function contextChange(row: any, changes: Record<string, unknown>) {
 // Correct an inspection. Returns false when nothing differed.
 export async function editInspection(id: string, fields: InspectionInput) {
   const row = await getRow('inspection', id);
-  if (!row) throw new Error('inspection not found');
+  if (!row) throw new CodedError('not_found', 'inspection not found');
   const changes = changedFields(row, fields);
   if (Object.keys(changes).length === 0) return false;
   const events = await eventsOf('inspection', id);
@@ -484,7 +485,7 @@ export type HarvestFields = {
 // follows the new date and amount. Returns false when nothing differed.
 export async function editHarvest(id: string, fields: HarvestFields) {
   const row = await getRow('harvest', id);
-  if (!row) throw new Error('harvest not found');
+  if (!row) throw new CodedError('not_found', 'harvest not found');
   const changes = changedFields(row, fields);
   if (Object.keys(changes).length === 0) return false;
   const events = await eventsOf('harvest', id);
@@ -520,7 +521,7 @@ export type TreatmentFields = {
 // entry follows the new date and product. Returns false when nothing differed.
 export async function editTreatment(id: string, fields: TreatmentFields) {
   const row = await getRow('treatment', id);
-  if (!row) throw new Error('treatment not found');
+  if (!row) throw new CodedError('not_found', 'treatment not found');
   const changes = changedFields(row, fields);
   if (Object.keys(changes).length === 0) return false;
   const events = await eventsOf('treatment', id);
@@ -559,7 +560,7 @@ async function predecessorOf(q: any) {
 // is written, the existing events only follow the corrected year and date.
 export async function editQueen(id: string, fields: QueenFields) {
   const row = await getRow('queen', id);
-  if (!row) throw new Error('queen not found');
+  if (!row) throw new CodedError('not_found', 'queen not found');
   const changes = changedFields(row, fields);
   if (Object.keys(changes).length === 0) return false;
   const introduced = await queenEvents(id, EventType.QUEEN_INTRODUCED);
@@ -620,7 +621,7 @@ export async function updateHive(
   fields: { name?: string; type?: number; status?: number }
 ) {
   const row = await getRow('hive', id);
-  if (!row) throw new Error('hive not found');
+  if (!row) throw new CodedError('not_found', 'hive not found');
   const changes = changedFields(row, fields);
   if (Object.keys(changes).length === 0) return false;
   const ts = now();
