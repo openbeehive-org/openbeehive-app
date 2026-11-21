@@ -211,8 +211,8 @@
     "err_provider_no_email": "Der Anmeldedienst hat keine E-Mail-Adresse übermittelt. Erlaube den Zugriff auf deine E-Mail-Adresse und versuche es noch einmal.",
     "err_account_exists": "Zu dieser E-Mail-Adresse gibt es bereits ein Konto. Melde dich so an wie bisher, zum Beispiel mit E-Mail und Passwort.",
     "reauth_notice": "Melde dich zur Bestätigung noch einmal an. Danach geht es dort weiter, wo du warst.",
-    "invited_to": "Du wurdest in den Arbeitsbereich „{workspace}“ eingeladen. Erstelle ein Konto oder melde dich an mit {email}.",
-    "err_invite_mismatch_to": "Diese Einladung gilt für {email}. Melde dich mit dieser Adresse an oder erstelle damit ein Konto – oder bitte um eine Einladung für diese Adresse.",
+    "invited_to": "Du wurdest in den Arbeitsbereich „{workspace}“ eingeladen. Erstelle mit {email} ein Konto oder melde dich damit an.",
+    "err_invite_mismatch_to": "Diese Einladung gilt für {email}. Melde dich mit dieser Adresse an oder erstelle damit ein Konto – oder bitte um eine Einladung für die Adresse, die du gerade verwendet hast.",
     "err_invite_expired": "Diese Einladung ist abgelaufen. Bitte die Person, die dich eingeladen hat, um eine neue.",
     "continue_without_joining": "Ohne Beitritt weiter"
   },
@@ -606,7 +606,7 @@
     "print_register": "Bestandsbuch drucken",
     "register_printed": "Gedruckt am {date}",
     "print_blocked": "Das Druckfenster wurde blockiert. Erlaube Pop-ups für diese Seite und versuche es erneut.",
-    "register_help": "Drucke das Bestandsbuch für den ganzen Arbeitsbereich, einen Standort oder ein Jahr. Jede Beute druckt ihres auf ihrer eigenen Seite.",
+    "register_help": "Drucke das Bestandsbuch für den ganzen Arbeitsbereich, einen Standort oder ein Jahr. Das Bestandsbuch einer einzelnen Beute druckst du auf ihrer Seite.",
     "all_years": "Alle Jahre",
     "register_empty": "Für diese Auswahl sind keine Behandlungen erfasst."
   },
