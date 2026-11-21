@@ -453,7 +453,7 @@ async function loadSnapshot(db: LocalDB): Promise<string> {
       throw e;
     }
     learnServerTime(res.serverTimeMs, sentAt);
-    for (const row of res.rows) await applySnapshotRow(db, row);
+    await applySnapshotPage(db, res.rows);
     if (res.rows.length > 0) bumpData();
     cursor = res.cursor;
     pageToken = res.nextPageToken;
@@ -476,9 +476,37 @@ function parseObject(json: string): Record<string, unknown> | null {
   }
 }
 
+// Merges a page of snapshot rows in one transaction: committing each row on
+// its own makes the first sync of a large workspace several times slower.
+// Rows are read from the database as it was before the page; a row that
+// appears twice in a page is written before the second one is read.
+async function applySnapshotPage(db: LocalDB, rows: SnapshotRow[]) {
+  await exclusive(async () => {
+    let stmts: Statement[] = [];
+    const seen = new Set<string>();
+    const collect: LocalDB = {
+      exec: async (sql, params = []) => void stmts.push({ sql, params }),
+      all: <T>(sql: string, params?: unknown[]) => db.all<T>(sql, params),
+      get: <T>(sql: string, params?: unknown[]) => db.get<T>(sql, params),
+      batch: async (list) => void stmts.push(...list)
+    };
+    for (const snap of rows) {
+      const key = `${snap.entity}\n${snap.entityId}`;
+      if (seen.has(key)) {
+        await db.batch(stmts);
+        stmts = [];
+        seen.clear();
+      }
+      seen.add(key);
+      await applySnapshotRow(collect, snap);
+    }
+    await db.batch(stmts);
+  });
+}
+
 // Merges one snapshot row into the local table, column by column (see
 // mergeSnapshot). Like a pulled change, a row this device cannot make sense
-// of is skipped.
+// of is skipped. The caller holds the local write lock.
 async function applySnapshotRow(db: LocalDB, snap: SnapshotRow) {
   const cols = await columnsOf(db, snap.entity);
   if (!cols || !snap.entityId) return; // not a table this app syncs
@@ -500,17 +528,15 @@ async function applySnapshotRow(db: LocalDB, snap: SnapshotRow) {
     if (value !== undefined && !isInlinePhoto(snap.entity, k, value)) fields[k] = value;
   }
 
-  await exclusive(async () => {
-    const row = await loadRow(db, snap.entity, snap.entityId);
-    const changed = merged(snap.entity, snap.entityId, () =>
-      mergeSnapshot(row, fields, stamps, setCols)
-    );
-    if (Array.isArray(changed)) {
-      await storeMerged(db, snap.entity, snap.entityId, row, changed, fields);
-    } else {
-      await park(db, snap.entity, snap.entityId, ChangeOp.UPSERT, snap.payloadJson, '', changed);
-    }
-  });
+  const row = await loadRow(db, snap.entity, snap.entityId);
+  const changed = merged(snap.entity, snap.entityId, () =>
+    mergeSnapshot(row, fields, stamps, setCols)
+  );
+  if (Array.isArray(changed)) {
+    await storeMerged(db, snap.entity, snap.entityId, row, changed, fields);
+  } else {
+    await park(db, snap.entity, snap.entityId, ChangeOp.UPSERT, snap.payloadJson, '', changed);
+  }
   // Every later local stamp must sort after what this row carries.
   for (const stamp of Object.values(stamps)) hlc.recv(stamp);
 }

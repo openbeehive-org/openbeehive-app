@@ -855,6 +855,37 @@ describe('snapshot bootstrap', () => {
     expect(h).toMatchObject({ name: 'H1', deleted: 1 });
   });
 
+  it('stores a page of rows in one transaction', async () => {
+    const db = getCurrentDB();
+    const writes = { exec: 0, batch: 0 };
+    const exec = db.exec.bind(db);
+    const batch = db.batch.bind(db);
+    db.exec = async (sql, params) => {
+      if (!/^\s*(SELECT|PRAGMA)/i.test(sql)) writes.exec++;
+      return exec(sql, params);
+    };
+    db.batch = async (stmts) => {
+      if (stmts.length > 0) writes.batch++;
+      return batch(stmts);
+    };
+    const rows = Array.from({ length: 20 }, (_, i) =>
+      snapRow('hive', `h${i}`, { apiary_id: 'a1', name: `H${i}`, deleted: 0 }, { name: t(5) })
+    );
+    // The same row twice in a page: the later stamp wins.
+    rows.push(snapRow('hive', 'h0', { name: 'H0 renamed' }, { name: t(6) }));
+    snapshotMock.mockResolvedValueOnce({ rows, nextPageToken: '', cursor: '9:40:aa' });
+    pullMock.mockResolvedValueOnce({ changes: [], nextCursor: '9:40:aa', hasMore: false });
+    writes.exec = writes.batch = 0;
+
+    await pull();
+
+    expect((await db.all(`SELECT id FROM hive`)).length).toBe(20);
+    expect(await db.get(`SELECT name FROM hive WHERE id = 'h0'`)).toEqual({ name: 'H0 renamed' });
+    // Two transactions for the page (split at the repeated row) plus the
+    // cursor and sync bookkeeping, not one per row.
+    expect(writes.exec + writes.batch).toBeLessThan(10);
+  });
+
   it('keeps no cursor from a snapshot that broke off, and starts it over', async () => {
     const page1 = {
       rows: [snapRow('apiary', 'a1', { name: 'Orchard', deleted: 0 }, { name: t(5) })],
