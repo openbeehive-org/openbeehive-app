@@ -63,7 +63,8 @@
     },
     "@axe-core/playwright": {
       "playwright-core": "$@playwright/test"
-    }
+    },
+    "minimatch": "^11.0.9"
   },
   "imports": {
     "#lib": "./src/lib/index.js",
