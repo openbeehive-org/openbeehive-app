@@ -389,9 +389,41 @@ func SessionInterceptor(v SessionVerifier) connect.ServerInterceptor {
 			if err != nil {
 				return connect.NewError(connect.CodeUnauthenticated, err.Error()).WithCause(err)
 			}
+			// A stream outlives the check made here; Recheck repeats it.
+			h := info.RequestHeader()
+			ctx = context.WithValue(ctx, recheckKey{}, func(c context.Context) error {
+				_, err := verifyHeaders(c, v, h)
+				return err
+			})
 			return next(WithIdentity(ctx, id), spec, stream)
 		}
 	}
+}
+
+type recheckKey struct{}
+
+// Recheck verifies the request's credentials again, for a stream that stays
+// open long after the request was authenticated: a member removed from the
+// workspace, or a revoked session, must not keep receiving its updates. It
+// returns nil when the request carries nothing to check (no sign-in
+// required), and an error for which Unverifiable is true when the check
+// could not be made right now.
+func Recheck(ctx context.Context) error {
+	f, ok := ctx.Value(recheckKey{}).(func(context.Context) error)
+	if !ok {
+		return nil
+	}
+	return f(ctx)
+}
+
+// Unverifiable reports a credential check that failed for lack of a working
+// database, not because the credentials are invalid.
+func Unverifiable(err error) bool { return errors.Is(err, errSessionUnverifiable) }
+
+// WithRecheck makes Recheck call f, for callers that do not come in over
+// SessionInterceptor (tests).
+func WithRecheck(ctx context.Context, f func(context.Context) error) context.Context {
+	return context.WithValue(ctx, recheckKey{}, f)
 }
 
 func verifyHeaders(ctx context.Context, v SessionVerifier, h *connect.Header) (Identity, error) {

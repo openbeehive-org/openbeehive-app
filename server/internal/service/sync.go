@@ -658,21 +658,33 @@ func (s *SyncService) subscribe(ctx context.Context, id auth.Identity, last int6
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			cur, err := s.latestSeq(ctx, id)
-			if err != nil {
-				if ctx.Err() != nil {
-					return nil // the client left while the query was running
-				}
-				return internalErr(err)
-			}
-			if cur > last {
-				last = cur
-				if err := send(&wv1.SubscribeEvent{ServerCursor: seqToCursor(cur)}); err != nil {
-					return err
-				}
+			var err error
+			if last, err = s.pollOnce(ctx, id, last, send); err != nil || ctx.Err() != nil {
+				return err
 			}
 		}
 	}
+}
+
+// pollOnce is one round of subscribe: it sends the newest sequence number
+// the identity can see when it is beyond last, and returns the new last.
+func (s *SyncService) pollOnce(ctx context.Context, id auth.Identity, last int64, send func(*wv1.SubscribeEvent) error) (int64, error) {
+	// The member may have been removed, or the session revoked, since the
+	// stream was opened: then it ends.
+	if err := auth.Recheck(ctx); err != nil && !auth.Unverifiable(err) {
+		return last, connect.NewError(connect.CodeUnauthenticated, err.Error()).WithCause(err)
+	}
+	cur, err := s.latestSeq(ctx, id)
+	if err != nil {
+		if ctx.Err() != nil {
+			return last, nil // the client left while the query was running
+		}
+		return last, internalErr(err)
+	}
+	if cur <= last {
+		return last, nil
+	}
+	return cur, send(&wv1.SubscribeEvent{ServerCursor: seqToCursor(cur)})
 }
 
 // latestSeq is the sequence of the newest change the identity can pull, so
