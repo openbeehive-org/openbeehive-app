@@ -38,11 +38,15 @@ for (const locale of ['en-US', 'de-DE', 'fr-FR', 'es-ES', 'it-IT']) {
     });
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('lang', locale.slice(0, 2));
-    const cut = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>('.tabbar .lbl-short')]
-        .filter((l) => l.scrollWidth > l.clientWidth)
-        .map((l) => l.textContent)
-    );
-    expect(cut).toEqual([]);
+    // Measured with the app's own font: until it has loaded, a wider
+    // fallback font can cut a label that fits.
+    await page.evaluate(() => document.fonts.ready);
+    const cut = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>('.tabbar .lbl-short')]
+          .filter((l) => l.scrollWidth > l.clientWidth)
+          .map((l) => l.textContent)
+      );
+    await expect.poll(cut).toEqual([]);
   });
 }
