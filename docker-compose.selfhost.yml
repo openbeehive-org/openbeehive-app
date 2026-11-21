@@ -27,7 +27,7 @@ services:
     # Published by .github/workflows/release.yml on each v* tag. The three
     # compose files pin the latest release and are bumped together once its
     # image is published (CONTRIBUTING.md, "Releasing").
-    image: ghcr.io/openbeehive-org/openbeehive-app:0.4.1@sha256:f297a5d9e787147df2a1f2c3874314c09be45c6509a4c7b9e5e1184084d95d3a
+    image: ghcr.io/openbeehive-org/openbeehive-app:0.5.0@sha256:5c531f36cf2b001a37cb7500522d768bd43bc21e6c087c83e4223f4d6a67e398
     restart: unless-stopped
     ports: ["${BEEHIVE_BIND:-127.0.0.1}:8080:8080"]
     environment:
