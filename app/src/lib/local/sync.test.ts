@@ -34,7 +34,8 @@ import {
 import { UpgradeRequiredSchema } from '../proto/openbeehive/v1/sync_pb';
 import { patch, setAdd, setRemove } from './repo';
 import { hlc, formatHLC, parseHLC, MAX_DRIFT_MS } from './hlc';
-import { parseFieldClock, parseORSet, orValues } from './merge';
+import { parseFieldClock, parseORSet } from './merge';
+import { orValues } from '../../tests/orset';
 import { readOnlyRefusals, resyncNotice, storageState } from './live';
 
 const t = (ms: number, node = 'remote') => `${String(ms).padStart(15, '0')}:00000:${node}`;

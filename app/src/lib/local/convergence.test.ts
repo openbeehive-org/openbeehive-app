@@ -34,14 +34,8 @@ vi.mock('#lib/client.js', () => ({
 import { apiaries, setAdd, setRemove, patch } from './repo';
 import { pull, push } from './sync';
 import { resyncNotice } from './live';
-import {
-  mergeFields,
-  parseSetDelta,
-  parseORSet,
-  orValues,
-  tombstone,
-  type RowState
-} from './merge';
+import { mergeFields, parseSetDelta, parseORSet, tombstone, type RowState } from './merge';
+import { orValues } from '../../tests/orset';
 
 type Change = { entity: string; entityId: string; op: number; payloadJson: string; hlc: string };
 

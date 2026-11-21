@@ -20,7 +20,8 @@ vi.mock('#lib/client.js', () => ({
 
 import { pull } from './sync';
 import { photoRecords } from './repo';
-import { parseORSet, orValues } from './merge';
+import { parseORSet } from './merge';
+import { orValues } from '../../tests/orset';
 import { isInlinePhoto, withoutInlinePhotos } from './tables';
 
 const stamp = (n: number) => `${String(Date.now() - 60_000 + n).padStart(15, '0')}:00000:remote`;

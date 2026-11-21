@@ -104,14 +104,6 @@ export function orMerge(into: ORSet, other: ORSet) {
     for (const t of strings(oe?.r)) e.r = uniq(e.r, t);
   }
 }
-export function orValues(set: ORSet): string[] {
-  const out: string[] = [];
-  for (const [elem, e] of Object.entries(set)) {
-    const rm = new Set(e.r);
-    if (e.a.some((t) => !rm.has(t))) out.push(elem);
-  }
-  return out;
-}
 
 // The change to one set column carried in a sync payload. removed_tags
 // lists, per removed element, the add tags the origin device had observed;

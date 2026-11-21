@@ -12,10 +12,10 @@ import {
   orAdd,
   orRemove,
   orMerge,
-  orValues,
   type ORSet,
   type RowState
 } from './merge';
+import { orValues } from '../../tests/orset';
 
 const t1 = '000000000000001:00000:devA';
 const t2 = '000000000000002:00000:devB';

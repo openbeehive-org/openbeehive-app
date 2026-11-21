@@ -9,7 +9,8 @@ vi.mock('./db', async () => {
 vi.mock('./sync', () => ({ syncOnce: vi.fn(async () => {}) }));
 
 import { apiaries, hives, inspections, tasks, setAdd, setRemove, patch, remove } from './repo';
-import { parseFieldClock, parseORSet, orValues } from './merge';
+import { parseFieldClock, parseORSet } from './merge';
+import { orValues } from '../../tests/orset';
 
 beforeEach(async () => {
   setCurrentDB(await makeLocalDB());
