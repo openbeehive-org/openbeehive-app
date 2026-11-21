@@ -173,7 +173,7 @@
     "err_password_too_long": "Questa password è troppo lunga. Usa al massimo 72 caratteri.",
     "err_email_reserved": "Questo indirizzo e-mail non può essere utilizzato.",
     "err_invite_mismatch": "Questo invito è stato emesso per un altro indirizzo e-mail.",
-    "err_invite_invalid": "Questo invito non è valido o è scaduto.",
+    "err_invite_invalid": "Questo invito non è più valido: è già stato usato o revocato, oppure lo spazio è stato eliminato. Chiedine uno nuovo.",
     "err_rate_limited": "Troppi tentativi. Attendi qualche minuto e riprova.",
     "err_demo_unavailable": "La demo non è disponibile in questo momento.",
     "err_passkey_failed": "L'accesso con la passkey non è riuscito. Riprova o usa un altro metodo di accesso.",
@@ -196,7 +196,11 @@
     "err_provider_failed": "Il provider di accesso non ha confermato la tua identità. Riprova.",
     "err_provider_no_email": "Il provider di accesso non ha condiviso un indirizzo e-mail. Consenti l’accesso al tuo indirizzo e-mail e riprova.",
     "err_account_exists": "Esiste già un account con questo indirizzo e-mail. Accedi come prima, ad esempio con e-mail e password.",
-    "reauth_notice": "Accedi di nuovo per confermare. Poi tornerai dove eri."
+    "reauth_notice": "Accedi di nuovo per confermare. Poi tornerai dove eri.",
+    "invited_to": "Sei stato invitato nello spazio «{workspace}». Crea un account o accedi con {email}.",
+    "err_invite_mismatch_to": "Questo invito è per {email}. Accedi o crea un account con quell’indirizzo, oppure chiedi un invito per questo.",
+    "err_invite_expired": "Questo invito è scaduto. Chiedine uno nuovo alla persona che ti ha invitato.",
+    "continue_without_joining": "Continua senza unirti"
   },
   "demo": {
     "banner": "Stai esplorando la demo di Openbeehive: i dati si reimpostano ogni ora."
@@ -226,7 +230,8 @@
     "invite_expires": "Scade il {date}",
     "invite_expired": "Scaduto",
     "invite_revoke_confirm": "Revocare l’invito per {email}? Il link smetterà di funzionare.",
-    "delete_type_name": "Scrivi «{name}» per confermare"
+    "delete_type_name": "Scrivi «{name}» per confermare",
+    "invite_renewed": "Questo indirizzo aveva già un invito aperto; è stato sostituito da questo e il vecchio link non funziona più."
   },
   "members": {
     "title": "Membri",

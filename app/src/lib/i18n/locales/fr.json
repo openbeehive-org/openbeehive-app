@@ -173,7 +173,7 @@
     "err_password_too_long": "Ce mot de passe est trop long. Utilisez 72 caractères au maximum.",
     "err_email_reserved": "Cette adresse e-mail ne peut pas être utilisée.",
     "err_invite_mismatch": "Cette invitation a été émise pour une autre adresse e-mail.",
-    "err_invite_invalid": "Cette invitation n'est pas valide ou a expiré.",
+    "err_invite_invalid": "Cette invitation n’est plus valable : elle a déjà été utilisée ou révoquée, ou l’espace a été supprimé. Demandez-en une nouvelle.",
     "err_rate_limited": "Trop de tentatives. Veuillez patienter quelques minutes avant de réessayer.",
     "err_demo_unavailable": "La démo n'est pas disponible pour le moment.",
     "err_passkey_failed": "La connexion avec la passkey a échoué. Réessayez ou utilisez un autre moyen de connexion.",
@@ -196,7 +196,11 @@
     "err_provider_failed": "Le fournisseur de connexion n’a pas confirmé votre identité. Veuillez réessayer.",
     "err_provider_no_email": "Le fournisseur de connexion n’a pas transmis d’adresse e-mail. Autorisez l’accès à votre adresse e-mail et réessayez.",
     "err_account_exists": "Un compte existe déjà avec cette adresse e-mail. Connectez-vous comme auparavant, par exemple avec votre e-mail et votre mot de passe.",
-    "reauth_notice": "Reconnectez-vous pour confirmer. Vous reviendrez ensuite là où vous étiez."
+    "reauth_notice": "Reconnectez-vous pour confirmer. Vous reviendrez ensuite là où vous étiez.",
+    "invited_to": "Vous avez été invité dans l’espace « {workspace} ». Créez un compte ou connectez-vous avec {email}.",
+    "err_invite_mismatch_to": "Cette invitation est destinée à {email}. Connectez-vous ou créez un compte avec cette adresse, ou demandez une invitation pour celle-ci.",
+    "err_invite_expired": "Cette invitation a expiré. Demandez-en une nouvelle à la personne qui vous a invité.",
+    "continue_without_joining": "Continuer sans rejoindre"
   },
   "demo": {
     "banner": "Vous explorez la démo d'Openbeehive — les données sont réinitialisées chaque heure."
@@ -226,7 +230,8 @@
     "invite_expires": "Expire le {date}",
     "invite_expired": "Expirée",
     "invite_revoke_confirm": "Révoquer l’invitation de {email} ? Le lien cessera de fonctionner.",
-    "delete_type_name": "Saisissez « {name} » pour confirmer"
+    "delete_type_name": "Saisissez « {name} » pour confirmer",
+    "invite_renewed": "Cette adresse avait déjà une invitation en cours ; elle a été remplacée par celle-ci et l’ancien lien ne fonctionne plus."
   },
   "members": {
     "title": "Membres",

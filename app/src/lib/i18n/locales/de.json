@@ -173,7 +173,7 @@
     "err_password_too_long": "Dieses Passwort ist zu lang. Verwende höchstens 72 Zeichen.",
     "err_email_reserved": "Diese E-Mail-Adresse kann nicht verwendet werden.",
     "err_invite_mismatch": "Diese Einladung wurde für eine andere E-Mail-Adresse ausgestellt.",
-    "err_invite_invalid": "Diese Einladung ist ungültig oder abgelaufen.",
+    "err_invite_invalid": "Diese Einladung gilt nicht mehr: Sie wurde schon verwendet oder zurückgezogen, oder der Arbeitsbereich wurde gelöscht. Bitte um eine neue.",
     "err_rate_limited": "Zu viele Versuche. Bitte warte ein paar Minuten und versuche es dann erneut.",
     "err_demo_unavailable": "Die Demo ist gerade nicht verfügbar.",
     "err_passkey_failed": "Die Anmeldung mit dem Passkey hat nicht geklappt. Versuche es erneut oder melde dich auf einem anderen Weg an.",
@@ -196,7 +196,11 @@
     "err_provider_failed": "Der Anmeldedienst hat deine Identität nicht bestätigt. Bitte versuche es noch einmal.",
     "err_provider_no_email": "Der Anmeldedienst hat keine E-Mail-Adresse übermittelt. Erlaube den Zugriff auf deine E-Mail-Adresse und versuche es noch einmal.",
     "err_account_exists": "Zu dieser E-Mail-Adresse gibt es bereits ein Konto. Melde dich so an wie bisher, zum Beispiel mit E-Mail und Passwort.",
-    "reauth_notice": "Melde dich zur Bestätigung noch einmal an. Danach geht es dort weiter, wo du warst."
+    "reauth_notice": "Melde dich zur Bestätigung noch einmal an. Danach geht es dort weiter, wo du warst.",
+    "invited_to": "Du wurdest in den Arbeitsbereich „{workspace}“ eingeladen. Erstelle ein Konto oder melde dich an mit {email}.",
+    "err_invite_mismatch_to": "Diese Einladung gilt für {email}. Melde dich mit dieser Adresse an oder erstelle damit ein Konto – oder bitte um eine Einladung für diese Adresse.",
+    "err_invite_expired": "Diese Einladung ist abgelaufen. Bitte die Person, die dich eingeladen hat, um eine neue.",
+    "continue_without_joining": "Ohne Beitritt weiter"
   },
   "demo": {
     "banner": "Du erkundest die Openbeehive-Demo – die Daten werden stündlich zurückgesetzt."
@@ -226,7 +230,8 @@
     "invite_expires": "Gültig bis {date}",
     "invite_expired": "Abgelaufen",
     "invite_revoke_confirm": "Einladung für {email} zurückziehen? Der Link funktioniert dann nicht mehr.",
-    "delete_type_name": "Gib zur Bestätigung „{name}“ ein"
+    "delete_type_name": "Gib zur Bestätigung „{name}“ ein",
+    "invite_renewed": "Für diese Adresse gab es schon eine offene Einladung; sie wurde durch diese ersetzt, der alte Link funktioniert nicht mehr."
   },
   "members": {
     "title": "Mitglieder",

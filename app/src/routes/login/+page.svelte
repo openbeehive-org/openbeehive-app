@@ -9,6 +9,13 @@
   import { fetchInstance } from '#lib/instance.js';
   import { hideUrlSecret } from '#lib/url-secret.js';
   import { resetMode, type ResetMode } from '#lib/account.js';
+  import {
+    acceptInvite,
+    inviteFailureKey,
+    lookUpInvite,
+    type InviteInfo,
+    type JoinedSession
+  } from '#lib/invite.js';
   import '#lib/components/auth/auth.css';
   import {
     isPasskeyCancelled,
@@ -58,6 +65,11 @@
   let forgot = $state<ResetMode>('off');
   // Invite links land here as /login?invite=<token> (see server tenant.go).
   const inviteToken = $derived(page.url.searchParams.get('invite') ?? '');
+  // The workspace and masked address the invite is for, once looked up.
+  let invite = $state<InviteInfo | null>(null);
+  // Signed in, but joining the invited workspace failed: the session to
+  // continue with if the user chooses to go on without joining.
+  let unjoined = $state<AuthPayload | null>(null);
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
   onMount(async () => {
@@ -87,6 +99,11 @@
     }
     // Invited: most likely a fresh account.
     mode = inviteToken && hasPassword ? 'signup' : 'signin';
+    if (inviteToken) {
+      const info = await lookUpInvite(API, inviteToken);
+      if (info.ok) invite = { workspace: info.workspace, email: info.email };
+      else if (!errorKey) errorKey = info.errorKey;
+    }
   });
 
   // Switches the form and moves focus to its heading, so keyboard and screen
@@ -94,6 +111,7 @@
   async function show(next: Mode) {
     mode = next;
     errorKey = '';
+    unjoined = null;
     await tick();
     heading?.focus();
   }
@@ -106,25 +124,17 @@
     location.href = '/'; // full reload: opens the tenant store, starts sync
   }
 
-  // Joins the invited tenant right after sign-in/up, so the invite link works in
-  // one pass. Returns the (possibly updated) auth payload to persist.
-  async function acceptInvite(j: AuthPayload): Promise<AuthPayload> {
-    try {
-      const r = await fetch(`${API}/auth/accept-invite`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(j.token ? { Authorization: `Bearer ${j.token}` } : {})
-        },
-        body: JSON.stringify({ token: inviteToken })
-      });
-      const a = await r.json().catch(() => ({}));
-      if (r.ok) return { ...j, ...a }; // token + active_org now point at the joined tenant
-    } catch {
-      /* joining failed; continue into the personal tenant */
+  // Joins the invited workspace right after sign-in/up, so the invite link
+  // works in one pass. When joining fails the user stays here and is told
+  // why; the session is kept aside for "continue without joining".
+  async function join(j: AuthPayload, fallbackEmail = ''): Promise<void> {
+    const r = await acceptInvite(API, inviteToken, j as JoinedSession);
+    if (r.ok) {
+      persist({ ...j, ...r }, fallbackEmail);
+      return;
     }
-    return j;
+    errorKey = inviteFailureKey(r, invite);
+    unjoined = j;
   }
 
   // POSTs to an auth endpoint. Returns the payload, or null after setting
@@ -154,8 +164,9 @@
     if (busy) return;
     busy = true;
     errorKey = '';
+    unjoined = null;
     try {
-      let j = await post(
+      const j = await post(
         path,
         JSON.stringify({ email: email.trim(), password, name: name.trim(), invite: inviteToken }),
         'auth.err_invalid_credentials'
@@ -165,8 +176,8 @@
         await show('verify');
         return;
       }
-      if (inviteToken) j = await acceptInvite(j);
-      persist(j);
+      if (inviteToken) await join(j);
+      else persist(j);
     } finally {
       busy = false;
     }
@@ -177,9 +188,9 @@
     busy = true;
     errorKey = '';
     try {
-      let j = await passkeyLogin(API);
-      if (inviteToken) j = await acceptInvite(j);
-      persist(j, j.email ?? '');
+      const j = await passkeyLogin(API);
+      if (inviteToken) await join(j, j.email ?? '');
+      else persist(j, j.email ?? '');
     } catch (e) {
       // Closing the browser's passkey prompt is a decision, not an error.
       if (isPasskeyCancelled(e)) return;
@@ -236,7 +247,16 @@
       {#if reauth}
         <p class="notice" role="status">{$_('auth.reauth_notice')}</p>
       {:else if inviteToken}
-        <p class="notice"><Mail size={16} aria-hidden="true" /> {$_('auth.invited_banner')}</p>
+        <p class="notice">
+          <Mail size={16} aria-hidden="true" />
+          {#if invite}
+            {$_('auth.invited_to', {
+              values: { workspace: invite.workspace, email: invite.email }
+            })}
+          {:else}
+            {$_('auth.invited_banner')}
+          {/if}
+        </p>
       {:else if !registration}
         <p class="notice">{$_('auth.invite_only_banner')}</p>
       {/if}
@@ -249,10 +269,19 @@
       {/if}
 
       {#if errorKey}
-        <p class="err" role="alert">{$_(errorKey)}</p>
+        <p class="err" role="alert">
+          {$_(errorKey, { values: { email: invite?.email ?? '' } })}
+        </p>
+      {/if}
+      {#if unjoined}
+        {@const session = unjoined}
+        <button type="button" class="provider" onclick={() => persist(session)}>
+          {$_('auth.continue_without_joining')}
+        </button>
       {/if}
 
-      {#if demoEnabled}
+      <!-- An invite is for one account; the demo would only lead away from it. -->
+      {#if demoEnabled && !inviteToken}
         <div class="demo">
           <p>{$_('auth.demo_hint')}</p>
           <button type="button" class="primary" onclick={demoLogin} disabled={busy}>

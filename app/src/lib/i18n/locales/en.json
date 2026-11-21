@@ -173,7 +173,7 @@
     "err_password_too_long": "This password is too long. Use 72 characters at most.",
     "err_email_reserved": "This email address cannot be used.",
     "err_invite_mismatch": "This invite was issued for a different email address.",
-    "err_invite_invalid": "This invite is invalid or has expired.",
+    "err_invite_invalid": "This invite is no longer valid: it was already used or revoked, or the workspace was deleted. Ask for a new one.",
     "err_rate_limited": "Too many attempts. Please wait a few minutes and try again.",
     "err_demo_unavailable": "The demo is not available right now.",
     "err_passkey_failed": "Signing in with the passkey did not work. Try again or use another way to sign in.",
@@ -196,7 +196,11 @@
     "err_provider_failed": "The sign-in provider did not confirm your identity. Please try again.",
     "err_provider_no_email": "The sign-in provider did not share an email address. Allow access to your email address and try again.",
     "err_account_exists": "An account with this email address already exists. Sign in the way you did before, for example with your email and password.",
-    "reauth_notice": "Sign in again to confirm. You will then return to where you were."
+    "reauth_notice": "Sign in again to confirm. You will then return to where you were.",
+    "invited_to": "You've been invited to the workspace “{workspace}”. Create an account or sign in with {email}.",
+    "err_invite_mismatch_to": "This invite is for {email}. Sign in or create an account with that address, or ask for an invite to this one.",
+    "err_invite_expired": "This invite has expired. Ask the person who invited you for a new one.",
+    "continue_without_joining": "Continue without joining"
   },
   "demo": {
     "banner": "You're exploring the Openbeehive demo — data resets every hour."
@@ -226,7 +230,8 @@
     "invite_expires": "Expires {date}",
     "invite_expired": "Expired",
     "invite_revoke_confirm": "Revoke the invite for {email}? The link stops working.",
-    "delete_type_name": "Type “{name}” to confirm"
+    "delete_type_name": "Type “{name}” to confirm",
+    "invite_renewed": "This address already had an open invite; it was replaced by this one and the old link no longer works."
   },
   "members": {
     "title": "Members",

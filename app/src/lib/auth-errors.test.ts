@@ -21,9 +21,6 @@ describe('authErrorKey', () => {
   });
 
   it('gives several codes of one kind the same message', () => {
-    expect(authErrorKey({ code: 'invite_expired' }, 403)).toBe(
-      authErrorKey({ code: 'invite_invalid' }, 400)
-    );
     expect(authErrorKey({ code: 'passkey_no_ceremony' }, 400)).toBe('auth.err_passkey_failed');
   });
 

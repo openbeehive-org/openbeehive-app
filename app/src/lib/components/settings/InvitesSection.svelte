@@ -12,6 +12,7 @@
   let email = $state('');
   let invites = $state<OpenInvite[]>([]);
   let newLink = $state('');
+  let renewed = $state(false);
   let busy = $state(false);
   let errorKey = $state('');
 
@@ -33,13 +34,19 @@
     busy = true;
     errorKey = '';
     newLink = '';
-    const r = await call<{ link?: string }>('/tenants/invite', { email: address, org_id: orgId });
+    renewed = false;
+    const r = await call<{ link?: string; renewed?: boolean }>('/tenants/invite', {
+      email: address,
+      org_id: orgId
+    });
     busy = false;
     if (!r.ok) {
       errorKey = r.code === 'invalid_email' ? 'tenant.invite_invalid_email' : r.errorKey;
       return;
     }
     newLink = r.body.link ?? '';
+    // The server replaced an open invite for the same address.
+    renewed = !!r.body.renewed;
     email = '';
     await load();
   }
@@ -75,6 +82,7 @@
 {#if newLink}
   <div class="st-note" role="status">
     <p class="st-help">{$_('tenant.invite_sent')}</p>
+    {#if renewed}<p class="st-help">{$_('tenant.invite_renewed')}</p>{/if}
     <code class="st-code">{newLink}</code>
     <CopyButton text={newLink} label={$_('tenant.copy_link')} />
   </div>

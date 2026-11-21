@@ -367,6 +367,7 @@ describe('messages of the account and workspace pages', () => {
     names: '“Club”',
     email: 'a@example.org',
     date: '1 Dec 2026',
+    workspace: 'Club',
     time: '1 Dec 2026, 10:00'
   };
   const namespaces = ['settings', 'auth', 'tenant', 'members', 'account', 'pk', 'apikeys'] as const;

@@ -13,7 +13,7 @@ const BY_CODE: Record<string, string> = {
   email_reserved: 'auth.err_email_reserved',
   invite_email_mismatch: 'auth.err_invite_mismatch',
   invite_invalid: 'auth.err_invite_invalid',
-  invite_expired: 'auth.err_invite_invalid',
+  invite_expired: 'auth.err_invite_expired',
   rate_limited: 'auth.err_rate_limited',
   demo_unavailable: 'auth.err_demo_unavailable',
   passkey_failed: 'auth.err_passkey_failed',

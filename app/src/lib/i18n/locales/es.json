@@ -173,7 +173,7 @@
     "err_password_too_long": "Esta contraseña es demasiado larga. Usa 72 caracteres como máximo.",
     "err_email_reserved": "Esta dirección de correo no se puede usar.",
     "err_invite_mismatch": "Esta invitación se emitió para otra dirección de correo.",
-    "err_invite_invalid": "Esta invitación no es válida o ha caducado.",
+    "err_invite_invalid": "Esta invitación ya no es válida: ya se usó o se revocó, o el espacio se eliminó. Pide una nueva.",
     "err_rate_limited": "Demasiados intentos. Espera unos minutos y vuelve a intentarlo.",
     "err_demo_unavailable": "La demo no está disponible en este momento.",
     "err_passkey_failed": "No se pudo iniciar sesión con la passkey. Inténtalo de nuevo o usa otro método.",
@@ -196,7 +196,11 @@
     "err_provider_failed": "El proveedor de inicio de sesión no confirmó tu identidad. Inténtalo de nuevo.",
     "err_provider_no_email": "El proveedor de inicio de sesión no compartió ningún correo electrónico. Permite el acceso a tu correo e inténtalo de nuevo.",
     "err_account_exists": "Ya existe una cuenta con este correo electrónico. Inicia sesión como antes, por ejemplo con tu correo y contraseña.",
-    "reauth_notice": "Vuelve a iniciar sesión para confirmar. Después volverás a donde estabas."
+    "reauth_notice": "Vuelve a iniciar sesión para confirmar. Después volverás a donde estabas.",
+    "invited_to": "Te han invitado al espacio «{workspace}». Crea una cuenta o inicia sesión con {email}.",
+    "err_invite_mismatch_to": "Esta invitación es para {email}. Inicia sesión o crea una cuenta con esa dirección, o pide una invitación para esta.",
+    "err_invite_expired": "Esta invitación ha caducado. Pide una nueva a la persona que te invitó.",
+    "continue_without_joining": "Continuar sin unirse"
   },
   "demo": {
     "banner": "Estás explorando la demo de Openbeehive: los datos se reinician cada hora."
@@ -226,7 +230,8 @@
     "invite_expires": "Caduca el {date}",
     "invite_expired": "Caducada",
     "invite_revoke_confirm": "¿Revocar la invitación de {email}? El enlace dejará de funcionar.",
-    "delete_type_name": "Escribe «{name}» para confirmar"
+    "delete_type_name": "Escribe «{name}» para confirmar",
+    "invite_renewed": "Esta dirección ya tenía una invitación pendiente; se ha sustituido por esta y el enlace anterior ya no funciona."
   },
   "members": {
     "title": "Miembros",
