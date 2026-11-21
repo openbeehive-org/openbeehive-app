@@ -16,7 +16,13 @@
     "scan": "Scansiona",
     "settings": "Impostazioni",
     "main": "Navigazione principale",
-    "skip": "Vai al contenuto"
+    "skip": "Vai al contenuto",
+    "tab_dashboard": "Inizio",
+    "tab_apiaries": "Apiari",
+    "tab_scan": "Scansione",
+    "tab_hives": "Arnie",
+    "tab_tasks": "Attività",
+    "tab_settings": "Opzioni"
   },
   "qr": {
     "print": "Stampa",

@@ -25,3 +25,24 @@ test('a skip link leads past the navigation, and an opened form takes the focus'
   await page.getByRole('button', { name: 'Record visit' }).first().click();
   await expect(page.getByRole('heading', { name: 'Record visit' })).toBeFocused();
 });
+
+for (const locale of ['en-US', 'de-DE', 'fr-FR', 'es-ES', 'it-IT']) {
+  test(`at 360 px no label of the bottom navigation is cut off (${locale})`, async ({
+    api,
+    device
+  }) => {
+    const account = await api.signUp();
+    const { page } = await device({
+      session: account,
+      context: { locale, viewport: { width: 360, height: 740 } }
+    });
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('lang', locale.slice(0, 2));
+    const cut = await page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('.tabbar .lbl-short')]
+        .filter((l) => l.scrollWidth > l.clientWidth)
+        .map((l) => l.textContent)
+    );
+    expect(cut).toEqual([]);
+  });
+}

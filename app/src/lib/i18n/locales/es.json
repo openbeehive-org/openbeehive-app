@@ -16,7 +16,13 @@
     "scan": "Escanear",
     "settings": "Ajustes",
     "main": "Navegación principal",
-    "skip": "Saltar al contenido"
+    "skip": "Saltar al contenido",
+    "tab_dashboard": "Resumen",
+    "tab_apiaries": "Apiarios",
+    "tab_scan": "Escanear",
+    "tab_hives": "Colmenas",
+    "tab_tasks": "Tareas",
+    "tab_settings": "Ajustes"
   },
   "qr": {
     "print": "Imprimir",

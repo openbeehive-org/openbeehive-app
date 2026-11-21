@@ -16,7 +16,13 @@
     "scan": "Scannen",
     "settings": "Einstellungen",
     "main": "Hauptnavigation",
-    "skip": "Zum Inhalt springen"
+    "skip": "Zum Inhalt springen",
+    "tab_dashboard": "Übersicht",
+    "tab_apiaries": "Standorte",
+    "tab_scan": "Scannen",
+    "tab_hives": "Beuten",
+    "tab_tasks": "Aufgaben",
+    "tab_settings": "Optionen"
   },
   "qr": {
     "print": "Drucken",

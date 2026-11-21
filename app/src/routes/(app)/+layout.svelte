@@ -205,6 +205,8 @@
     <a href={t.href} class:active={isActive(t.href)} aria-current={current(t.href)}>
       <span class="ic"><NavIcon name={t.icon} /></span>
       <span class="lbl">{$_(t.key)}</span>
+      <!-- The bottom bar has about 60 px per label at phone width. -->
+      <span class="lbl-short">{$_(t.key.replace('nav.', 'nav.tab_'))}</span>
     </a>
   {/each}
 {/snippet}
@@ -264,7 +266,7 @@
   {@render tabLinks()}
   <a href="/settings" class:active={isActive('/settings')} aria-current={current('/settings')}>
     <span class="ic avatar-sm" aria-hidden="true">{initial}</span>
-    <span class="lbl">{$_('nav.settings')}</span>
+    <span class="lbl-short">{$_('nav.tab_settings')}</span>
   </a>
 </nav>
 
@@ -356,7 +358,12 @@
     /* Marks the current tab by shape as well as colour. */
     border-top: 2px solid transparent;
   }
-  .tabbar a .lbl {
+  /* Each navigation shows one of its two labels. */
+  .side-nav .lbl-short,
+  .tabbar .lbl {
+    display: none;
+  }
+  .tabbar a .lbl-short {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;

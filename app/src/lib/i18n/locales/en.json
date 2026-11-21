@@ -16,7 +16,13 @@
     "scan": "Scan",
     "settings": "Settings",
     "main": "Main navigation",
-    "skip": "Skip to content"
+    "skip": "Skip to content",
+    "tab_dashboard": "Overview",
+    "tab_apiaries": "Apiaries",
+    "tab_scan": "Scan",
+    "tab_hives": "Hives",
+    "tab_tasks": "Tasks",
+    "tab_settings": "Settings"
   },
   "qr": {
     "print": "Print",

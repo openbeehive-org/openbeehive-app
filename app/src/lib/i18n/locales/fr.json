@@ -16,7 +16,13 @@
     "scan": "Scanner",
     "settings": "Paramètres",
     "main": "Navigation principale",
-    "skip": "Aller au contenu"
+    "skip": "Aller au contenu",
+    "tab_dashboard": "Accueil",
+    "tab_apiaries": "Ruchers",
+    "tab_scan": "Scanner",
+    "tab_hives": "Ruches",
+    "tab_tasks": "Tâches",
+    "tab_settings": "Réglages"
   },
   "qr": {
     "print": "Imprimer",
