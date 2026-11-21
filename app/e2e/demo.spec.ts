@@ -30,6 +30,8 @@ test('"Try the demo" opens the sample data; a refused change does not stay queue
   apiFor,
   device
 }) => {
+  // Two complete downloads of the demo workspace (before and after a reload).
+  test.slow();
   const server = await startServer(DEMO_ON);
   const { page } = await device({ server });
   await enterDemo(page);
@@ -57,6 +59,7 @@ test('"Try the demo" opens the sample data; a refused change does not stay queue
 // Push answers a change made in the demo with 403 ("the demo account is
 // read-only"). The visitor is told, and the change is undone on screen.
 test('the demo says clearly that a change was refused', async ({ startServer, device }) => {
+  test.slow();
   const server = await startServer(DEMO_ON);
   const { page } = await device({ server });
   await enterDemo(page);

@@ -4,9 +4,14 @@ import { expect, type Page } from '@playwright/test';
 /** The status chip above the content once everything is uploaded and pulled. */
 export const syncedChip = (page: Page) => page.getByRole('button', { name: /^Synced/ });
 
-/** Waits until this device has nothing left to upload and has pulled. */
-export async function expectSynced(page: Page): Promise<void> {
-  await expect(syncedChip(page)).toBeVisible();
+/**
+ * Waits until this device has nothing left to upload and has pulled. A first
+ * sync downloads the whole workspace (the demo has many records), which
+ * takes several seconds on a busy machine, so this waits longer than the
+ * default 10 s; it still returns as soon as the chip says so.
+ */
+export async function expectSynced(page: Page, timeout = 30_000): Promise<void> {
+  await expect(syncedChip(page)).toBeVisible({ timeout });
 }
 
 /**
