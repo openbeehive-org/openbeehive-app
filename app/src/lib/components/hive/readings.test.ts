@@ -78,6 +78,15 @@ describe('reading: NULL is "not recorded", 0 is "observed none"', () => {
 });
 
 describe('visitChips', () => {
+  it('labels the weight and shows the outside climate, so a sensor reading is never empty', () => {
+    const reading = row({ source: 2, temp_outside: 12.5, humidity_outside: 70, weight_kg: 41 });
+    expect(visitChips(reading, t)).toEqual([
+      'insp.weight_kg 41 kg',
+      'insp.temp_outside 12.5 °C',
+      'insp.humidity_outside 70 %'
+    ]);
+  });
+
   it('shows an observed zero and leaves out what was not recorded', () => {
     const chips = visitChips(row({ queen_cells: 0, frames: null, brood_frames: 5 }), t);
     expect(chips).toContain('0 insp.queen_cells');
@@ -133,7 +142,7 @@ describe('visitChips', () => {
       '−1 insp.frames',
       'insp.drone_frame_cut',
       'insp.super_added',
-      '38 kg',
+      'insp.weight_kg 38 kg',
       'insp.temp_hive 34 °C',
       'insp.humidity_hive 62 %',
       'insp.varroa: 3 mites/day'
@@ -158,7 +167,7 @@ describe('visitChips', () => {
     const visit = row({ source: 1, weight_kg: 38, fed_kg: 0.5, temp_hive: 34.5 });
     expect(visitChips(visit, t, imperial, 'de')).toEqual([
       'insp.fed_kg 1,1 lb',
-      '83,78 lb',
+      'insp.weight_kg 83,78 lb',
       'insp.temp_hive 94,1 °F'
     ]);
     expect(visitChips(visit, t, { weight: 'kg', temp: 'c' }, 'de')).toContain(

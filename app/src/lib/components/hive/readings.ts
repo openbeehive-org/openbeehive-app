@@ -118,11 +118,13 @@ export function visitChips(
   withValue('frames_removed', (v) => `−${v} ${t('insp.frames')}`);
   if (i.drone_frame_cut) out.push(t('insp.drone_frame_cut'));
   if (i.super_added) out.push(t('insp.super_added'));
-  withValue('weight_kg', (v) => qty('weight', v));
+  withValue('weight_kg', (v) => `${t('insp.weight_kg')} ${qty('weight', v)}`);
   // Honey is recorded as a harvest now; older visits keep showing theirs.
   if (i.honey_kg) out.push(`${t('insp.honey_kg')} ${qty('weight', i.honey_kg)}`);
   withValue('temp_hive', (v) => `${t('insp.temp_hive')} ${qty('temp', v)}`);
   withValue('humidity_hive', (v) => `${t('insp.humidity_hive')} ${v} %`);
+  withValue('temp_outside', (v) => `${t('insp.temp_outside')} ${qty('temp', v)}`);
+  withValue('humidity_outside', (v) => `${t('insp.humidity_outside')} ${v} %`);
   if (i.varroa) out.push(`${t('insp.varroa')}: ${i.varroa}`);
   return out;
 }
