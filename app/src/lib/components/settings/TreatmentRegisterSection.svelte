@@ -41,7 +41,7 @@
   }
 </script>
 
-<section class="st-card" id="treatment-register">
+<section class="st-card" id="treatment-register" tabindex="-1">
   <h2>{$_('treat.register')}</h2>
   <p class="st-help">{$_('treat.register_help')}</p>
   <div class="st-row">

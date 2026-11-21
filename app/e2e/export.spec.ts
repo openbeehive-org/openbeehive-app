@@ -156,6 +156,8 @@ test('the treatment register prints for the whole workspace or one apiary, with 
   await page.goto('/settings#treatment-register');
   await expectSynced(page);
   const section = page.locator('#treatment-register');
+  // The link lands keyboard and screen reader users on the section.
+  await expect(section).toBeFocused();
   const print = async () => {
     const opened = context.waitForEvent('page');
     await section.getByRole('button', { name: 'Print register' }).click();
