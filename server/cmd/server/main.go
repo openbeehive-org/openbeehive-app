@@ -183,6 +183,9 @@ func openStore(ctx context.Context, cfg *config.Config) *sqlstore.Store {
 	if err := service.RecordBoot(ctx, store.DB()); err != nil {
 		log.Fatalf("sync: %v", err)
 	}
+	if err := service.ReportFutureStamps(ctx, store.DB()); err != nil {
+		log.Printf("sync: checking stored stamps: %v", err)
+	}
 
 	// Dedicated instance admin (BEEHIVE_ADMIN_EMAIL/PASSWORD, mandatory with
 	// password auth). Created or repaired on every boot; sign-up never grants

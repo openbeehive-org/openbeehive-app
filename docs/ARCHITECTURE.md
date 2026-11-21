@@ -117,6 +117,16 @@ app/        SvelteKit PWA
   and the API stay metric. On the device `src/lib/prefs.ts` keeps what was last applied (so the
   app starts with it before a database opens) and `src/lib/local/userSettings.ts` reconciles it
   with the record by field stamp. The colour theme is not part of it; it stays per device.
+- **Stamps from the future.** Push refuses changes stamped more than 10 minutes ahead of the server
+  clock, and the server clock never follows such a stamp. Releases before 0.5 accepted them, so a
+  database can still hold field stamps from a device whose clock was far ahead. Such a field wins
+  every merge until real time reaches its stamp: edits to it are silently lost. At start-up the server
+  logs how many such stamps each table holds and names up to ten affected rows. To repair a row,
+  stop the server and clear its field clock (`UPDATE <table> SET field_hlc = '{}' WHERE id = '<id>'`);
+  the values stay, and the next edit of each field wins. A device that synced the row before keeps
+  the old stamp in its own copy and prefers its own value for that field until it loads the
+  workspace afresh: let it upload what it has, then clear the site data in its browser (or reinstall
+  the app) and sign in again.
 
 ## Photos
 
