@@ -207,6 +207,9 @@ app-build: app-deps ## static SPA build into app/build
 # Not part of `check`: it needs a browser (see CONTRIBUTING.md, "Browser tests") and takes a few minutes.
 # Pass Playwright arguments with E2E_ARGS, e.g. make e2e E2E_ARGS='offline --headed'.
 E2E_ARGS ?=
+# The app under test talks to the server that serves it: a BEEHIVE_API_URL
+# from app/.env is overridden (Vite lets the environment win over .env files).
+e2e: export BEEHIVE_API_URL =
 e2e: build ## browser tests (Playwright, Chromium) against the freshly built binary
 	cd $(APP) && npm run e2e -- $(E2E_ARGS)
 
