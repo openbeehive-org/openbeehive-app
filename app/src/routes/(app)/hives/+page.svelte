@@ -1,7 +1,7 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { afterNavigate, goto } from '$app/navigation';
   import { apiaries, hives } from '#lib/local/repo.js';
   import { createHive } from '#lib/local/history.js';
   import type { ApiaryRow } from '../rows.js';
@@ -42,6 +42,17 @@
     const search = listStateToSearch({ query, status, apiary, sort });
     if (search === location.search) return;
     void goto(`${location.pathname}${search}`, { replace: true, reset: false });
+  });
+  // A link to the list followed from this page (the "Hives" tab while a
+  // filter is on) starts over from what the link says; the page's own URL
+  // updates above are not links.
+  afterNavigate((nav) => {
+    if (nav.type !== 'link' || !nav.to) return;
+    const next = listStateFromParams(nav.to.url.searchParams);
+    query = next.query;
+    status = next.status;
+    apiary = next.apiary;
+    sort = next.sort;
   });
 
   const STATUSES = ['1', '2', '3', '4', '5'];

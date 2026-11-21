@@ -54,4 +54,11 @@ test('the hive list keeps its search, filter and sort after opening a hive', asy
   await expect(page.getByLabel('Search')).toHaveValue('beta');
   await expect(page.getByLabel('Sort')).toHaveValue('apiary');
   await expect(page.getByRole('link', { name: /Alpha/ })).toHaveCount(0);
+
+  // The "Hives" tab opens the whole list again.
+  await page.getByRole('navigation').getByRole('link', { name: 'Hives' }).click();
+  await expect(page).toHaveURL(/\/hives$/);
+  await expect(page.getByLabel('Search')).toHaveValue('');
+  await expect(page.getByLabel('Sort')).toHaveValue('name');
+  await expect(page.getByRole('link', { name: /Alpha/ })).toBeVisible();
 });
