@@ -236,11 +236,18 @@ export const stamp = () => todayLocal();
 // written as they are. The importer drops the apostrophe again.
 const FORMULA_START = /^[=+\-@\t\r]/;
 
+const needsGuard = (s: string) => FORMULA_START.test(s) && !Number.isFinite(Number(s));
+
 export function csvCell(v: unknown): string {
   if (v === null || v === undefined) return '';
   let s = String(v);
-  if (typeof v === 'string' && FORMULA_START.test(s) && !Number.isFinite(Number(s))) s = "'" + s;
+  if (typeof v === 'string' && needsGuard(s)) s = "'" + s;
   return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+/** A cell's text without the apostrophe csvCell put in front of it, if it did. */
+export function unguardCell(s: string): string {
+  return s.startsWith("'") && needsGuard(s.slice(1)) ? s.slice(1) : s;
 }
 
 export function toCSV(cols: string[], rows: Row[]): string {

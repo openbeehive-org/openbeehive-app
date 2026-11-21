@@ -20,7 +20,15 @@ import { toDateInput } from '../dates';
 import { unit } from '../local/write';
 import { columnsOf, toScalar } from '../local/tables';
 import { photoRecords } from '../local/repo';
-import { ENTITIES, INTERNAL, orgId, userId, type Dataset, type Row } from './portability';
+import {
+  ENTITIES,
+  INTERNAL,
+  orgId,
+  unguardCell,
+  userId,
+  type Dataset,
+  type Row
+} from './portability';
 import { looksLikeZip, readZip } from './unzip';
 import { EXPORT_DOCUMENT, PHOTO_DIR } from './backup';
 
@@ -474,7 +482,7 @@ export async function parseBeekeepingCSV(
       const idx = Object.keys(colMap).find((k) => colMap[+k] === f);
       // A cell that an export protected from running as a formula ('=...).
       const v = idx !== undefined ? (rows[r]?.[+idx]?.trim() ?? '') : '';
-      return /^'[=+\-@]/.test(v) ? v.slice(1) : v;
+      return unguardCell(v);
     };
     const hiveId = ensureHive(get('hive') || names.hive(r), hasApiary ? get('apiary') : null);
     const insp: Row = { hive_id: hiveId };
