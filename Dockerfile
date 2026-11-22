@@ -10,7 +10,7 @@ COPY proto ./proto
 RUN buf generate
 
 # --- Stage 2: build the static SPA ---
-FROM docker.io/library/node:26-alpine@sha256:6f08a523443ddedf52941874c203475b0ad503e859ad70cb26ab8be9a517dbd5 AS app
+FROM docker.io/library/node:26-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS app
 WORKDIR /app
 COPY app/package.json app/package-lock.json app/.npmrc ./
 RUN npm ci
@@ -23,7 +23,7 @@ ARG SOURCE_DATE_EPOCH=""
 RUN BUILD_COMMIT="$BUILD_COMMIT" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" npm run build
 
 # --- Stage 3: compile the server with the SPA embedded ---
-FROM docker.io/library/golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS server
+FROM docker.io/library/golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS server
 WORKDIR /src/server
 COPY server/go.mod server/go.sum ./
 RUN go mod download
@@ -34,7 +34,7 @@ COPY --from=app /app/build/. ./internal/web/dist/
 RUN CGO_ENABLED=0 go build -trimpath -o /out/openbeehive ./cmd/server
 
 # --- Final image ---
-FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 RUN apk add --no-cache ca-certificates \
  && addgroup -g 65532 -S nonroot && adduser -u 65532 -S -G nonroot -h /data nonroot
 COPY --from=server /out/openbeehive /usr/local/bin/openbeehive
