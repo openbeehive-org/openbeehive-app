@@ -29,21 +29,12 @@ func TestSessionManagerRefusesShortSecrets(t *testing.T) {
 func TestLogoutAllEndsEveryOtherSession(t *testing.T) {
 	f := newAPIFixture(t, loginConfig())
 	a := f.signup(t, "a@test.dev")
-	signin := func() string {
-		res := f.call(t, http.MethodPost, "/auth/signin", "", map[string]string{"email": "a@test.dev", "password": "password123"})
-		if res.status != http.StatusOK {
-			t.Fatalf("signin: %d %s", res.status, res.raw)
-		}
-		return res.str("token")
-	}
+	signin := func() string { return f.newDevice(t, a).token }
 	phone, laptop := signin(), signin()
 	other := f.signup(t, "b@test.dev")
 
-	// Plain logout only clears the cookie; the token stays usable.
-	if res := f.call(t, http.MethodPost, "/auth/logout", phone, nil); res.status != http.StatusNoContent ||
-		!strings.Contains(res.header.Get("Set-Cookie"), SessionCookie+"=;") {
-		t.Fatalf("logout: %d %v", res.status, res.header)
-	}
+	// Plain logout ends only the phone's session (TestLogoutEndsOnlyThatSession).
+	wantSignedOut(t, f.call(t, http.MethodPost, "/auth/logout", phone, nil))
 
 	res := f.call(t, http.MethodPost, "/auth/logout-all", laptop, nil)
 	if res.status != http.StatusOK || res.str("token") == "" || res.str("token") == laptop {

@@ -66,6 +66,9 @@ func newAPIFixture(t *testing.T, cfg *config.Config) *apiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := sessions.UseRevocations(ctx, store); err != nil {
+		t.Fatal(err)
+	}
 	prov := NewProvisioner(store.Users(), store.Orgs(), store.Members())
 	throttle := NewThrottle(cfg.TrustProxyHeaders)
 	rt := NewRouter(cfg)

@@ -242,6 +242,10 @@ func setupAuth(ctx context.Context, cfg *config.Config, store *sqlstore.Store, b
 	if err != nil {
 		log.Fatalf("auth: %v", err)
 	}
+	// Without the list of signed-out sessions their tokens would work again.
+	if err := sessions.UseRevocations(ctx, store); err != nil {
+		log.Fatalf("auth: %v", err)
+	}
 	throttle := auth.NewThrottle(cfg.TrustProxyHeaders)
 
 	// Provisioner: creates/links users and their tenants (organizations).

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Signing out ends the session on the server. Before, only the cookie was
+  cleared, and a copy of the token kept working until it expired. The
+  account's other devices stay signed in. A new table (migration 0024) keeps
+  ended sessions until their tokens expire; upgrading needs no action.
+
 ### Added
 
 - **Footer** on every app page and on the sign-in pages: the app's version

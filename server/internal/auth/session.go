@@ -54,21 +54,35 @@ type sessionState struct {
 	fetched    time.Time
 }
 
+// RevocationStore keeps the sessions ended by signing out, by the SHA-256
+// hash of their token, until the token expires.
+type RevocationStore interface {
+	// RevokeSession records one ended session and deletes the records of
+	// tokens that have expired.
+	RevokeSession(ctx context.Context, tokenHash string, expiresAt time.Time) error
+	// RevokedSessions returns the records of tokens that expire after now.
+	RevokedSessions(ctx context.Context, now time.Time) (map[string]time.Time, error)
+}
+
 // SessionManager issues and verifies compact HMAC-signed app-session tokens
 // (a minimal JWS: base64url(claims).base64url(HMAC-SHA256)). Provider-
 // independent: password, OIDC and WebAuthn sign-ins all mint sessions through
 // it.
 //
 // A valid signature is not enough: every verification also checks that the
-// account still exists, that the token was issued after the account's
-// "sessions valid after" mark (see RevokeAll), and that the account is still
-// a member of the workspace the token is for. Those lookups are cached for
-// sessionStateTTL.
+// session was not ended by signing out, that the account still exists, that
+// the token was issued after the account's "sessions valid after" mark (see
+// RevokeAll), and that the account is still a member of the workspace the
+// token is for. The account lookups are cached for sessionStateTTL; the
+// sessions ended by signing out are all held in memory.
 type SessionManager struct {
 	secret  []byte
 	ttl     time.Duration
 	users   storage.UserRepo
 	members storage.MemberRepo
+	// revocations saves the sessions ended by signing out; nil keeps them in
+	// memory only (see UseRevocations).
+	revocations RevocationStore
 
 	mu    sync.Mutex
 	state map[string]sessionState // "<user>\x00<org>"
@@ -77,6 +91,11 @@ type SessionManager struct {
 	// stamped before it: the mark lies a millisecond ahead of the clock, and
 	// a session issued after the revocation must not count as revoked.
 	floor int64
+	// signedOut holds every session ended by signing out whose token has not
+	// expired yet, by token hash (see hashKey), with the moment the token
+	// expires. Only one server instance runs, so this copy of the table is
+	// complete and a request never has to ask the database.
+	signedOut map[string]time.Time
 }
 
 // NewSessionManager refuses secrets shorter than config.MinSessionSecretBytes:
@@ -91,8 +110,25 @@ func NewSessionManager(secret string, ttl time.Duration, users storage.UserRepo,
 	}
 	return &SessionManager{
 		secret: []byte(secret), ttl: ttl, users: users, members: members,
-		state: map[string]sessionState{},
+		state: map[string]sessionState{}, signedOut: map[string]time.Time{},
 	}, nil
+}
+
+// UseRevocations makes signing out last across restarts: it loads the
+// sessions that were ended and have not expired yet, and saves every
+// further one in the store. Call it once at start, before the first request.
+func (s *SessionManager) UseRevocations(ctx context.Context, store RevocationStore) error {
+	ended, err := store.RevokedSessions(ctx, time.Now())
+	if err != nil {
+		return fmt.Errorf("load the sessions ended by signing out: %w", err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, expires := range ended {
+		s.signedOut[hash] = expires
+	}
+	s.revocations = store
+	return nil
 }
 
 func (s *SessionManager) sign(body string) string {
@@ -166,28 +202,17 @@ func (s *SessionManager) Verify(ctx context.Context, token string) (Identity, er
 }
 
 // verifyAccount checks everything about a session except membership: the
-// signature, the expiry and the account's revocation mark. member reports
-// whether the account still belongs to the workspace the token is for; a
-// session that fails only on that can be moved to another workspace (see
-// AccountAPI.recoverSession).
+// signature, the expiry, whether it was ended by signing out and the
+// account's revocation mark. member reports whether the account still
+// belongs to the workspace the token is for; a session that fails only on
+// that can be moved to another workspace (see AccountAPI.recoverSession).
 func (s *SessionManager) verifyAccount(ctx context.Context, token string) (id Identity, member bool, err error) {
-	body, sig, ok := strings.Cut(token, ".")
-	if !ok {
-		return Identity{}, false, errors.New("malformed session token")
-	}
-	if !hmac.Equal([]byte(sig), []byte(s.sign(body))) {
-		return Identity{}, false, errors.New("invalid session signature")
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(body)
+	c, err := s.parse(token)
 	if err != nil {
 		return Identity{}, false, err
 	}
-	var c sessionClaims
-	if err := json.Unmarshal(raw, &c); err != nil {
-		return Identity{}, false, err
-	}
-	if time.Now().Unix() > c.Exp {
-		return Identity{}, false, errors.New("session expired")
+	if s.isSignedOut(token) {
+		return Identity{}, false, errSessionRevoked
 	}
 	st, err := s.lookupState(ctx, c.UserID, c.OrgID)
 	if err != nil {
@@ -208,6 +233,74 @@ func (s *SessionManager) verifyAccount(ctx context.Context, token string) (id Id
 		id.LoginAt = time.UnixMilli(c.LoginAt)
 	}
 	return id, st.member, nil
+}
+
+// parse checks the token's signature and expiry and returns its claims. It
+// says nothing about the account or whether the session has been ended.
+func (s *SessionManager) parse(token string) (sessionClaims, error) {
+	body, sig, ok := strings.Cut(token, ".")
+	if !ok {
+		return sessionClaims{}, errors.New("malformed session token")
+	}
+	if !hmac.Equal([]byte(sig), []byte(s.sign(body))) {
+		return sessionClaims{}, errors.New("invalid session signature")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(body)
+	if err != nil {
+		return sessionClaims{}, err
+	}
+	var c sessionClaims
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return sessionClaims{}, err
+	}
+	if time.Now().Unix() > c.Exp {
+		return sessionClaims{}, errors.New("session expired")
+	}
+	return c, nil
+}
+
+// expires returns the moment from which the token is refused as expired. The
+// exp claim is in seconds, and parse accepts the token for the whole of that
+// second.
+func (c sessionClaims) expires() time.Time { return time.Unix(c.Exp+1, 0) }
+
+// isSignedOut reports whether the session was ended by signing out.
+func (s *SessionManager) isSignedOut(token string) bool {
+	hash := hashKey(token)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.signedOut[hash]
+	return ok
+}
+
+// signOut ends one session: from now on its token is refused, by this
+// process at once and, once saved, after a restart too. Records of tokens
+// that have expired are dropped on the way, here and in the store.
+//
+// The token is revoked in memory before it is saved, and stays revoked there
+// when saving fails: the user has signed out, and refusing the token for as
+// long as this process runs is better than not at all. Only a restart before
+// the token expires would let it in again; the error tells the operator.
+func (s *SessionManager) signOut(ctx context.Context, token string, expires time.Time) error {
+	hash := hashKey(token)
+	now := time.Now()
+	s.mu.Lock()
+	_, known := s.signedOut[hash]
+	s.signedOut[hash] = expires
+	for h, exp := range s.signedOut {
+		if !now.Before(exp) {
+			delete(s.signedOut, h)
+		}
+	}
+	store := s.revocations
+	s.mu.Unlock()
+	// A session this process has ended before is saved already, or its
+	// failure was logged then; writing once also keeps two sign-outs with
+	// one token from racing for the same row.
+	if known || store == nil {
+		return nil
+	}
+	return store.RevokeSession(ctx, hash, expires)
 }
 
 // lookupState returns the account's revocation mark and its membership in the
@@ -356,9 +449,26 @@ func (s *SessionManager) Routes(rt *Router) {
 	rt.Post("/auth/logout-all", s.logoutAll)
 }
 
-// logout clears the session cookie. The token itself stays valid until it
-// expires or the account's sessions are revoked; clients discard it.
-func (s *SessionManager) logout(w http.ResponseWriter, _ *http.Request) {
+// logout ends the caller's session, the one whose token the request carries
+// (bearer header, else cookie), and clears the cookie. The account's other
+// sessions stay. Every visitor of the demo has a session of their own, so
+// ending it is allowed there too.
+//
+// Signing out never fails for the user: the app forgets its session whatever
+// the answer, so it is always 204. Without a token, or with one that is not
+// valid any more, there is nothing to end. The account behind a valid token
+// is not looked up: a session that has lost its workspace can still be moved
+// to another one (AccountAPI.recoverSession), and one the database cannot
+// check right now must end all the same.
+func (s *SessionManager) logout(w http.ResponseWriter, r *http.Request) {
+	if token := requestToken(r); token != "" {
+		if c, err := s.parse(token); err == nil {
+			// Saved even when the client stops waiting for the answer.
+			if err := s.signOut(context.WithoutCancel(r.Context()), token, c.expires()); err != nil {
+				log.Printf("auth: sign-out not saved; the session stays ended until the server restarts: %v", err)
+			}
+		}
+	}
 	clearSessionCookie(w)
 	w.WriteHeader(http.StatusNoContent)
 }
