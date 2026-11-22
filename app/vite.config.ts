@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import adapter from '@sveltejs/adapter-static';
@@ -46,7 +47,35 @@ function buildFiles(): Plugin {
   };
 }
 
+// Version, commit and build time for the footer (src/lib/build.ts). The release
+// workflow passes BUILD_COMMIT and SOURCE_DATE_EPOCH (the commit's time, which
+// keeps images reproducible); local builds ask git and use the current time.
+function buildInfo() {
+  const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  let commit = process.env.BUILD_COMMIT ?? '';
+  if (!commit) {
+    try {
+      commit = execFileSync('git', ['rev-parse', 'HEAD'], {
+        encoding: 'utf8',
+        stdio: 'pipe'
+      }).trim();
+    } catch {
+      commit = ''; // no git (e.g. a Docker build without BUILD_COMMIT)
+    }
+  }
+  const epoch = Number(process.env.SOURCE_DATE_EPOCH);
+  const builtAt = (
+    Number.isFinite(epoch) && epoch > 0 ? new Date(epoch * 1000) : new Date()
+  ).toISOString();
+  return {
+    __OBH_VERSION__: JSON.stringify(String(pkg.version ?? '')),
+    __OBH_COMMIT__: JSON.stringify(commit),
+    __OBH_BUILD_TIME__: JSON.stringify(builtAt)
+  };
+}
+
 export default defineConfig({
+  define: buildInfo(),
   plugins: [
     sveltekit({
       preprocess: vitePreprocess(),

@@ -16,7 +16,11 @@ COPY app/package.json app/package-lock.json app/.npmrc ./
 RUN npm ci
 COPY app/ ./
 COPY --from=proto /src/app/src/lib/proto ./src/lib/proto
-RUN npm run build
+# Shown in the app's footer: the commit (the context has no .git) and the
+# build time, which is the commit's time when SOURCE_DATE_EPOCH is given.
+ARG BUILD_COMMIT=""
+ARG SOURCE_DATE_EPOCH=""
+RUN BUILD_COMMIT="$BUILD_COMMIT" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" npm run build
 
 # --- Stage 3: compile the server with the SPA embedded ---
 FROM docker.io/library/golang:1.27-alpine@sha256:eb61c3873c97416fff0116553fff65d67a3549f72e11d9758849a689cdd8b523 AS server
