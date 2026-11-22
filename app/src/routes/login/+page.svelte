@@ -6,6 +6,7 @@
   import { KeyRound, Mail } from '@lucide/svelte';
   import { authErrorKey, GENERIC_AUTH_ERROR, NETWORK_AUTH_ERROR } from '#lib/auth-errors.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
+  import AppFooter from '#lib/components/AppFooter.svelte';
   import { fetchInstance } from '#lib/instance.js';
   import { hideUrlSecret } from '#lib/url-secret.js';
   import { resetMode, type ResetMode } from '#lib/account.js';
@@ -363,4 +364,5 @@
       {/if}
     {/if}
   </main>
+  <AppFooter />
 </div>

@@ -63,7 +63,14 @@
     "about": "Über uns",
     "imprint": "Impressum",
     "privacy": "Datenschutz",
-    "legal": "Über & Rechtliches"
+    "legal": "Über & Rechtliches",
+    "app_info": "Über diese App",
+    "version": "Version {version}",
+    "build": "Build {commit}",
+    "built": "erstellt am {date}",
+    "docs": "Dokumentation",
+    "source": "Quellcode",
+    "website": "Website"
   },
   "theme": {
     "title": "Darstellung",

@@ -12,6 +12,7 @@
     type ResetCompleteState
   } from '#lib/account.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
+  import AppFooter from '#lib/components/AppFooter.svelte';
   import { hideUrlSecret } from '#lib/url-secret.js';
   import '#lib/components/auth/auth.css';
 
@@ -79,4 +80,5 @@
 
     <a class="link" href="/login">{$_('auth.back_to_signin')}</a>
   </main>
+  <AppFooter />
 </div>

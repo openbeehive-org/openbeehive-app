@@ -63,7 +63,14 @@
     "about": "About",
     "imprint": "Imprint",
     "privacy": "Privacy",
-    "legal": "About & legal"
+    "legal": "About & legal",
+    "app_info": "About this app",
+    "version": "Version {version}",
+    "build": "Build {commit}",
+    "built": "built {date}",
+    "docs": "Documentation",
+    "source": "Source code",
+    "website": "Website"
   },
   "theme": {
     "title": "Appearance",

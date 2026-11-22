@@ -63,7 +63,14 @@
     "about": "Informazioni",
     "imprint": "Note legali",
     "privacy": "Privacy",
-    "legal": "Informazioni e note legali"
+    "legal": "Informazioni e note legali",
+    "app_info": "Informazioni su questa app",
+    "version": "Versione {version}",
+    "build": "Build {commit}",
+    "built": "compilata il {date}",
+    "docs": "Documentazione",
+    "source": "Codice sorgente",
+    "website": "Sito web"
   },
   "theme": {
     "title": "Aspetto",

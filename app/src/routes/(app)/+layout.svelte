@@ -16,6 +16,7 @@
   import { toast } from '#lib/toast.js';
   import { fetchInstance } from '#lib/instance.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
+  import AppFooter from '#lib/components/AppFooter.svelte';
   import { get } from 'svelte/store';
   import { demoSession } from '#lib/demo.js';
 
@@ -254,7 +255,8 @@
     {/if}
     <div class="sync-row"><SyncChip problemsHref="/settings#sync-problems" /></div>
     <main class="content" id="main" tabindex="-1">
-      {@render children()}
+      <div class="page-body">{@render children()}</div>
+      <AppFooter />
     </main>
   </div>
 </div>
@@ -301,6 +303,12 @@
   .content {
     min-height: 100vh;
     padding-bottom: calc(74px + env(safe-area-inset-bottom));
+    /* The footer sits at the bottom of short pages and after long ones. */
+    display: flex;
+    flex-direction: column;
+  }
+  .page-body {
+    flex: 1 0 auto;
   }
 
   /* Sync status on phones; the desktop sidebar shows it in the account block. */

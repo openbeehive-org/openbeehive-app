@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Footer** on every app page and on the sign-in pages: the app's version
+  (linked to its release notes), the build's commit (linked to the source) and
+  build time, and links to the documentation, the source code and
+  openbeehive.org. Release images take the commit from the workflow and the
+  build time from the tagged commit, so they stay reproducible. A fork can
+  point the links elsewhere at build time with `BEEHIVE_DOCS_URL`,
+  `BEEHIVE_SOURCE_URL` and `BEEHIVE_MARKETING_URL`.
+
 ## [0.5.0] - 2026-11-21
 
 Records can be corrected and deleted, photos move out of the

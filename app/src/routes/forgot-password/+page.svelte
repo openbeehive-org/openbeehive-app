@@ -12,6 +12,7 @@
   } from '#lib/account.js';
   import { fetchInstance } from '#lib/instance.js';
   import UpdatePrompt from '#lib/components/UpdatePrompt.svelte';
+  import AppFooter from '#lib/components/AppFooter.svelte';
   import '#lib/components/auth/auth.css';
 
   let mode = $state<ResetMode | 'loading'>('loading');
@@ -77,4 +78,5 @@
 
     <a class="link" href="/login">{$_('auth.back_to_signin')}</a>
   </main>
+  <AppFooter />
 </div>
