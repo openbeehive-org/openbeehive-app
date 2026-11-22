@@ -2,7 +2,7 @@
 // ceremonies between the app, the browser and the server.
 import type { BrowserContext, Page } from '@playwright/test';
 import { expect, test } from './support/fixtures';
-import { expectSynced } from './support/app';
+import { acceptDialogs, expectSynced } from './support/app';
 
 const PASSKEYS_ON = { WEBAUTHN_ENABLED: 'true' };
 
@@ -34,6 +34,17 @@ async function addAuthenticator(context: BrowserContext, page: Page) {
 
 const passkeysCard = (page: Page) =>
   page.locator('section').filter({ has: page.getByRole('heading', { name: 'Passkeys' }) });
+
+/** From Settings → Account: signs out and waits for the sign-in page. */
+async function signOut(page: Page) {
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page
+    .getByRole('group', { name: 'Sign out' })
+    .getByRole('button', { name: 'Sign out', exact: true })
+    .click();
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('session'))).toBeNull();
+}
 
 /** On the Settings page: adds a passkey named `name` and waits until it is listed. */
 async function enrol(page: Page, name: string) {
@@ -75,15 +86,7 @@ test('a passkey is added in Settings and signs in; a closed prompt is not an err
     expect(await authenticator.credentials()).toBe(1);
   });
 
-  await test.step('sign out', async () => {
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await page
-      .getByRole('group', { name: 'Sign out' })
-      .getByRole('button', { name: 'Sign out', exact: true })
-      .click();
-    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem('session'))).toBeNull();
-  });
+  await test.step('sign out', () => signOut(page));
 
   const withPasskey = page.getByRole('button', { name: 'Sign in with a passkey' });
   await test.step('closing the prompt while signing in shows no error', async () => {
@@ -115,6 +118,31 @@ test('a passkey is added in Settings and signs in; a closed prompt is not an err
     await expect(
       passkeysCard(page).getByRole('listitem').filter({ hasText: 'Phone' })
     ).toContainText('Last used');
+  });
+
+  await test.step('a removed passkey no longer signs in', async () => {
+    const asked = acceptDialogs(page);
+    const card = passkeysCard(page);
+    const removed = page.waitForResponse((r) =>
+      r.url().endsWith('/auth/webauthn/credentials/delete')
+    );
+    await card
+      .getByRole('listitem')
+      .filter({ hasText: 'Phone' })
+      .getByRole('button', { name: 'Remove' })
+      .click();
+    expect((await removed).ok()).toBe(true);
+    expect(asked).toContain('Remove this passkey? You can no longer sign in with it.');
+    await expect(card.getByText('No passkeys yet.')).toBeVisible();
+
+    await signOut(page);
+    // The device still holds the key; the server no longer accepts it.
+    expect(await authenticator.credentials()).toBe(1);
+    const finished = page.waitForResponse((r) => r.url().includes('/auth/webauthn/login/finish'));
+    await withPasskey.click();
+    expect((await finished).ok()).toBe(false);
+    await expect(page.getByRole('alert')).toContainText('Signing in with the passkey did not work');
+    expect(await page.evaluate(() => localStorage.getItem('session'))).toBeNull();
   });
 });
 
