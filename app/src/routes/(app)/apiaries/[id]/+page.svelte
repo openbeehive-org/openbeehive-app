@@ -268,7 +268,12 @@
         {#if locationFailed}
           <p class="error" role="alert">{$_('apiaries.location_unavailable')}</p>
         {/if}
-        <LocationPicker bind:lat={eLat} bind:lng={eLng} bind:address={eAddress} />
+        <LocationPicker
+          bind:lat={eLat}
+          bind:lng={eLng}
+          bind:address={eAddress}
+          coordInputs={false}
+        />
         <DemoNote />
         <div class="actions">
           <button type="button" class="ghost" onclick={() => (editing = false)}
