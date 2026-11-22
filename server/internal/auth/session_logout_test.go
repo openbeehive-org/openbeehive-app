@@ -200,28 +200,29 @@ func TestLogoutOfATokenWithoutIssueTime(t *testing.T) {
 	}
 }
 
-// Every visitor of the demo has a session of their own: one of them signing
-// out leaves the others signed in. "Log out everywhere" stays refused
-// (TestLogoutAllRefusedForTheSharedDemoAccount).
-func TestDemoVisitorSignsOutAlone(t *testing.T) {
+// A demo visitor signing out only loses the cookie: the demo is read-only and
+// public, and recording its sessions would let anyone grow the list without
+// bound by fetching and ending demo sessions. "Log out everywhere" stays
+// refused (TestLogoutAllRefusedForTheSharedDemoAccount).
+func TestDemoSignOutIsNotRecorded(t *testing.T) {
 	cfg := loginConfig()
 	cfg.Demo = config.DemoConfig{Enabled: true, Email: "demo@test.dev"}
 	f := newAPIFixture(t, cfg)
 	seedMember(t, f.store, "demo-user", "demo@test.dev", "demo-org", "owner")
-	visit := func() string {
-		t.Helper()
-		time.Sleep(2 * time.Millisecond) // see apiFixture.newDevice
-		res := f.call(t, http.MethodPost, "/auth/demo-login", "", nil)
-		if res.status != http.StatusOK {
-			t.Fatalf("demo login: %d %s", res.status, res.raw)
-		}
-		return res.str("token")
+	res := f.call(t, http.MethodPost, "/auth/demo-login", "", nil)
+	if res.status != http.StatusOK {
+		t.Fatalf("demo login: %d %s", res.status, res.raw)
 	}
-	leaves, stays := visit(), visit()
-	wantSignedOut(t, f.call(t, http.MethodPost, "/auth/logout", leaves, nil))
-	wantError(t, f.call(t, http.MethodGet, "/auth/me", leaves, nil), http.StatusUnauthorized, "not_signed_in")
-	if res := f.call(t, http.MethodGet, "/auth/me", stays, nil); res.status != http.StatusOK {
-		t.Fatalf("another demo visitor: %d %s", res.status, res.raw)
+	visitor := res.str("token")
+	wantSignedOut(t, f.call(t, http.MethodPost, "/auth/logout", visitor, nil))
+	if n := revocationRows(t, f); n != 0 {
+		t.Fatalf("a demo sign-out was recorded: %d rows", n)
+	}
+	f.sessions.mu.Lock()
+	inMemory := len(f.sessions.signedOut)
+	f.sessions.mu.Unlock()
+	if inMemory != 0 {
+		t.Fatalf("a demo sign-out was kept in memory: %d entries", inMemory)
 	}
 }
 

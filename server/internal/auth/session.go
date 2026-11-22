@@ -451,8 +451,12 @@ func (s *SessionManager) Routes(rt *Router) {
 
 // logout ends the caller's session, the one whose token the request carries
 // (bearer header, else cookie), and clears the cookie. The account's other
-// sessions stay. Every visitor of the demo has a session of their own, so
-// ending it is allowed there too.
+// sessions stay.
+//
+// A demo session is not recorded, only its cookie cleared: the demo is
+// read-only and the same for every visitor, so its token gives nothing away,
+// and anyone can fetch any number of them (/auth/demo-login), which would let
+// the list of ended sessions grow without bound.
 //
 // Signing out never fails for the user: the app forgets its session whatever
 // the answer, so it is always 204. Without a token, or with one that is not
@@ -462,7 +466,7 @@ func (s *SessionManager) Routes(rt *Router) {
 // check right now must end all the same.
 func (s *SessionManager) logout(w http.ResponseWriter, r *http.Request) {
 	if token := requestToken(r); token != "" {
-		if c, err := s.parse(token); err == nil {
+		if c, err := s.parse(token); err == nil && c.Role != "demo" {
 			// Saved even when the client stops waiting for the answer.
 			if err := s.signOut(context.WithoutCancel(r.Context()), token, c.expires()); err != nil {
 				log.Printf("auth: sign-out not saved; the session stays ended until the server restarts: %v", err)
