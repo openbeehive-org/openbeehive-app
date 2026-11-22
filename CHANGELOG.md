@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point the links elsewhere at build time with `BEEHIVE_DOCS_URL`,
   `BEEHIVE_SOURCE_URL` and `BEEHIVE_MARKETING_URL`.
 
+### Fixed
+
+- The apiary form showed the latitude and longitude fields twice when the map
+  was switched off or the device was offline.
+- "Use my location" is left out where the page may not ask for the position
+  (a `Permissions-Policy: geolocation=()` header from the server or a proxy),
+  instead of always failing. Chromium-based browsers report the policy; in
+  others the button stays and says when the position is unavailable. A proxy
+  that sets this header should allow `geolocation=(self)` to keep the button.
+
+### Changed
+
+- Updated the Alpine, Go and Node base images (system security fixes in the
+  image), the Go modules (Postgres and MySQL drivers, SQLite, OAuth2) and the
+  npm packages (Svelte, SvelteKit, Vite).
+
 ## [0.5.0] - 2026-11-21
 
 Records can be corrected and deleted, photos move out of the
