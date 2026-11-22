@@ -22,6 +22,7 @@
   import Skeleton from '#lib/components/Skeleton.svelte';
   import DemoNote from '#lib/components/DemoNote.svelte';
   import { demoSession } from '#lib/demo.js';
+  import { canAskForLocation } from '#lib/geolocation.js';
 
   const id = $derived(page.params.id ?? '');
   let apiary = $state<ApiaryRow | null>(null);
@@ -42,6 +43,8 @@
   let opened: Record<string, unknown> = {};
   let locating = $state(false);
   let locationFailed = $state(false);
+  // No button when the page may not ask at all (see lib/geolocation.ts).
+  const canLocate = canAskForLocation();
 
   let addingHive = $state(false);
   let hiveName = $state('');
@@ -260,10 +263,12 @@
             ><span>{$_('apiaries.lng')}</span>
             <input type="number" step="0.000001" bind:value={eLng} placeholder="0" /></label
           >
-          <button type="button" class="ghost loc" onclick={useMyLocation} disabled={locating}>
-            <MapPin size={16} aria-hidden="true" />
-            {locating ? $_('apiaries.locating') : $_('apiaries.use_location')}
-          </button>
+          {#if canLocate}
+            <button type="button" class="ghost loc" onclick={useMyLocation} disabled={locating}>
+              <MapPin size={16} aria-hidden="true" />
+              {locating ? $_('apiaries.locating') : $_('apiaries.use_location')}
+            </button>
+          {/if}
         </div>
         {#if locationFailed}
           <p class="error" role="alert">{$_('apiaries.location_unavailable')}</p>
