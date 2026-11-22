@@ -7,12 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-22
+
+A small release: signing out ends the session on the server, a footer names
+the build and links to the docs and the source, two fixes in the apiary form,
+and updated dependencies. Migration 0024 runs on start; nothing to do.
+
 ### Security
 
 - Signing out ends the session on the server. Before, only the cookie was
   cleared, and a copy of the token kept working until it expired. The
   account's other devices stay signed in. A new table (migration 0024) keeps
-  ended sessions until their tokens expire; upgrading needs no action.
+  ended sessions until their tokens expire. Signing out of the shared demo
+  only clears the cookie.
 
 ### Added
 
@@ -553,7 +560,8 @@ First public release. 🐝
   Docker image for the cloud profile.
 - **Multi-language UI:** English, German, French, Spanish, Italian.
 
-[Unreleased]: https://github.com/openbeehive-org/openbeehive-app/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/openbeehive-org/openbeehive-app/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.5.1
 [0.5.0]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.5.0
 [0.4.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.4.1
 [0.3.1]: https://github.com/openbeehive-org/openbeehive-app/releases/tag/v0.3.1
