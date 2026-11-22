@@ -31,6 +31,56 @@ test('a wrong password is answered in the language of the app', async ({ api, de
   await expect(page.getByRole('navigation').getByRole('link', { name: 'Übersicht' })).toBeVisible();
 });
 
+test('signing out ends that session on the server; the account’s other devices stay signed in', async ({
+  startServer,
+  apiFor,
+  device
+}) => {
+  // A server of its own: it is restarted to show that the sign-out is kept.
+  const server = await startServer();
+  const api = apiFor(server);
+  const account = await api.signUp();
+  const phone = await api.signIn(account.email, account.password);
+  const laptop = await api.signIn(account.email, account.password);
+  expect(phone.token).not.toBe(laptop.token);
+
+  const onLaptop = await device({ session: { ...laptop, email: account.email }, server });
+  await onLaptop.page.goto('/');
+  await expectSynced(onLaptop.page);
+
+  const { page } = await device({ session: { ...phone, email: account.email }, server });
+  await page.goto('/settings?tab=account');
+  const signedOut = page.waitForResponse((r) => r.url().endsWith('/auth/logout'));
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page
+    .getByRole('group', { name: 'Sign out' })
+    .getByRole('button', { name: 'Sign out', exact: true })
+    .click();
+  const answer = await signedOut;
+  expect(answer.status()).toBe(204);
+  expect(await answer.request().headerValue('authorization')).toBe(`Bearer ${phone.token}`);
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+
+  // A copy of the phone's token is refused, by the auth endpoints and the RPCs.
+  const copied = api.as(phone);
+  const listApiaries = '/openbeehive.v1.ApiaryService/ListApiaries';
+  expect(await copied.status('/auth/me')).toBe(401);
+  expect(await copied.status(listApiaries, {})).toBe(401);
+
+  // The laptop carries on.
+  await onLaptop.page.reload();
+  await expectSynced(onLaptop.page);
+  await expect(onLaptop.page).not.toHaveURL(/\/login/);
+  expect(await api.as(laptop).status(listApiaries, {})).toBe(200);
+
+  // The server still knows after a restart.
+  await server.stop();
+  await server.start();
+  expect(await copied.status('/auth/me')).toBe(401);
+  expect(await copied.status(listApiaries, {})).toBe(401);
+  expect(await api.as(laptop).status('/auth/me')).toBe(200);
+});
+
 test('repeated wrong passwords end in the rate-limit message', async ({ api, device }) => {
   const account = await api.signUp();
   const { page } = await device();
