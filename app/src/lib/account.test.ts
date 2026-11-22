@@ -198,6 +198,9 @@ describe('signInAgain', () => {
     await signInAgain(`/settings${DELETE_ACCOUNT_HASH}`);
 
     expect(calls[0]!.url).toBe('/auth/logout');
+    // The token goes along, so the server ends that session.
+    expect(calls[0]!.init.method).toBe('POST');
+    expect((calls[0]!.init.headers as Record<string, string>).Authorization).toBe('Bearer old');
     // The old token must not outrank the session of the new sign-in.
     expect(localStorage.getItem('session')).toBeNull();
     expect(location.href).toBe('/login?reauth=1');
