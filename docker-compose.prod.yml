@@ -55,7 +55,7 @@ services:
     # Published by .github/workflows/release.yml on each v* tag. The three
     # compose files pin the latest release and are bumped together once its
     # image is published (CONTRIBUTING.md, "Releasing").
-    image: ghcr.io/openbeehive-org/openbeehive-app:0.5.0@sha256:5c531f36cf2b001a37cb7500522d768bd43bc21e6c087c83e4223f4d6a67e398
+    image: ghcr.io/openbeehive-org/openbeehive-app:0.5.1@sha256:a38e8dcb5d6c4d7350d2f73e4e13b421667406bd1399e611c2a9b929ba516842
     restart: unless-stopped
     depends_on:
       postgres:
