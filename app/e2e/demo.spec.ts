@@ -123,6 +123,7 @@ test('in the demo, delete and photo actions are off', async ({ startServer, devi
   for (const button of await recordDeletes.all()) await expect(button).toBeDisabled();
 
   await page.getByRole('navigation').getByRole('link', { name: 'Apiaries' }).click();
-  await page.getByRole('main').getByRole('link').first().click();
+  // The first apiary in the list; the page's footer has links too.
+  await page.getByRole('main').getByRole('listitem').first().getByRole('link').click();
   await expect(page.getByRole('button', { name: 'Delete apiary' })).toBeDisabled();
 });
