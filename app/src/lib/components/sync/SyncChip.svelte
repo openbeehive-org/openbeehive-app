@@ -113,18 +113,18 @@
         {#if $syncStatus.failed > 0}
           <p class="bad">{$_('sync.sheet_problems', { values: { n: $syncStatus.failed } })}</p>
           {#if problemsHref}
-            <a class="action" href={problemsHref} onclick={() => close()}
-              >{$_('sync.sheet_problems_link')} ›</a
-            >
+            <a class="action" href={problemsHref} onclick={() => close()}>
+              {$_('sync.sheet_problems_link')} ›
+            </a>
           {/if}
         {/if}
         <div class="buttons">
-          <button type="button" class="action primary" onclick={retry}
-            >{$_('sync.chip_sync_now')}</button
-          >
-          <button type="button" class="action" onclick={() => close(true)}
-            >{$_('sync.sheet_close')}</button
-          >
+          <button type="button" class="action primary" onclick={retry}>
+            {$_('sync.chip_sync_now')}
+          </button>
+          <button type="button" class="action" onclick={() => close(true)}>
+            {$_('sync.sheet_close')}
+          </button>
         </div>
       </div>
     {/if}

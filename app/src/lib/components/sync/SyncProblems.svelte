@@ -77,27 +77,27 @@
                 <code>{f.reason}</code>
               </details>
             {/if}
-            <span class="when"
-              >{formatDate(f.failedAt, $locale, { dateStyle: 'medium', timeStyle: 'short' })}</span
-            >
+            <span class="when">
+              {formatDate(f.failedAt, $locale, { dateStyle: 'medium', timeStyle: 'short' })}
+            </span>
           </div>
           <div class="actions">
             {#if f.kind === 'refused'}
-              <button type="button" disabled={busy} onclick={() => retry(f.id)}
-                >{$_('sync.problems_retry')}</button
-              >
+              <button type="button" disabled={busy} onclick={() => retry(f.id)}>
+                {$_('sync.problems_retry')}
+              </button>
             {/if}
-            <button type="button" class="danger" disabled={busy} onclick={() => discard(f)}
-              >{$_('sync.problems_discard')}</button
-            >
+            <button type="button" class="danger" disabled={busy} onclick={() => discard(f)}>
+              {$_('sync.problems_discard')}
+            </button>
           </div>
         </li>
       {/each}
     </ul>
     {#if items.filter((f) => f.kind === 'refused').length > 1}
-      <button type="button" disabled={busy} onclick={() => retry()}
-        >{$_('sync.problems_retry_all')}</button
-      >
+      <button type="button" disabled={busy} onclick={() => retry()}>
+        {$_('sync.problems_retry_all')}
+      </button>
     {/if}
   {/if}
 </div>

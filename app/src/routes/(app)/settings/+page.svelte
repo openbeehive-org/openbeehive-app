@@ -92,9 +92,9 @@
 
   <nav class="groups" aria-label={$_('settings.groups')}>
     {#each groups as g (g)}
-      <a href={groupHref(g)} aria-current={g === group ? 'page' : undefined}
-        >{$_(`settings.group_${g}`)}</a
-      >
+      <a href={groupHref(g)} aria-current={g === group ? 'page' : undefined}>
+        {$_(`settings.group_${g}`)}
+      </a>
     {/each}
   </nav>
 

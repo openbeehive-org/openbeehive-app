@@ -67,9 +67,10 @@
           {/if}
         </p>
       </div>
-      <button class="hv-btn ghost print" onclick={() => window.print()}
-        ><Printer size={16} aria-hidden="true" /> {$_('qr.print')}</button
-      >
+      <button class="hv-btn ghost print" onclick={() => window.print()}>
+        <Printer size={16} aria-hidden="true" />
+        {$_('qr.print')}
+      </button>
     </div>
 
     {#if visits.length === 0}

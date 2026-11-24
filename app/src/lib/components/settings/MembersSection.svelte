@@ -70,9 +70,9 @@
         {#if m.email && m.email !== name(m)}<span class="st-date">{m.email}</span>{/if}
         {#if m.me}<span class="st-badge accent">{$_('members.you')}</span>{/if}
         {#if m.role && !(canManage && !m.me)}
-          <span class="st-badge"
-            >{m.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span
-          >
+          <span class="st-badge">
+            {m.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}
+          </span>
         {/if}
       </div>
       <div class="st-actions">

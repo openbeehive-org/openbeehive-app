@@ -24,37 +24,41 @@
   <p class="build">
     <span class="item name">Openbeehive</span>
     {#if version}
-      <span class="item"
-        ><span class="sep" aria-hidden="true">·</span>{#if versionHref}<a
+      <span class="item">
+        <span class="sep" aria-hidden="true">·</span>{#if versionHref}<a
             href={versionHref}
             rel="noopener"
-            target="_blank">{$_('footer.version', { values: { version } })}</a
-          >{:else}{$_('footer.version', { values: { version } })}{/if}</span
-      >
+            target="_blank"
+          >
+            {$_('footer.version', { values: { version } })}
+          </a>{:else}{$_('footer.version', { values: { version } })}{/if}
+      </span>
     {/if}
     {#if commit}
-      <span class="item"
-        ><span class="sep" aria-hidden="true">·</span><a
+      <span class="item">
+        <span class="sep" aria-hidden="true">·</span><a
           href={commitHref}
           rel="noopener"
-          target="_blank">{$_('footer.build', { values: { commit } })}</a
-        ></span
-      >
+          target="_blank"
+        >
+          {$_('footer.build', { values: { commit } })}
+        </a>
+      </span>
     {/if}
     {#if builtAt}
-      <span class="item"
-        ><span class="sep" aria-hidden="true">·</span>{$_('footer.built', {
+      <span class="item">
+        <span class="sep" aria-hidden="true">·</span>{$_('footer.built', {
           values: { date: builtAt }
-        })}</span
-      >
+        })}
+      </span>
     {/if}
   </p>
   <nav class="links" aria-label={$_('footer.app_info')}>
     <a href={links.docs} rel="noopener" target="_blank">{$_('footer.docs')}</a>
     <a href={links.source} rel="noopener" target="_blank">{$_('footer.source')}</a>
-    <a href={links.homepage} rel="noopener" target="_blank" title={$_('footer.website')}
-      >{homepageLabel}</a
-    >
+    <a href={links.homepage} rel="noopener" target="_blank" title={$_('footer.website')}>
+      {homepageLabel}
+    </a>
   </nav>
 </footer>
 

@@ -117,9 +117,9 @@
           {$_('treat.print_register')}
         </button>
       {/if}
-      <button type="button" class="hv-btn" onclick={() => (open ? close() : show(null))}
-        >+ {$_('treat.record')}</button
-      >
+      <button type="button" class="hv-btn" onclick={() => (open ? close() : show(null))}>
+        + {$_('treat.record')}
+      </button>
     </div>
   </div>
 
@@ -193,14 +193,14 @@
             {/if}
             {#if t.withdrawal_until}
               <!-- A warning only while honey must not be taken; plain afterwards. -->
-              <span class="hv-chip" class:warn={withdrawalActive(t.withdrawal_until)}
-                >{$_('treat.withdrawal')}: {day(t.withdrawal_until)}</span
-              >
+              <span class="hv-chip" class:warn={withdrawalActive(t.withdrawal_until)}>
+                {$_('treat.withdrawal')}: {day(t.withdrawal_until)}
+              </span>
             {/if}
             {#if t.amended_at}
-              <span class="hv-chip plain"
-                >{$_('treat.amended', { values: { date: day(t.amended_at) } })}</span
-              >
+              <span class="hv-chip plain">
+                {$_('treat.amended', { values: { date: day(t.amended_at) } })}
+              </span>
             {/if}
           </div>
           {#if t.note}<p class="hv-note">{t.note}</p>{/if}

@@ -147,9 +147,9 @@
     {:else}
       <img class="ph" src="/favicon.svg" alt="" />
     {/if}
-    <span class="cam"
-      >{#if busy}…{:else}<Camera size={12} aria-hidden="true" />{/if}</span
-    >
+    <span class="cam">
+      {#if busy}…{:else}<Camera size={12} aria-hidden="true" />{/if}
+    </span>
     {#if picture}{@render uploadBadge(picture.id)}{/if}
     <span class="hv-sr">{picture ? $_('photo.open_hive') : $_('hives.photo')}</span>
   </button>
@@ -173,8 +173,10 @@
           class="rm"
           aria-label={$_('photo.delete_n', { values: { n: idx + 1 } })}
           disabled={$demoSession}
-          onclick={() => removeStored(ph, idx + 1)}>×</button
+          onclick={() => removeStored(ph, idx + 1)}
         >
+          ×
+        </button>
       </span>
     {/each}
     {#each picked as ph, idx}
@@ -184,8 +186,10 @@
           type="button"
           class="rm"
           aria-label={$_('insp.remove_photo', { values: { n: stored.length + idx + 1 } })}
-          onclick={() => (picked = picked.filter((_p, i) => i !== idx))}>×</button
+          onclick={() => (picked = picked.filter((_p, i) => i !== idx))}
         >
+          ×
+        </button>
       </span>
     {/each}
     <button

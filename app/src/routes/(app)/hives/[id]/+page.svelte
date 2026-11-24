@@ -123,9 +123,10 @@
             <strong>{p.unit ? formatQuantity('weight', p.value, $units, $locale) : p.value}</strong>
           </a>
         {/each}
-        <a class="pill dev" href={`/hives/${id}/stats`}
-          ><ChartLine size={16} aria-hidden="true" /> {$_('stats.title')}</a
-        >
+        <a class="pill dev" href={`/hives/${id}/stats`}>
+          <ChartLine size={16} aria-hidden="true" />
+          {$_('stats.title')}
+        </a>
       </div>
     {/if}
 
@@ -146,8 +147,9 @@
           type="button"
           class="hv-btn"
           onclick={() => (visitForm === 'new' ? (visitForm = '') : openVisitForm('new'))}
-          >+ {$_('insp.record')}</button
         >
+          + {$_('insp.record')}
+        </button>
       </div>
 
       {#if visitForm}

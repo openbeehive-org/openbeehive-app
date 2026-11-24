@@ -63,9 +63,10 @@
         {/each}
       </select>
     </label>
-    <button type="button" class="st-btn" onclick={print}
-      ><Printer size={16} aria-hidden="true" /> {$_('treat.print_register')}</button
-    >
+    <button type="button" class="st-btn" onclick={print}>
+      <Printer size={16} aria-hidden="true" />
+      {$_('treat.print_register')}
+    </button>
   </div>
   {#if blocked}
     <p class="st-warn" role="alert">{$_('treat.print_blocked')}</p>

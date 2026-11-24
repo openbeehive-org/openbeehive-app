@@ -216,15 +216,19 @@
           class="icon"
           onclick={startEdit}
           title={$_('apiaries.edit')}
-          aria-label={$_('apiaries.edit')}><Pencil size={18} aria-hidden="true" /></button
+          aria-label={$_('apiaries.edit')}
         >
+          <Pencil size={18} aria-hidden="true" />
+        </button>
         <button
           class="icon danger"
           disabled={$demoSession}
           onclick={del}
           title={$_('apiaries.delete')}
-          aria-label={$_('apiaries.delete')}><Trash2 size={18} aria-hidden="true" /></button
+          aria-label={$_('apiaries.delete')}
         >
+          <Trash2 size={18} aria-hidden="true" />
+        </button>
       </div>
     </header>
 
@@ -255,14 +259,14 @@
           <textarea bind:value={eNote} rows="2"></textarea>
         </label>
         <div class="coords">
-          <label class="field"
-            ><span>{$_('apiaries.lat')}</span>
-            <input type="number" step="0.000001" bind:value={eLat} placeholder="0" /></label
-          >
-          <label class="field"
-            ><span>{$_('apiaries.lng')}</span>
-            <input type="number" step="0.000001" bind:value={eLng} placeholder="0" /></label
-          >
+          <label class="field">
+            <span>{$_('apiaries.lat')}</span>
+            <input type="number" step="0.000001" bind:value={eLat} placeholder="0" />
+          </label>
+          <label class="field">
+            <span>{$_('apiaries.lng')}</span>
+            <input type="number" step="0.000001" bind:value={eLng} placeholder="0" />
+          </label>
           {#if canLocate}
             <button type="button" class="ghost loc" onclick={useMyLocation} disabled={locating}>
               <MapPin size={16} aria-hidden="true" />
@@ -281,13 +285,13 @@
         />
         <DemoNote />
         <div class="actions">
-          <button type="button" class="ghost" onclick={() => (editing = false)}
-            >{$_('common.cancel')}</button
-          >
+          <button type="button" class="ghost" onclick={() => (editing = false)}>
+            {$_('common.cancel')}
+          </button>
 
-          <button type="submit" class="primary" disabled={!eName.trim() || $demoSession}
-            >{$_('common.save')}</button
-          >
+          <button type="submit" class="primary" disabled={!eName.trim() || $demoSession}>
+            {$_('common.save')}
+          </button>
         </div>
       </form>
     {:else if apiary.note}
@@ -298,21 +302,25 @@
       <h2>{$_('hives.title')}</h2>
       <div class="hactions">
         {#if hiveRows.length}
-          <button class="ghost" onclick={printQrSheet}
-            ><Tag size={16} aria-hidden="true" /> {$_('apiaries.qr_sheet')}</button
-          >
+          <button class="ghost" onclick={printQrSheet}>
+            <Tag size={16} aria-hidden="true" />
+            {$_('apiaries.qr_sheet')}
+          </button>
         {/if}
         {#if register.length}
-          <button class="ghost" onclick={printRegister}
-            ><ClipboardList size={16} aria-hidden="true" /> {$_('treat.register')}</button
-          >
+          <button class="ghost" onclick={printRegister}>
+            <ClipboardList size={16} aria-hidden="true" />
+            {$_('treat.register')}
+          </button>
         {/if}
 
         <button
           class="primary"
           aria-expanded={addingHive}
-          onclick={() => (addingHive = !addingHive)}>+ {$_('apiaries.add_hive')}</button
+          onclick={() => (addingHive = !addingHive)}
         >
+          + {$_('apiaries.add_hive')}
+        </button>
       </div>
     </div>
 
@@ -330,13 +338,13 @@
         </label>
         <DemoNote />
         <div class="actions">
-          <button type="button" class="ghost" onclick={() => (addingHive = false)}
-            >{$_('common.cancel')}</button
-          >
+          <button type="button" class="ghost" onclick={() => (addingHive = false)}>
+            {$_('common.cancel')}
+          </button>
 
-          <button type="submit" class="primary" disabled={!hiveName.trim() || $demoSession}
-            >{$_('common.save')}</button
-          >
+          <button type="submit" class="primary" disabled={!hiveName.trim() || $demoSession}>
+            {$_('common.save')}
+          </button>
         </div>
       </form>
     {/if}

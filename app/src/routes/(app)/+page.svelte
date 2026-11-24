@@ -127,8 +127,10 @@
         aria-haspopup="true"
         aria-expanded={menuOpen}
         aria-controls="new-menu"
-        onclick={() => (menuOpen = !menuOpen)}>+ {$_('common.new')}</button
+        onclick={() => (menuOpen = !menuOpen)}
       >
+        + {$_('common.new')}
+      </button>
       {#if menuOpen}
         <ul id="new-menu" class="menu">
           <li><a href="/apiaries?new=1">{$_('dashboard.new_apiary')}</a></li>
@@ -172,9 +174,9 @@
   <div class="stats">
     {#each [['stat_apiaries', stats.apiaries], ['stat_hives', stats.hives], ['stat_queens', stats.active_queens], ['stat_open', stats.open_tasks]] as [key, val]}
       <div class="stat">
-        <span class="n"
-          >{#if loaded}{val}{:else}<span class="n-skl" aria-hidden="true"></span>{/if}</span
-        >
+        <span class="n">
+          {#if loaded}{val}{:else}<span class="n-skl" aria-hidden="true"></span>{/if}
+        </span>
         <span class="l">{$_('dashboard.' + key)}</span>
       </div>
     {/each}
@@ -219,9 +221,9 @@
         </a>
       {/each}
       {#if dueTotal > due.length}
-        <a class="more" href="/hives?sort=inspected"
-          >{$_('dashboard.see_all_due', { values: { n: dueTotal } })} ›</a
-        >
+        <a class="more" href="/hives?sort=inspected">
+          {$_('dashboard.see_all_due', { values: { n: dueTotal } })} ›
+        </a>
       {/if}
     </section>
 

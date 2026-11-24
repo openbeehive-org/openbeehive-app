@@ -227,9 +227,9 @@
     <input type="checkbox" bind:checked={withPhotos} disabled={busy} />
     <span>{$_('data.include_photos')}<small>{$_('data.include_photos_help')}</small></span>
   </label>
-  <button type="button" class="st-btn primary" disabled={busy || !ready} onclick={exportBackup}
-    >⤓ {$_('data.json')}</button
-  >
+  <button type="button" class="st-btn primary" disabled={busy || !ready} onclick={exportBackup}>
+    ⤓ {$_('data.json')}
+  </button>
 
   <h3 class="st-sub">{$_('data.other_title')}</h3>
   <p class="st-help">{$_('data.other_help')}</p>
@@ -238,23 +238,30 @@
       type="button"
       class="st-btn"
       disabled={busy || !ready}
-      onclick={() => localExport(exportXLSX)}>⤓ {$_('data.xlsx')}</button
+      onclick={() => localExport(exportXLSX)}
     >
+      ⤓ {$_('data.xlsx')}
+    </button>
     <button
       type="button"
       class="st-btn"
       disabled={busy || !ready}
-      onclick={() => localExport(exportCSVZip)}>⤓ {$_('data.csv')}</button
+      onclick={() => localExport(exportCSVZip)}
     >
+      ⤓ {$_('data.csv')}
+    </button>
     <button
       type="button"
       class="st-btn"
       disabled={busy || !ready}
-      onclick={() => localExport(exportBeeXML)}>⤓ {$_('data.beexml')}</button
+      onclick={() => localExport(exportBeeXML)}
     >
-    <button type="button" class="st-btn" disabled={busy || !ready} onclick={report}
-      ><Printer size={16} aria-hidden="true" /> {$_('data.pdf')}</button
-    >
+      ⤓ {$_('data.beexml')}
+    </button>
+    <button type="button" class="st-btn" disabled={busy || !ready} onclick={report}>
+      <Printer size={16} aria-hidden="true" />
+      {$_('data.pdf')}
+    </button>
   </div>
 
   {#if !readOnly}
@@ -264,9 +271,9 @@
       <input type="checkbox" bind:checked={serverPhotos} disabled={busy} />
       <span>{$_('data.include_photos')}</span>
     </label>
-    <button type="button" class="st-btn" disabled={busy} onclick={exportServer}
-      >⤓ {$_('data.server_btn')}</button
-    >
+    <button type="button" class="st-btn" disabled={busy} onclick={exportServer}>
+      ⤓ {$_('data.server_btn')}
+    </button>
 
     <h3 class="st-sub">{$_('data.import')}</h3>
     <p class="st-help">{$_('data.import_help')}</p>
@@ -360,11 +367,13 @@
             type="button"
             class="st-btn primary"
             disabled={busy || nothingToDo}
-            onclick={startImport}>{$_('data.import_start')}</button
+            onclick={startImport}
           >
-          <button type="button" class="st-btn" disabled={busy} onclick={cancelImport}
-            >{$_('common.cancel')}</button
-          >
+            {$_('data.import_start')}
+          </button>
+          <button type="button" class="st-btn" disabled={busy} onclick={cancelImport}>
+            {$_('common.cancel')}
+          </button>
         </div>
       </div>
     {/if}
@@ -376,9 +385,9 @@
             values: { n: undo.created, date: formatDate(undo.at, $locale) }
           })}
         </p>
-        <button type="button" class="st-btn danger" disabled={busy} onclick={undoImport}
-          >{$_('data.undo')}</button
-        >
+        <button type="button" class="st-btn danger" disabled={busy} onclick={undoImport}>
+          {$_('data.undo')}
+        </button>
       </div>
     {/if}
   {/if}

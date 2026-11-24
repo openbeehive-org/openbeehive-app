@@ -64,10 +64,10 @@
     {/if}
     <label class="st-check">
       <input type="checkbox" bind:checked={removeData} disabled={busy} />
-      <span
-        >{$_('account.logout_remove_data')}
-        <small>{$_('account.logout_remove_data_help')}</small></span
-      >
+      <span>
+        {$_('account.logout_remove_data')}
+        <small>{$_('account.logout_remove_data_help')}</small>
+      </span>
     </label>
     {#if failed}<p class="st-msg err" role="alert">{$_(failed)}</p>{/if}
     <div class="st-row">

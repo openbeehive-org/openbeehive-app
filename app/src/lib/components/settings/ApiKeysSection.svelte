@@ -74,28 +74,30 @@
     {#each keys as k (k.id)}
       <li>
         <div class="st-meta">
-          <strong
-            ><Settings size={16} aria-hidden="true" /> {k.name || $_('apikeys.unnamed')}</strong
-          >
+          <strong>
+            <Settings size={16} aria-hidden="true" />
+            {k.name || $_('apikeys.unnamed')}
+          </strong>
           <code class="st-badge st-mono">{k.prefix}...</code>
-          <span class="st-badge"
-            >{k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}</span
-          >
+          <span class="st-badge">
+            {k.scope === 'read' ? $_('apikeys.scope_read') : $_('apikeys.scope_write')}
+          </span>
           {#if theirs}
             <span class="st-date">{k.user_email}</span>
           {:else}
             <span class="st-date">{$_('apikeys.created')} {formatDate(k.created_at, $locale)}</span>
           {/if}
           {#if k.expires_at}
-            <span class={isExpired(k) ? 'st-badge bad' : 'st-date'}
-              >{isExpired(k) ? $_('apikeys.expired') : $_('apikeys.expires')}
-              {formatDate(k.expires_at, $locale)}</span
-            >
+            <span class={isExpired(k) ? 'st-badge bad' : 'st-date'}>
+              {isExpired(k) ? $_('apikeys.expired') : $_('apikeys.expires')}
+              {formatDate(k.expires_at, $locale)}
+            </span>
           {/if}
           {#if k.last_used_at}
-            <span class="st-date"
-              >{$_('apikeys.last_used')} {formatDate(k.last_used_at, $locale)}</span
-            >
+            <span class="st-date">
+              {$_('apikeys.last_used')}
+              {formatDate(k.last_used_at, $locale)}
+            </span>
           {/if}
         </div>
         <div class="st-actions">

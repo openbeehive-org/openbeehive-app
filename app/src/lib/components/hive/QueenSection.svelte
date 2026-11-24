@@ -122,8 +122,9 @@
   <div class="hv-sec-head">
     <h2>{$_('queens.title')}</h2>
     {#if queen}
-      <button type="button" class="hv-btn" onclick={() => show(null)}>{$_('queens.replace')}</button
-      >
+      <button type="button" class="hv-btn" onclick={() => show(null)}>
+        {$_('queens.replace')}
+      </button>
     {/if}
   </div>
 
