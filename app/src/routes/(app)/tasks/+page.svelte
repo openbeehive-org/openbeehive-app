@@ -144,12 +144,12 @@
           <input type="date" bind:value={eDue} />
         </label>
         <div class="edit-actions">
-          <button class="ghost" type="button" onclick={() => (editId = null)}
-            >{$_('common.cancel')}</button
-          >
-          <button class="primary" type="submit" disabled={!eTitle.trim() || $demoSession}
-            >{$_('common.save')}</button
-          >
+          <button class="ghost" type="button" onclick={() => (editId = null)}>
+            {$_('common.cancel')}
+          </button>
+          <button class="primary" type="submit" disabled={!eTitle.trim() || $demoSession}>
+            {$_('common.save')}
+          </button>
         </div>
       </form>
     {:else}
@@ -163,9 +163,9 @@
           values: { title: t.title }
         })}
       >
-        <span class="box"
-          >{#if t.done}<Check size={16} aria-hidden="true" />{/if}</span
-        >
+        <span class="box">
+          {#if t.done}<Check size={16} aria-hidden="true" />{/if}
+        </span>
       </button>
       <div class="body">
         <strong>{t.title}</strong>
@@ -181,16 +181,18 @@
         onclick={() => startEdit(t)}
         title={$_('tasks.edit')}
         aria-label={$_('tasks.edit_named', { values: { title: t.title } })}
-        ><Pencil size={18} aria-hidden="true" /></button
       >
+        <Pencil size={18} aria-hidden="true" />
+      </button>
       <button
         class="iconbtn danger"
         disabled={$demoSession}
         onclick={() => del(t)}
         title={$_('common.delete')}
         aria-label={$_('tasks.delete_named', { values: { title: t.title } })}
-        ><Trash2 size={18} aria-hidden="true" /></button
       >
+        <Trash2 size={18} aria-hidden="true" />
+      </button>
     {/if}
   </li>
 {/snippet}
@@ -214,9 +216,9 @@
       <span>{$_('tasks.due')}</span>
       <input type="date" bind:value={due} />
     </label>
-    <button class="primary" type="submit" disabled={!title.trim() || $demoSession}
-      >{$_('tasks.add')}</button
-    >
+    <button class="primary" type="submit" disabled={!title.trim() || $demoSession}>
+      {$_('tasks.add')}
+    </button>
   </form>
 
   {#if !loaded}

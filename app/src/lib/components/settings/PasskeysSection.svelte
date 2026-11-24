@@ -77,13 +77,16 @@
         {#each passkeys as k (k.id)}
           <li>
             <div class="st-meta">
-              <strong><KeyRound size={16} aria-hidden="true" /> {k.name || $_('pk.unnamed')}</strong
-              >
+              <strong>
+                <KeyRound size={16} aria-hidden="true" />
+                {k.name || $_('pk.unnamed')}
+              </strong>
               <span class="st-date">{$_('pk.created')} {formatDate(k.created_at, $locale)}</span>
               {#if k.last_used_at}
-                <span class="st-date"
-                  >{$_('pk.last_used')} {formatDate(k.last_used_at, $locale)}</span
-                >
+                <span class="st-date">
+                  {$_('pk.last_used')}
+                  {formatDate(k.last_used_at, $locale)}
+                </span>
               {/if}
             </div>
             <div class="st-actions">

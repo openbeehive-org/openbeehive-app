@@ -194,9 +194,9 @@
         aria-describedby="code-help"
       />
     </label>
-    <button class="ghost" type="submit" disabled={code.trim().length < 6}
-      >{$_('scan.code_open')}</button
-    >
+    <button class="ghost" type="submit" disabled={code.trim().length < 6}>
+      {$_('scan.code_open')}
+    </button>
     <p id="code-help" class="help">{$_('scan.code_help')}</p>
     {#if codeUnknown}<p class="error" role="alert">{$_('scan.code_unknown')}</p>{/if}
   </form>

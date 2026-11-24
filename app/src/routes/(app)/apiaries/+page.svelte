@@ -68,9 +68,9 @@
 <div class="page">
   <header>
     <h1>{$_('apiaries.title')}</h1>
-    <button class="primary" aria-expanded={showForm} onclick={() => (showForm = !showForm)}
-      >+ {$_('common.new')}</button
-    >
+    <button class="primary" aria-expanded={showForm} onclick={() => (showForm = !showForm)}>
+      + {$_('common.new')}
+    </button>
   </header>
 
   {#if showForm}
@@ -101,9 +101,9 @@
       {/if}
       <DemoNote />
       <div class="actions">
-        <button type="button" class="ghost" onclick={() => (showForm = false)}
-          >{$_('common.cancel')}</button
-        >
+        <button type="button" class="ghost" onclick={() => (showForm = false)}>
+          {$_('common.cancel')}
+        </button>
         <button type="submit" class="primary" disabled={!name.trim() || saving || $demoSession}>
           {saving ? $_('common.saving') : $_('common.save')}
         </button>
@@ -131,9 +131,9 @@
               <strong>{a.name}</strong>
               {#if a.address}<small>{a.address}</small>{/if}
             </div>
-            <span class="badge"
-              >{$_('apiaries.hives_count', { values: { n: counts[a.id] ?? 0 } })}</span
-            >
+            <span class="badge">
+              {$_('apiaries.hives_count', { values: { n: counts[a.id] ?? 0 } })}
+            </span>
             <span class="chev" aria-hidden="true">›</span>
           </a>
         </li>

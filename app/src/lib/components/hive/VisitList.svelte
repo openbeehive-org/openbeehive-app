@@ -45,9 +45,10 @@
       <div class="hv-rhead">
         <strong>{day(i)}</strong>
         {#if isSensor(i)}
-          <span class="hv-chip plain"
-            ><Radio size={12} aria-hidden="true" /> {$_('insp.sensor')}</span
-          >
+          <span class="hv-chip plain">
+            <Radio size={12} aria-hidden="true" />
+            {$_('insp.sensor')}
+          </span>
         {/if}
         {#if i.weather}<span class="hv-muted hv-sm">{i.weather}</span>{/if}
       </div>

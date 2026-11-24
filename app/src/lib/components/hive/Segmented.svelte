@@ -18,8 +18,10 @@
         type="button"
         class:on={value === o.value}
         aria-pressed={value === o.value}
-        onclick={() => (value = value === o.value ? 0 : o.value)}>{o.label}</button
+        onclick={() => (value = value === o.value ? 0 : o.value)}
       >
+        {o.label}
+      </button>
     {/each}
   </div>
 </div>

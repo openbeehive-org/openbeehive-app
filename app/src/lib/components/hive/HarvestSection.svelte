@@ -108,9 +108,9 @@
 <section class="hv-section">
   <div class="hv-sec-head">
     <h2>{dotted($_('harvest.title'), total ? weight(total) : '')}</h2>
-    <button type="button" class="hv-btn" onclick={() => (open ? close() : show(null))}
-      >+ {$_('harvest.record')}</button
-    >
+    <button type="button" class="hv-btn" onclick={() => (open ? close() : show(null))}>
+      + {$_('harvest.record')}
+    </button>
   </div>
 
   {#if open}
@@ -188,9 +188,9 @@
               <span class="hv-chip">{$_('harvest.best_before')}: {day(h.best_before)}</span>
             {/if}
             {#if h.amended_at}
-              <span class="hv-chip plain"
-                >{$_('harvest.amended', { values: { date: day(h.amended_at) } })}</span
-              >
+              <span class="hv-chip plain">
+                {$_('harvest.amended', { values: { date: day(h.amended_at) } })}
+              </span>
             {/if}
           </div>
           {#if h.note}<p class="hv-note">{h.note}</p>{/if}

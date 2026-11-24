@@ -96,17 +96,17 @@
       <li>
         <div class="st-meta">
           <strong>{i.email}</strong>
-          <span class="st-badge"
-            >{i.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span
-          >
+          <span class="st-badge">
+            {i.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}
+          </span>
           {#if expired}
             <span class="st-badge bad">{$_('tenant.invite_expired')}</span>
           {:else if i.expires_at}
-            <span class="st-date"
-              >{$_('tenant.invite_expires', {
+            <span class="st-date">
+              {$_('tenant.invite_expires', {
                 values: { date: formatDate(i.expires_at, $locale) }
-              })}</span
-            >
+              })}
+            </span>
           {/if}
         </div>
         <div class="st-actions">

@@ -96,9 +96,9 @@
   <header>
     <h1>{$_('hives.title')}</h1>
     {#if apiaryList.length}
-      <button class="primary" aria-expanded={showForm} onclick={() => (showForm = !showForm)}
-        >+ {$_('common.new')}</button
-      >
+      <button class="primary" aria-expanded={showForm} onclick={() => (showForm = !showForm)}>
+        + {$_('common.new')}
+      </button>
     {/if}
   </header>
 
@@ -122,12 +122,12 @@
       </label>
       <DemoNote />
       <div class="actions">
-        <button type="button" class="ghost" onclick={() => (showForm = false)}
-          >{$_('common.cancel')}</button
-        >
-        <button type="submit" class="primary" disabled={!name.trim() || $demoSession}
-          >{$_('common.save')}</button
-        >
+        <button type="button" class="ghost" onclick={() => (showForm = false)}>
+          {$_('common.cancel')}
+        </button>
+        <button type="submit" class="primary" disabled={!name.trim() || $demoSession}>
+          {$_('common.save')}
+        </button>
       </div>
     </form>
   {/if}

@@ -58,9 +58,9 @@
         onclick={() => switchTo(w.id)}
       >
         <span class="name">{w.name}</span>
-        <span class="st-badge"
-          >{w.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}</span
-        >
+        <span class="st-badge">
+          {w.role === 'owner' ? $_('tenant.role_owner') : $_('tenant.role_member')}
+        </span>
         {#if w.id === activeOrg}<span class="st-badge accent">{$_('tenant.active')}</span>{/if}
       </button>
     {/each}

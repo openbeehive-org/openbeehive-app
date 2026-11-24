@@ -53,8 +53,10 @@
         class="dot"
         class:last={i === marks.length - 1}
         d={`M${m.x.toFixed(1)} ${m.y.toFixed(1)} h0`}
-        vector-effect="non-scaling-stroke"><title>{m.title}</title></path
+        vector-effect="non-scaling-stroke"
       >
+        <title>{m.title}</title>
+      </path>
     {/each}
   </svg>
 </div>

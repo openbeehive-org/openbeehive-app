@@ -295,9 +295,10 @@
       {/if}
 
       {#if webauthn && mode === 'signin' && passkeysSupported()}
-        <button type="button" class="provider pk" onclick={passkeySignin} disabled={busy}
-          ><KeyRound size={16} aria-hidden="true" /> {$_('auth.passkey_signin')}</button
-        >
+        <button type="button" class="provider pk" onclick={passkeySignin} disabled={busy}>
+          <KeyRound size={16} aria-hidden="true" />
+          {$_('auth.passkey_signin')}
+        </button>
       {/if}
 
       {#if hasPassword}
@@ -346,9 +347,9 @@
         {#if hasPassword}<div class="or"><span>{$_('auth.or')}</span></div>{/if}
         <div class="providers">
           {#each providers as p}
-            <a class="provider" href={`${API}/auth/login?provider=${p}`}
-              >{$_('auth.continue_with', { values: { provider: cap(p) } })}</a
-            >
+            <a class="provider" href={`${API}/auth/login?provider=${p}`}>
+              {$_('auth.continue_with', { values: { provider: cap(p) } })}
+            </a>
           {/each}
         </div>
       {/if}

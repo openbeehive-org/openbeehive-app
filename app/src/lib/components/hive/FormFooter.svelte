@@ -19,12 +19,12 @@
 {/if}
 <DemoNote />
 <div class="hv-actions">
-  <button type="button" class="hv-btn ghost" onclick={oncancel} disabled={busy}
-    >{$_('common.cancel')}</button
-  >
-  <button type="submit" class="hv-btn save" disabled={busy || invalid || $demoSession}
-    >{busy ? $_('common.saving') : $_('common.save')}</button
-  >
+  <button type="button" class="hv-btn ghost" onclick={oncancel} disabled={busy}>
+    {$_('common.cancel')}
+  </button>
+  <button type="submit" class="hv-btn save" disabled={busy || invalid || $demoSession}>
+    {busy ? $_('common.saving') : $_('common.save')}
+  </button>
 </div>
 
 <style>
