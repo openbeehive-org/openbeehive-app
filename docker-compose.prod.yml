@@ -24,7 +24,7 @@ services:
   postgres:
     # Postgres does not upgrade data directories across major versions:
     # dump/restore or pg_upgrade before changing the major in this tag.
-    image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: postgres:18-alpine@sha256:0115267ab5a509022df9319c77be365cef335adb71556c75f60f5360ee247e71
     restart: unless-stopped
     environment:
       POSTGRES_USER: openbeehive
